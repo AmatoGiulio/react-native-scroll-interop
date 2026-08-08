@@ -1,0 +1,19 @@
+# Hidden directories by convention
+/.*/
+
+# Tarballs from `npm pack`
+/*.tgz
+
+# The example app is a development and QA surface, not part of the package
+/example/
+
+# Android build artefacts and tests
+/android/build/
+/android/.gradle/
+/android/src/test/
+/android/src/androidTest/
+
+# Repo-level docs that are not consumer-facing
+/ROADMAP.md
+/TESTING.md
+/CHANGELOG.md

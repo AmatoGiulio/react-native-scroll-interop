@@ -1,0 +1,36 @@
+{
+  "name": "expo-material-toolbar-example",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "prebuild": "expo prebuild -p android --clean"
+  },
+  "dependencies": {
+    "@shopify/flash-list": "2.0.2",
+    "expo": "~55.0.28",
+    "expo-constants": "~55.0.17",
+    "expo-dev-client": "~55.0.37",
+    "expo-image": "~55.0.11",
+    "expo-linking": "~55.0.16",
+    "expo-material-toolbar": "file:..",
+    "expo-router": "~55.0.17",
+    "expo-status-bar": "~55.0.6",
+    "react": "19.2.0",
+    "react-native": "0.83.10",
+    "react-native-gesture-handler": "~2.30.0",
+    "react-native-reanimated": "4.3.2",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-worklets": "^0.8.3"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "react-native-reanimated": "4.3.2"
+  }
+}

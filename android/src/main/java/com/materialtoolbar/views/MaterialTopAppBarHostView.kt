@@ -1,6 +1,6 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
-package expo.modules.materialtoolbar
+package com.materialtoolbar.views
 
 import android.content.Context
 import android.os.Build
@@ -30,8 +30,10 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
-import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.views.ExpoView
+import com.materialtoolbar.consumers.TopAppBarInteropMode
+import com.materialtoolbar.consumers.TopAppBarScrollConsumer
+import com.materialtoolbar.interop.NativeScrollCoordinator
+import com.materialtoolbar.interop.scrollLog
 import kotlinx.coroutines.CoroutineScope
 
 private data class TopAppBarHostState(
@@ -54,10 +56,11 @@ private data class TopAppBarRootInsets(
  * FloatingToolbar. The outer Expo view is a full-screen BOX_NONE overlay; only the wrap-content,
  * full-width Compose app bar participates in Android hit testing.
  */
-class ExpoMaterialTopAppBarView(
-  context: Context,
-  appContext: AppContext,
-) : ExpoView(context, appContext), ReactPointerEventsView {
+/**
+ * Platform-neutral host for the Material 3 top app bar. See [MaterialToolbarHostView] for why the
+ * host is separate from the Expo / bare React Native bindings.
+ */
+open class MaterialTopAppBarHostView(context: Context) : ViewGroup(context), ReactPointerEventsView {
 
   override val pointerEvents: PointerEvents
     get() = PointerEvents.BOX_NONE
@@ -77,7 +80,7 @@ class ExpoMaterialTopAppBarView(
   }
 
   private val topAppBarScrollConsumer = TopAppBarScrollConsumer()
-  private val nativeScrollCoordinator = ReactNativeScrollCoordinator(this, topAppBarScrollConsumer)
+  private val nativeScrollCoordinator = NativeScrollCoordinator(this, topAppBarScrollConsumer)
 
   init {
     isClickable = false
@@ -147,11 +150,8 @@ class ExpoMaterialTopAppBarView(
     requestLayout()
     composeView.requestLayout()
 
-    if (BuildConfig.DEBUG) {
-      android.util.Log.d(
-        NATIVE_SCROLL_LOG_TAG,
-        "topappbar rootInsets left=${next.left} top=${next.top} right=${next.right}",
-      )
+    scrollLog {
+      "topappbar rootInsets left=${next.left} top=${next.top} right=${next.right}"
     }
   }
 

@@ -2,116 +2,139 @@
 
 ## Goal
 
-Keep React Native navigation chrome on the platform-native scroll path. React Native identifies the scroll source; native consumers implement platform behavior without an additional per-frame JS callback.
+Let native navigation chrome participate in Android's scroll the way it does in a real Compose app,
+while the scrollable content stays an ordinary React Native `ScrollView` or FlashList. No
+chrome-specific `onScroll` handler, no list ref handed to the chrome, no per-frame JavaScript.
 
-
-## Alpha.24 native scroll-away geometry
-
-The scroll-away adapter uses React Native 0.83's native top-padding support on the selected `ReactScrollView`. Alpha.24 also mirrors Material3's Android visual-component inset source (`systemBars + displayCutout`) from the root Android window into the embedded Compose TopAppBar explicitly, so the maximum measured host height includes the real Material variant height and physical system inset even when React Native has consumed the local Compose inset chain.
-
-```text
-expanded TopAppBar host height (measured native)
-        |
-        v
-ReactScrollView scroll-away top padding
-        |
-        +-- scrollY 0 .. collapseRange
-        |      content rises exactly with TopAppBar collapse
-        |
-        `-- scrollY > collapseRange
-               TopAppBar pinned collapsed; list continues normally
-
-Material snap / settle
-        |
-        `-- keep rnScrollY = logicalChildY + collapseAmount
-            while heightOffset animates
-```
-
-This transport-specific bridge is intentionally isolated from the generic Material consumer model. `setScrollAwayTopPaddingEnabledUnstable` is an RN implementation primitive, not a proposed public API; an upstream `react-native-screens` integration could provide equivalent geometry ownership through its screen/scroll registration layer.
-
-## Alpha 19 split
+## Shape
 
 ```text
-ReactScrollView / FlashList default scroller
-        |
-        v
-Shared RN native scroll hub
-  - one ReactScrollViewHelper listener
-  - active source discovery
-  - visible/same-Fabric-surface filtering
-  - display-frame sampling
-  - edge overscroll normalization
-        |
-        v
-NativeScrollFrame
-  - normalized content delta
-  - raw scrollY for diagnostics
-  - isolated native post-scroll available distance
-        |
-        +-------------------------------+
-        |                               |
-        v                               v
-FloatingToolbarScrollConsumer     TopAppBarScrollConsumer
-  - Material3 behavior/state       - Material3 behavior/state
-  - offsetLimit geometry           - enterAlways pre-scroll adapter
-  - Android host translation       - exitUntilCollapsed post-scroll adapter
-  - Material3 settle/snap          - Material3 settle/snap
+        transport                    coordinator                  consumers
+┌──────────────────────────┐   ┌────────────────────┐   ┌────────────────────────────┐
+│ ReactScrollViewTransport │──▶│ NativeScroll       │──▶│ FloatingToolbarScrollConsumer│
+│  - discovery             │   │ Coordinator        │   │ TopAppBarScrollConsumer      │
+│  - one RN scroll listener│   │  - client registry │   └────────────────────────────┘
+│  - Choreographer sampling│◀──│  - eligibility     │                │
+│  - phase + velocity      │   │  - fan-out         │                ▼
+│  - RnScrollSource        │   └────────────────────┘        Material3 state
+│    (ScrollSourceController)│                                (the source of truth)
+└──────────────────────────┘
 ```
 
-Every mounted native chrome host owns only a lightweight registration facade. The actual RN listener and frame sampler are shared, so a visible TopAppBar and FloatingToolbar on the same Fabric surface can receive the same active native scroll sample.
+Three packages, and the dependency direction is the whole point:
 
-## Consumer boundary
+- `com.materialtoolbar.interop` — the contract plus the React Native transport.
+- `com.materialtoolbar.consumers` — Material 3 behaviour. Depends on `interop`, on nothing else.
+- `com.materialtoolbar.views` / `.rn`, `expo.modules.materialtoolbar` — hosts and bindings.
 
-A `NativeScrollConsumer` has no React Native, FlashList, router, or navigation dependency. It receives only:
+`InteropBoundaryTest` fails the build if a consumer or the contract ever imports
+`com.facebook.react` or `expo.modules`. The one permitted exception is
+`ReactScrollViewTransport.kt`, which is the adapter.
 
-- session start with the selected native vertical source;
-- `NativeScrollFrame`;
-- session end.
+## The contract
 
-This is intentional. A future `react-native-screens` transport based on `ScrollViewMarker` / `ScrollViewSeeking` should be able to replace the source side without changing either Material consumer.
+```kotlin
+interface ScrollSourceController {          // write side
+  val scrollY: Int
+  val isUsable: Boolean
+  fun reserveChromeSpace(topInsetPx: Int)
+  fun releaseChromeSpace()
+  fun scrollToY(y: Int)
+}
 
-## Why TopAppBar needs a richer frame
+interface NativeScrollConsumer {            // read side
+  fun onScrollSessionStart(controller: ScrollSourceController)
+  fun onScrollFrame(frame: NativeScrollFrame)
+  fun onScrollSessionEnd(velocityY: Float)
+}
 
-FloatingToolbar `exitAlways` reacts to consumed content distance, so normalized `deltaY` is enough and Android bounce must be ignored.
+data class NativeScrollFrame(
+  val deltaY: Int, val scrollY: Int, val rawScrollY: Int,
+  val phase: ScrollPhase,                   // Drag | Fling | Programmatic
+  val velocityY: Float,
+)
+```
 
-Material3 `exitUntilCollapsed` is different: it collapses while content scrolls up through pre-scroll, but expands from positive post-scroll `available` distance only after the content reaches the top edge. RN content-offset sampling can represent the consumed child movement but cannot represent the remaining finger travel once `scrollY` is already zero. Android's visual edge stretch is also too damped to use as gesture distance. Alpha.19 therefore obtains the missing top-boundary distance from a non-consuming native MotionEvent observer in the RN source adapter and exposes it as `NativeScrollFrame.postAvailableY`.
+Two things here are load-bearing and were not obvious at first.
 
-Both `enterAlways` and the collapse phase of `exitUntilCollapsed` are replayed through Material3's own pre-scroll connection. The normalized RN content remainder is then forwarded through post-scroll as consumed distance. At the top boundary, `postAvailableY` is forwarded as Material3 post-scroll available distance so expansion follows the user's remaining drag.
+**The contract is bidirectional.** A floating toolbar only observes, but a collapsing app bar
+displaces content: its collapse range has to exist inside the source's own scroll range, and the
+source has to be repositioned when Material's settle animation lands on an endpoint. Modelling that
+as a capability the transport grants (`reserveChromeSpace` / `scrollToY`) is what lets the app-bar
+consumer stay free of React Native. Before this existed, it reached for `ReactScrollView` directly.
+
+**Phase is part of the sample.** Compose nested scroll distinguishes finger-driven pixels from
+inertial ones. Forwarding a fling as `NestedScrollSource.UserInput` makes Material apply drag-time
+policy to momentum, which is a real behavioural difference from a native Compose screen even though
+it looks approximately right.
+
+## Session lifecycle
+
+A session is driven by **scroll change**, not by drag events. Drag events only classify the phase.
+
+| event | effect |
+| --- | --- |
+| `BEGIN_DRAG` | start or reclassify session, phase = `Drag` |
+| `SCROLL` with no session | start session, phase = `Programmatic` |
+| `END_DRAG` | keep phase `Drag`, record velocity |
+| `MOMENTUM_BEGIN` | phase = `Fling`, record velocity |
+| `MOMENTUM_END` | phase = `Programmatic` |
+| 4 still frames, not dragging | end session, emit velocity |
+
+The `Programmatic` row is the one that matters for correctness rather than polish. A session gated
+on `BEGIN_DRAG` never sees a TalkBack `ACTION_SCROLL_FORWARD`, a `scrollTo` from JavaScript, a mouse
+wheel, or a D-pad scroll — the content moves and the chrome silently stays where it was.
+
+## Why the app bar can reserve the source's scroll range
+
+`exitUntilCollapsed` collapses while content scrolls up, and expands from post-scroll *available*
+distance once the content has reached its top. With `reserveChromeSpace(expandedHeight)`, the
+collapse range lives inside the source's own range:
+
+```text
+scrollY 0 .............. collapseRange .............. content
+        │                      │
+        │                      └── app bar fully collapsed, list scrolls normally
+        └── app bar fully expanded
+```
+
+so `logicalChildY = max(0, scrollY - collapseRange)` is the position a Compose `Scaffold` child
+would have had, and the leftover distance in a frame is exactly what Material wants as `available`.
+
+This replaced an earlier design that recovered the missing top-boundary distance from a
+non-consuming `OnTouchListener` on the `ReactScrollView`. That observer is gone: once the collapse
+range is inside the scroll range, `scrollY == 0` already means "fully expanded", so there is no
+missing distance to recover. Removing it also removed a single-slot `setOnTouchListener` that would
+clobber any listener React Native or a gesture library had installed.
+
+## Re-entrancy
+
+A consumer that calls `scrollToY` during a Material settle causes React Native to emit a scroll
+event, which the sampler would otherwise read back as a user delta and forward to the same consumer
+— a loop where the app bar and the list chase each other. `RnScrollSource.scrollToY` therefore
+re-baselines the session's last sampled position, so a self-driven move produces a zero delta.
 
 ## Invariants
 
-1. No navigation-chrome-specific JS `onScroll` handler.
-2. No list ref is required by a native consumer.
-3. Scroll sampling and Material state updates stay on the Android UI/native path.
-4. A source is dispatched only to attached, shown native chrome clients on the same Fabric surface.
-5. Ordinary content delta is normalized independently from top-boundary post-scroll available distance.
-6. Material3 remains the source of truth for app-bar/toolbar state and snap behavior.
-7. FloatingToolbar's Android translation remains only a WRAP_CONTENT host adaptation; TopAppBar uses Material3's own height/layout state directly.
-8. The RN transport is shared across consumers and can be replaced independently of Material behavior code.
+1. No chrome-specific JavaScript `onScroll` handler, and no list ref reaches a consumer.
+2. Sampling and Material state updates stay on the Android UI thread.
+3. Consumers receive a controller and frames — never a `View`.
+4. A source only drives chrome that is attached, shown, and on the same surface.
+5. Normalized deltas never contain Android edge-bounce pixels.
+6. Material 3 remains the source of truth for app-bar and toolbar state, snapping and settling.
+7. Every kind of scroll produces a session, including accessibility and programmatic scrolls.
 
-## Next checkpoint
+## Known gaps
 
-Validate alpha.19 in the host app with both consumers and repeat collapse/expand cycles at the top boundary. Once the TopAppBar proof is stable, the next hardening step is source ownership/focus semantics and accessibility (including touch exploration) before extracting the transport into a standalone upstream-oriented PoC.
+These are stated rather than hidden, because the interesting question upstream is where the model
+breaks, not where it works.
 
-
-## Top-boundary post-scroll transport (alpha.19)
-
-`exitUntilCollapsed` needs information that content offset sampling alone cannot provide. Once an RN ScrollView reaches `scrollY == 0`, additional downward finger travel is not content movement; it is nested-scroll `available.y` for the parent chrome. Android visual overscroll displacement is deliberately not used as a proxy because it is a damped/stretch effect and can be much smaller than the user's drag distance.
-
-The RN source adapter therefore has one optional boundary channel:
-
-```text
-RN vertical ScrollView
-  |
-  | normalized scrollY delta -> NativeScrollFrame.deltaY
-  |
-  `-- at y=0 only: non-consuming downward MotionEvent distance
-                         -> NativeScrollFrame.postAvailableY
-```
-
-Only consumers that declare `requiresTopBoundaryGesture` activate this observer. `TopAppBarScrollConsumer` requests it for `exitUntilCollapsed`; `FloatingToolbarScrollConsumer` does not. The observer returns `false` for every MotionEvent, so ownership and handling of the gesture stay with React Native. This is an adapter implementation detail, not part of the Material consumer API.
-
-
-### Alpha.20 logical-child reconciliation
-
-A sampled RN `scrollY` includes pixels that Material3 would have consumed in TopAppBar pre-scroll. For `exitUntilCollapsed`, the adapter therefore models the equivalent logical child position as `max(0, rnScrollY - collapseRange)`. On downward movement, the change in logical child position is replayed as post-scroll `consumed`; any remaining distance is replayed as post-scroll `available` so Material3 expands at the same phase boundary as a real Compose nested-scroll chain. `TopAppBarState.contentOffset` is reconciled to the negative logical child position to prevent state drift.
+- **Source discovery is a heuristic**: the largest visible vertical `ReactScrollView` on the owner's
+  surface. Nested vertical scrollers resolve to the outer one. Ownership should eventually be
+  per-screen, which is precisely what a `react-native-screens` transport would provide.
+- **Velocity sign** is derived from the transport and negated to match Compose's axis. It has not
+  been calibrated against a real Compose app yet.
+- **`maintainVisibleContentPosition`**, custom `renderScrollComponent` that is not a
+  `ReactScrollView`, horizontal and inverted lists: unsupported, untested, or both.
+- `setScrollAwayTopPaddingEnabledUnstable` is an unstable React Native primitive. It is confined to
+  `RnScrollSource` so that an upstream transport can satisfy `reserveChromeSpace` differently.

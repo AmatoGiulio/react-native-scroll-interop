@@ -4,6 +4,7 @@ import android.graphics.Color
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
+import com.materialtoolbar.views.ToolbarActionSpec
 import expo.modules.kotlin.records.Record
 
 class ToolbarActionRecord : Record {
@@ -41,6 +42,22 @@ class ToolbarActionRecord : Record {
   val selected: Boolean = false
 }
 
+private fun List<ToolbarActionRecord>.toSpecs(): List<ToolbarActionSpec> = map { record ->
+  ToolbarActionSpec(
+    id = record.id,
+    presentation = record.presentation,
+    label = record.label,
+    enabled = record.enabled,
+    accessibilityLabel = record.accessibilityLabel,
+    iconPresent = record.iconPresent,
+    iconUri = record.iconUri,
+    iconTintable = record.iconTintable,
+    iconSize = record.iconSize,
+    iconFallback = record.iconFallback,
+    selected = record.selected,
+  )
+}
+
 class ExpoMaterialToolbarModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ExpoMaterialToolbar")
@@ -49,163 +66,163 @@ class ExpoMaterialToolbarModule : Module() {
       Events("onActionPress", "onFabPress")
 
       Prop("content") { view: ExpoMaterialToolbarView, actions: List<ToolbarActionRecord> ->
-        view.setContent(actions)
+        view.host.setContent(actions.toSpecs())
       }
 
       Prop("leadingContent") { view: ExpoMaterialToolbarView, actions: List<ToolbarActionRecord> ->
-        view.setLeadingContent(actions)
+        view.host.setLeadingContent(actions.toSpecs())
       }
 
       Prop("trailingContent") { view: ExpoMaterialToolbarView, actions: List<ToolbarActionRecord> ->
-        view.setTrailingContent(actions)
+        view.host.setTrailingContent(actions.toSpecs())
       }
 
       Prop("visible") { view: ExpoMaterialToolbarView, visible: Boolean ->
-        view.setVisibleState(visible)
+        view.host.setVisibleState(visible)
       }
 
       Prop("expanded") { view: ExpoMaterialToolbarView, expanded: Boolean ->
-        view.setExpanded(expanded)
+        view.host.setExpanded(expanded)
       }
 
       Prop("scrollBehavior") { view: ExpoMaterialToolbarView, behavior: String ->
-        view.setScrollBehavior(behavior)
+        view.host.setScrollBehavior(behavior)
       }
 
       Prop("scrollExitDirection") { view: ExpoMaterialToolbarView, direction: String ->
-        view.setScrollExitDirection(direction)
+        view.host.setScrollExitDirection(direction)
       }
 
       Prop("orientation") { view: ExpoMaterialToolbarView, orientation: String ->
-        view.setOrientation(orientation)
+        view.host.setOrientation(orientation)
       }
 
       Prop("variant") { view: ExpoMaterialToolbarView, variant: String ->
-        view.setVariant(variant)
+        view.host.setVariant(variant)
       }
 
       Prop("fabPresent") { view: ExpoMaterialToolbarView, present: Boolean ->
-        view.setFabPresent(present)
+        view.host.setFabPresent(present)
       }
 
       Prop("fabPosition") { view: ExpoMaterialToolbarView, position: String ->
-        view.setFabPosition(position)
+        view.host.setFabPosition(position)
       }
 
       Prop("fabIconUri") { view: ExpoMaterialToolbarView, uri: String? ->
-        view.setFabIconUri(uri)
+        view.host.setFabIconUri(uri)
       }
 
       Prop("fabIconTintable") { view: ExpoMaterialToolbarView, tintable: Boolean ->
-        view.setFabIconTintable(tintable)
+        view.host.setFabIconTintable(tintable)
       }
 
       Prop("fabIconSize") { view: ExpoMaterialToolbarView, size: Double ->
-        view.setFabIconSize(size.toFloat())
+        view.host.setFabIconSize(size.toFloat())
       }
 
       Prop("fabIconFallback") { view: ExpoMaterialToolbarView, fallback: String ->
-        view.setFabIconFallback(fallback)
+        view.host.setFabIconFallback(fallback)
       }
 
       Prop("fabAccessibilityLabel") { view: ExpoMaterialToolbarView, label: String? ->
-        view.setFabAccessibilityLabel(label)
+        view.host.setFabAccessibilityLabel(label)
       }
 
       Prop("fabShape") { view: ExpoMaterialToolbarView, shape: String ->
-        view.setFabShape(shape)
+        view.host.setFabShape(shape)
       }
 
       Prop("themeMode") { view: ExpoMaterialToolbarView, mode: String ->
-        view.setThemeMode(mode)
+        view.host.setThemeMode(mode)
       }
 
       Prop("dynamicColor") { view: ExpoMaterialToolbarView, dynamic: Boolean ->
-        view.setDynamicColor(dynamic)
+        view.host.setDynamicColor(dynamic)
       }
 
       Prop("imeBehavior") { view: ExpoMaterialToolbarView, behavior: String ->
-        view.setImeBehavior(behavior)
+        view.host.setImeBehavior(behavior)
       }
 
       Prop("alignment") { view: ExpoMaterialToolbarView, alignment: String ->
-        view.setAlignment(alignment)
+        view.host.setAlignment(alignment)
       }
 
       Prop("insets") { view: ExpoMaterialToolbarView, insets: String ->
-        view.setInsets(insets)
+        view.host.setInsets(insets)
       }
 
       Prop("edgeOffset") { view: ExpoMaterialToolbarView, offset: Double? ->
-        view.setEdgeOffset(offset?.toFloat())
+        view.host.setEdgeOffset(offset?.toFloat())
       }
 
       Prop("contentPaddingStart") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setContentPaddingStart(value?.toFloat())
+        view.host.setContentPaddingStart(value?.toFloat())
       }
 
       Prop("contentPaddingTop") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setContentPaddingTop(value?.toFloat())
+        view.host.setContentPaddingTop(value?.toFloat())
       }
 
       Prop("contentPaddingEnd") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setContentPaddingEnd(value?.toFloat())
+        view.host.setContentPaddingEnd(value?.toFloat())
       }
 
       Prop("contentPaddingBottom") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setContentPaddingBottom(value?.toFloat())
+        view.host.setContentPaddingBottom(value?.toFloat())
       }
 
       Prop("expandedShadowElevation") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setExpandedShadowElevation(value?.toFloat())
+        view.host.setExpandedShadowElevation(value?.toFloat())
       }
 
       Prop("collapsedShadowElevation") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setCollapsedShadowElevation(value?.toFloat())
+        view.host.setCollapsedShadowElevation(value?.toFloat())
       }
 
       Prop("toolbarContainerColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setToolbarContainerColor(color)
+        view.host.setToolbarContainerColor(color?.toArgb())
       }
 
       Prop("toolbarContentColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setToolbarContentColor(color)
+        view.host.setToolbarContentColor(color?.toArgb())
       }
 
       Prop("fabContainerColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setFabContainerColor(color)
+        view.host.setFabContainerColor(color?.toArgb())
       }
 
       Prop("fabContentColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setFabContentColor(color)
+        view.host.setFabContentColor(color?.toArgb())
       }
 
       Prop("selectedContainerColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setSelectedContainerColor(color)
+        view.host.setSelectedContainerColor(color?.toArgb())
       }
 
       Prop("selectedContentColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setSelectedContentColor(color)
+        view.host.setSelectedContentColor(color?.toArgb())
       }
 
       Prop("unselectedContentColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setUnselectedContentColor(color)
+        view.host.setUnselectedContentColor(color?.toArgb())
       }
 
       AsyncFunction("show") { view: ExpoMaterialToolbarView ->
-        view.setVisibleState(true)
+        view.host.setVisibleState(true)
       }
 
       AsyncFunction("hide") { view: ExpoMaterialToolbarView ->
-        view.setVisibleState(false)
+        view.host.setVisibleState(false)
       }
 
       AsyncFunction("expand") { view: ExpoMaterialToolbarView ->
-        view.setExpanded(true)
+        view.host.setExpanded(true)
       }
 
       AsyncFunction("collapse") { view: ExpoMaterialToolbarView ->
-        view.setExpanded(false)
+        view.host.setExpanded(false)
       }
 
     }

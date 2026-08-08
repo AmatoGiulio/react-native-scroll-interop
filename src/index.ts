@@ -1,5 +1,5 @@
-export { MaterialTopAppBar } from './src/MaterialTopAppBar';
-export { MaterialToolbar } from './src/MaterialToolbar';
+export { MaterialTopAppBar } from './MaterialTopAppBar';
+export { MaterialToolbar } from './MaterialToolbar';
 
 export type {
   MaterialToolbarAlignment,
@@ -24,10 +24,10 @@ export type {
   MaterialToolbarThemeMode,
   MaterialToolbarTrailingContentProps,
   MaterialToolbarVariant,
-} from './src/MaterialToolbar.types';
+} from './MaterialToolbar.types';
 
 export type {
   MaterialTopAppBarProps,
   MaterialTopAppBarScrollBehavior,
   MaterialTopAppBarVariant,
-} from './src/MaterialTopAppBar.types';
+} from './MaterialTopAppBar.types';

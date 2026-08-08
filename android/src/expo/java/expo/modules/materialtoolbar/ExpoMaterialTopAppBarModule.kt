@@ -9,27 +9,27 @@ class ExpoMaterialTopAppBarModule : Module() {
 
     View(ExpoMaterialTopAppBarView::class) {
       Prop("title") { view: ExpoMaterialTopAppBarView, title: String ->
-        view.setTitle(title)
+        view.host.setTitle(title)
       }
 
       Prop("visible") { view: ExpoMaterialTopAppBarView, visible: Boolean ->
-        view.setVisibleState(visible)
+        view.host.setVisibleState(visible)
       }
 
       Prop("variant") { view: ExpoMaterialTopAppBarView, variant: String ->
-        view.setVariant(variant)
+        view.host.setVariant(variant)
       }
 
       Prop("scrollBehavior") { view: ExpoMaterialTopAppBarView, behavior: String ->
-        view.setScrollBehavior(behavior)
+        view.host.setScrollBehavior(behavior)
       }
 
       Prop("themeMode") { view: ExpoMaterialTopAppBarView, mode: String ->
-        view.setThemeMode(mode)
+        view.host.setThemeMode(mode)
       }
 
       Prop("dynamicColor") { view: ExpoMaterialTopAppBarView, dynamic: Boolean ->
-        view.setDynamicColor(dynamic)
+        view.host.setDynamicColor(dynamic)
       }
     }
   }

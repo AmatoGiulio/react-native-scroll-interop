@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Material Toolbar Example",
+    "slug": "expo-material-toolbar-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "materialtoolbarexample",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "android": {
+      "package": "expo.modules.materialtoolbar.example"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

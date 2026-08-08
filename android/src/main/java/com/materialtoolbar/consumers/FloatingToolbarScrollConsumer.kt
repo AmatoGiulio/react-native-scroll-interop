@@ -1,24 +1,31 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 
-package expo.modules.materialtoolbar
+package com.materialtoolbar.consumers
 
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.material3.FloatingToolbarExitDirection
 import androidx.compose.material3.FloatingToolbarScrollBehavior
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.Velocity
+import com.materialtoolbar.interop.NativeScrollConsumer
+import com.materialtoolbar.interop.NativeScrollFrame
+import com.materialtoolbar.interop.ScrollSourceController
+import com.materialtoolbar.interop.scrollLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-/** Material-specific consumer. It knows nothing about ReactScrollViewHelper or FlashList. */
-internal class FloatingToolbarScrollConsumer(
+/**
+ * Material 3 floating toolbar consumer.
+ *
+ * `exitAlways` only reacts to consumed content distance, so this consumer needs nothing beyond the
+ * normalized delta. It never reserves chrome space and never moves the source: the toolbar floats
+ * above content rather than displacing it.
+ */
+class FloatingToolbarScrollConsumer(
   private val hostView: ViewGroup,
   private val composeView: ComposeView,
 ) : NativeScrollConsumer {
@@ -62,18 +69,11 @@ internal class FloatingToolbarScrollConsumer(
     cancelSettle()
   }
 
-  override fun onScrollSessionStart(source: ViewGroup) {
+  override fun onScrollSessionStart(controller: ScrollSourceController) {
     cancelSettle()
     debugFrameCounter = 0
     syncGeometry()
-    val current = behavior?.state?.offset ?: 0f
-    applyOffset(current)
-    if (BuildConfig.DEBUG) {
-      Log.d(
-        NATIVE_SCROLL_LOG_TAG,
-        "BEGIN_DRAG view=${source.id} scrollY=${source.scrollY} compose=${composeView.measuredWidth}x${composeView.measuredHeight} offset=$current limit=${behavior?.state?.offsetLimit}",
-      )
-    }
+    applyOffset(behavior?.state?.offset ?: 0f)
   }
 
   override fun onScrollFrame(frame: NativeScrollFrame) {
@@ -82,26 +82,30 @@ internal class FloatingToolbarScrollConsumer(
     currentBehavior.onPostScroll(
       consumed = Offset(0f, -frame.deltaY.toFloat()),
       available = Offset.Zero,
-      source = NestedScrollSource.UserInput,
+      source = frame.nestedScrollSource,
     )
     applyOffset(currentBehavior.state.offset)
-    if (BuildConfig.DEBUG) {
-      debugFrameCounter += 1
-      if (debugFrameCounter % 8 == 1) {
-        Log.d(
-          NATIVE_SCROLL_LOG_TAG,
-          "material dy=${frame.deltaY} scrollY=${frame.scrollY} rawY=${frame.rawScrollY} offset=${currentBehavior.state.offset} limit=${currentBehavior.state.offsetLimit} tx=${composeView.translationX} ty=${composeView.translationY}",
-        )
+
+    debugFrameCounter += 1
+    if (debugFrameCounter % 8 == 1) {
+      scrollLog {
+        "toolbar dy=${frame.deltaY} y=${frame.scrollY} phase=${frame.phase} " +
+          "offset=${currentBehavior.state.offset} limit=${currentBehavior.state.offsetLimit}"
       }
     }
   }
 
-  override fun onScrollSessionEnd() {
+  override fun onScrollSessionEnd(velocityY: Float) {
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     cancelSettle()
     settleJob = currentScope.launch {
-      currentBehavior.onPostFling(consumed = Velocity.Zero, available = Velocity.Zero)
+      // Real velocity, not Velocity.Zero: Material decides snap direction from how fast the
+      // content was still moving when it came to rest.
+      currentBehavior.onPostFling(
+        consumed = Velocity.Zero,
+        available = nestedScrollVelocity(velocityY),
+      )
       applyOffset(currentBehavior.state.offset)
       settleJob = null
     }
@@ -109,35 +113,23 @@ internal class FloatingToolbarScrollConsumer(
 
   fun syncGeometry() {
     val currentBehavior = behavior ?: return
-    if (hostView.width <= 0 || hostView.height <= 0 || composeView.width <= 0 || composeView.height <= 0) return
+    if (hostView.width <= 0 || hostView.height <= 0) return
+    if (composeView.width <= 0 || composeView.height <= 0) return
 
     val isRtl = hostView.layoutDirection == View.LAYOUT_DIRECTION_RTL
     val distance = when (currentBehavior.exitDirection) {
       FloatingToolbarExitDirection.Top -> composeView.bottom.toFloat()
       FloatingToolbarExitDirection.Bottom -> (hostView.height - composeView.top).toFloat()
-      FloatingToolbarExitDirection.Start -> if (isRtl) {
-        (hostView.width - composeView.left).toFloat()
-      } else {
-        composeView.right.toFloat()
-      }
-      FloatingToolbarExitDirection.End -> if (isRtl) {
-        composeView.right.toFloat()
-      } else {
-        (hostView.width - composeView.left).toFloat()
-      }
+      FloatingToolbarExitDirection.Start ->
+        if (isRtl) (hostView.width - composeView.left).toFloat() else composeView.right.toFloat()
+      FloatingToolbarExitDirection.End ->
+        if (isRtl) composeView.right.toFloat() else (hostView.width - composeView.left).toFloat()
       else -> composeView.height.toFloat()
     }.coerceAtLeast(1f)
 
     val currentOffset = currentBehavior.state.offset
     currentBehavior.state.offsetLimit = -distance
     currentBehavior.state.offset = currentOffset
-
-    if (BuildConfig.DEBUG) {
-      Log.d(
-        NATIVE_SCROLL_LOG_TAG,
-        "geometry dir=${currentBehavior.exitDirection} host=${hostView.width}x${hostView.height} compose=${composeView.width}x${composeView.height} pos=${composeView.left},${composeView.top}-${composeView.right},${composeView.bottom} limit=${currentBehavior.state.offsetLimit}",
-      )
-    }
   }
 
   fun applyCurrentOffset() = applyOffset(behavior?.state?.offset ?: 0f)
@@ -152,10 +144,6 @@ internal class FloatingToolbarScrollConsumer(
       FloatingToolbarExitDirection.Top -> {
         composeView.translationX = 0f
         composeView.translationY = offset
-      }
-      FloatingToolbarExitDirection.Bottom -> {
-        composeView.translationX = 0f
-        composeView.translationY = -offset
       }
       FloatingToolbarExitDirection.Start -> {
         composeView.translationY = 0f

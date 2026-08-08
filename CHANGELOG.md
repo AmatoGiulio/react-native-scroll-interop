@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.1.0-alpha.1
+
+Packaging and structure:
+
+- Turns the local module into a real library repo: git history, `src` → `build` compile step, npm `files`/`.npmignore`, and an `example/` app installed through `file:..`.
+- Adds bare React Native support. `com.materialtoolbar.rn.MaterialToolbarPackage` registers the same views through plain `ViewManager`s and is autolinked via `react-native.config.js`. `expo` becomes an optional peer dependency.
+- Splits the Android sources into `com.materialtoolbar.interop` (contract + React Native transport), `com.materialtoolbar.consumers` (Material 3 behaviour), `com.materialtoolbar.views` (hosts) and the two bindings. The Expo binding compiles from `android/src/expo`, which is only included when the Expo Gradle plugin is present.
+- Adds an example app shaped like a real product: three bottom tabs mounted simultaneously, a FlashList image grid, a FlashList feed and a plain `ScrollView` screen, each with a different Material scroll behaviour.
+
+Scroll interop (P0):
+
+- **Bidirectional contract.** New `ScrollSourceController` (`reserveChromeSpace` / `releaseChromeSpace` / `scrollToY` / `scrollY`) replaces direct `ReactScrollView` access from consumers. `TopAppBarScrollConsumer` no longer imports React Native at all, and consumer callbacks receive a controller instead of a `ViewGroup`.
+- **Enforced boundary.** `InteropBoundaryTest` fails the build if the contract or any consumer imports `com.facebook.react` or `expo.modules`.
+- **Scroll phase.** `NativeScrollFrame` carries `ScrollPhase` (`Drag` / `Fling` / `Programmatic`), so Material receives `NestedScrollSource.UserInput` for finger-driven pixels and `SideEffect` for momentum, instead of labelling everything as user input.
+- **Real velocity.** The transport captures `yVelocity` from React Native's scroll dispatch and forwards it to `onPostFling`, which previously always received `Velocity.Zero` — meaning every settle was a zero-velocity snap rather than Material's own velocity-aware settle.
+- **Re-entrancy guard.** A consumer-driven `scrollToY` re-baselines the session, so the resulting React Native scroll event is no longer re-sampled as a user delta and fed back to the consumer that caused it.
+- **Session lifecycle driven by scroll change**, not by `BEGIN_DRAG`. Accessibility scroll actions (TalkBack `ACTION_SCROLL_FORWARD`), programmatic `scrollTo`, mouse wheel and key scrolling now produce sessions; previously the content moved while the chrome stayed put.
+- **Removed the `setOnTouchListener` boundary observer.** With the collapse range reserved inside the source's own scroll range, `scrollY == 0` already means fully expanded, so the extra channel is unnecessary. It also removed a single-slot touch listener that clobbered any listener React Native or a gesture library had installed, and had no pointer-id handling.
+- **Concurrent sessions.** The coordinator tracks sessions per source instead of one global active source, so a drag in one surface no longer cancels another's session.
+- Chrome space is applied relative to the source's current padding rather than a padding value captured once, so React Native padding updates are no longer clobbered.
+- Debug tracing moved from `BuildConfig.DEBUG` to `Log.isLoggable`, so `adb shell setprop log.tag.MaterialToolbar DEBUG` works in release builds.
+
 ## 2.0.0-alpha.24
 
 - Fixes embedded Compose TopAppBar system insets under React Native / Expo by mirroring root-window `systemBars + displayCutout` into Material3 explicitly; this restores the expected status-bar clearance for `variant="small"`.

@@ -1,0 +1,25 @@
+# node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# build output
+build/
+*.tgz
+
+# android
+.gradle/
+.cxx/
+local.properties
+android/build/
+example/android/
+example/ios/
+*.iml
+.idea/
+
+# expo
+.expo/
+example/.expo/
+
+# macOS
+.DS_Store
