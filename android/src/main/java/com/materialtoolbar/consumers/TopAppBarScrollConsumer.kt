@@ -38,9 +38,16 @@ class TopAppBarScrollConsumer : NativeScrollConsumer {
   private var settleGeneration = 0L
   private var debugFrameCounter = 0
 
-  private var expandedChromeHeightPx = 0
   private var controller: ScrollSourceController? = null
   private var reservedPx = 0
+
+  /**
+   * Largest host height observed so far, i.e. the fully expanded app bar including its window
+   * inset. The host must lay the Compose view out at this height rather than at its instantaneous
+   * measured height, or the expanded title is drawn outside the laid-out bounds and clipped.
+   */
+  var expandedChromeHeightPx = 0
+    private set
 
   override val isEnabled: Boolean
     get() = behavior != null && scope != null && mode != null

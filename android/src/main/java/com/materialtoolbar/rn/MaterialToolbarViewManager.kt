@@ -122,32 +122,33 @@ class MaterialToolbarViewManager : SimpleViewManager<MaterialToolbarHostView>() 
   @ReactProp(name = "insets")
   fun setInsets(view: MaterialToolbarHostView, value: String?) = view.setInsets(value ?: "safe")
 
-  @ReactProp(name = "edgeOffset")
-  fun setEdgeOffset(view: MaterialToolbarHostView, value: Float?) = view.setEdgeOffset(value)
+  @ReactProp(name = "edgeOffset", defaultFloat = Float.NaN)
+  fun setEdgeOffset(view: MaterialToolbarHostView, value: Float) =
+    view.setEdgeOffset(value.orNull())
 
-  @ReactProp(name = "contentPaddingStart")
-  fun setContentPaddingStart(view: MaterialToolbarHostView, value: Float?) =
-    view.setContentPaddingStart(value)
+  @ReactProp(name = "contentPaddingStart", defaultFloat = Float.NaN)
+  fun setContentPaddingStart(view: MaterialToolbarHostView, value: Float) =
+    view.setContentPaddingStart(value.orNull())
 
-  @ReactProp(name = "contentPaddingTop")
-  fun setContentPaddingTop(view: MaterialToolbarHostView, value: Float?) =
-    view.setContentPaddingTop(value)
+  @ReactProp(name = "contentPaddingTop", defaultFloat = Float.NaN)
+  fun setContentPaddingTop(view: MaterialToolbarHostView, value: Float) =
+    view.setContentPaddingTop(value.orNull())
 
-  @ReactProp(name = "contentPaddingEnd")
-  fun setContentPaddingEnd(view: MaterialToolbarHostView, value: Float?) =
-    view.setContentPaddingEnd(value)
+  @ReactProp(name = "contentPaddingEnd", defaultFloat = Float.NaN)
+  fun setContentPaddingEnd(view: MaterialToolbarHostView, value: Float) =
+    view.setContentPaddingEnd(value.orNull())
 
-  @ReactProp(name = "contentPaddingBottom")
-  fun setContentPaddingBottom(view: MaterialToolbarHostView, value: Float?) =
-    view.setContentPaddingBottom(value)
+  @ReactProp(name = "contentPaddingBottom", defaultFloat = Float.NaN)
+  fun setContentPaddingBottom(view: MaterialToolbarHostView, value: Float) =
+    view.setContentPaddingBottom(value.orNull())
 
-  @ReactProp(name = "expandedShadowElevation")
-  fun setExpandedShadowElevation(view: MaterialToolbarHostView, value: Float?) =
-    view.setExpandedShadowElevation(value)
+  @ReactProp(name = "expandedShadowElevation", defaultFloat = Float.NaN)
+  fun setExpandedShadowElevation(view: MaterialToolbarHostView, value: Float) =
+    view.setExpandedShadowElevation(value.orNull())
 
-  @ReactProp(name = "collapsedShadowElevation")
-  fun setCollapsedShadowElevation(view: MaterialToolbarHostView, value: Float?) =
-    view.setCollapsedShadowElevation(value)
+  @ReactProp(name = "collapsedShadowElevation", defaultFloat = Float.NaN)
+  fun setCollapsedShadowElevation(view: MaterialToolbarHostView, value: Float) =
+    view.setCollapsedShadowElevation(value.orNull())
 
   @ReactProp(name = "toolbarContainerColor", customType = "Color")
   fun setToolbarContainerColor(view: MaterialToolbarHostView, value: Int?) =
@@ -181,6 +182,12 @@ class MaterialToolbarViewManager : SimpleViewManager<MaterialToolbarHostView>() 
     const val NAME = "MaterialToolbarView"
   }
 }
+
+/**
+ * React Native cannot express "absent" for a numeric prop through a boxed type here, so an unset
+ * dimension arrives as NaN and is mapped back to null for the host view.
+ */
+private fun Float.orNull(): Float? = if (isNaN()) null else this
 
 private fun ReadableArray?.toActionSpecs(): List<ToolbarActionSpec> {
   if (this == null) return emptyList()

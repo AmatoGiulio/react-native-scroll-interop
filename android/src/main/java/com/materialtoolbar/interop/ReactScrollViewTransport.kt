@@ -74,6 +74,7 @@ class ReactScrollViewTransport : NativeScrollTransport, ReactScrollViewHelper.Sc
     // Discovery runs on the next UI-thread pass so callers can invoke it from measure/layout.
     ownerView.post {
       val currentSink = sink ?: return@post
+      pruneDetachedSources()
       if (!ownerView.isAttachedToWindow) return@post
       val candidate = findBestSource(ownerView) ?: return@post
       currentSink.onSourceAvailable(candidate)
@@ -177,6 +178,21 @@ class ReactScrollViewTransport : NativeScrollTransport, ReactScrollViewHelper.Sc
       }
     }
 
+  /**
+   * Every scrolling `ReactScrollView` in the app passes through [onScroll], not just the ones some
+   * chrome cares about, so without pruning this map would hold a strong reference to every list the
+   * user ever scrolled — and through it, to its Activity.
+   */
+  private fun pruneDetachedSources() {
+    val iterator = sources.entries.iterator()
+    while (iterator.hasNext()) {
+      val (view, source) = iterator.next()
+      if (view.isAttachedToWindow) continue
+      sessions.remove(source)?.let { sink?.onSessionEnd(source, 0f) }
+      iterator.remove()
+    }
+  }
+
   // region sampling
 
   private val frameCallback = Choreographer.FrameCallback {
@@ -233,6 +249,7 @@ class ReactScrollViewTransport : NativeScrollTransport, ReactScrollViewHelper.Sc
       scrollLog { "session end view=${source.debugId} v=$velocity" }
       currentSink.onSessionEnd(source, velocity)
     }
+    if (finished.isNotEmpty()) pruneDetachedSources()
 
     if (anyActive || sessions.isNotEmpty()) requestFrameCallback()
   }

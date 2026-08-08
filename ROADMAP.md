@@ -24,6 +24,28 @@ P0 — the things a reviewer notices first:
 - [x] Sessions driven by scroll change, so accessibility, programmatic, wheel and key scrolls work
 - [x] Concurrent sessions per source instead of one global active source
 
+## Known open bug — app bar height excludes the window inset
+
+Reproduced on a Pixel 8 emulator, API 36, 1080x2400 @ 420dpi (density 2.625), on both variants:
+
+```
+topappbar rootInsets left=0 top=132 right=0     # 50dp status bar, correctly observed
+reserve view=20 top=294 bottom=294              # 112dp — MediumTopAppBar content height only
+topappbar begin mode=EnterAlways limit=-168 reserved=168   # 64dp — small bar, same story
+```
+
+The expanded medium bar should occupy 112dp + 50dp = 162dp = 425px, but the Compose host measures
+exactly its content height, so the explicit `WindowInsets(top = rootInsets.top)` passed to Material
+is not increasing the measured height. Visible effect: at full expansion the title is laid out ~6px
+below the host's bounds and is clipped, so the title only appears once the bar has collapsed.
+
+The scroll interop itself is unaffected and correct — collapse tracks the drag 1:1, clamps at the
+limit, and `contentOffset` never drifts positive. This is purely the geometry of the embedded
+Compose app bar under a React Native root, which is the same area alpha.21–alpha.24 kept revisiting.
+
+Next step: check whether the inset is consumed before reaching the embedded `ComposeView`, and if
+so apply it as explicit height rather than as a Material `windowInsets` parameter.
+
 ## Next — P1, correctness under the matrix
 
 - [ ] Per-screen source ownership instead of "largest visible ScrollView on the surface"
