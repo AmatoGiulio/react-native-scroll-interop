@@ -1,0 +1,11 @@
+{
+  "name": "expo-material-toolbar",
+  "version": "2.0.0-alpha.24",
+  "main": "index.ts",
+  "private": true,
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

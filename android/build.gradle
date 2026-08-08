@@ -1,0 +1,56 @@
+// Expo local module + Jetpack Compose compiler setup.
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+    gradlePluginPortal()
+  }
+
+  dependencies {
+    classpath("org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:${kotlinVersion}")
+  }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+apply plugin: 'org.jetbrains.kotlin.plugin.compose'
+
+group = 'expo.modules.materialtoolbar'
+version = '2.0.0-alpha.24'
+
+android {
+  namespace 'expo.modules.materialtoolbar'
+
+  defaultConfig {
+    versionCode 24
+    versionName '2.0.0-alpha.24'
+  }
+
+  buildFeatures {
+    compose true
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // Expo modules do not automatically expose React Native Android classes on this
+  // library module's Kotlin compile classpath. The app's React Native Gradle setup
+  // supplies the matching RN version.
+  implementation("com.facebook.react:react-android")
+
+  implementation 'androidx.compose.material3:material3:1.5.0-alpha17'
+  implementation 'io.coil-kt.coil3:coil-compose:3.3.0'
+  implementation 'io.coil-kt.coil3:coil-network-okhttp:3.3.0'
+}
