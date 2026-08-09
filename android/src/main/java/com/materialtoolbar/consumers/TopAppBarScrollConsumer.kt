@@ -291,6 +291,7 @@ class TopAppBarScrollConsumer : NativeScrollConsumer {
     if (target == reservedPx) return
     source.reserveChromeSpace(target)
     reservedPx = target
+    scrollLog { "topappbar chromeSpace=$target mode=$mode" }
   }
 
   private fun releaseSource() {

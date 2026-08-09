@@ -52,13 +52,11 @@ private data class TopAppBarRootInsets(
 )
 
 /**
- * Minimal second Material3 consumer used to prove that native RN scroll interop is not specific to
- * FloatingToolbar. The outer Expo view is a full-screen BOX_NONE overlay; only the wrap-content,
- * full-width Compose app bar participates in Android hit testing.
- */
-/**
  * Platform-neutral host for the Material 3 top app bar. See [MaterialToolbarHostView] for why the
  * host is separate from the Expo / bare React Native bindings.
+ *
+ * The host is a full-screen BOX_NONE overlay; only the wrap-content, full-width Compose app bar
+ * participates in Android hit testing.
  */
 open class MaterialTopAppBarHostView(context: Context) : ViewGroup(context), ReactPointerEventsView {
 
@@ -170,19 +168,11 @@ open class MaterialTopAppBarHostView(context: Context) : ViewGroup(context), Rea
     refreshRootInsets()
     val parentWidth = right - left
     val parentHeight = bottom - top
-    val measuredHeight = composeView.measuredHeight.coerceAtMost(parentHeight)
-    if (topAppBarScrollConsumer.updateExpandedChromeHeight(measuredHeight)) {
+    val childHeight = composeView.measuredHeight.coerceAtMost(parentHeight)
+    composeView.layout(0, 0, parentWidth, childHeight)
+    if (topAppBarScrollConsumer.updateExpandedChromeHeight(childHeight)) {
       nativeScrollCoordinator.discoverSources()
     }
-
-    // A collapsing app bar remeasures smaller as it collapses. Laying the Compose view out at that
-    // transient height clips the expanded state — the expanded title sits at the bottom of the
-    // expanded bar and would fall outside the bounds. Always give Compose the full expanded box;
-    // it draws the collapsed state inside it, and this is also exactly the band reserved on the
-    // scroll source, so layout and reservation cannot disagree.
-    val childHeight = maxOf(measuredHeight, topAppBarScrollConsumer.expandedChromeHeightPx)
-      .coerceAtMost(parentHeight)
-    composeView.layout(0, 0, parentWidth, childHeight)
   }
 
   fun setTitle(title: String) = updateState { it.copy(title = title) }

@@ -6,7 +6,7 @@ export default function RootLayout() {
     <>
       {/* The Material app bar draws its own status-bar inset natively, so the RN status bar stays
           translucent and the header owns that region. */}
-      <StatusBar style="auto" translucent />
+      <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
       </Stack>

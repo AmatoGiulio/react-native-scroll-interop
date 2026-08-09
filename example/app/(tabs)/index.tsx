@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { MaterialToolbar, MaterialTopAppBar } from 'expo-material-toolbar';
+import { MaterialTopAppBar } from 'expo-material-toolbar';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -9,10 +9,11 @@ import { PHOTOS, type Photo } from '../../src/photos';
 const COLUMNS = 3;
 
 /**
- * Gallery: FlashList image grid driving both Material consumers at once.
+ * Gallery: FlashList image grid.
  *
- * There is no `onScroll` handler anywhere on this screen, and no ref is handed to either piece of
- * chrome. The app bar and the floating toolbar both react to the same natively sampled scroll.
+ * The screen owns only its own app bar. The floating toolbar is tab-shell chrome and lives in
+ * `(tabs)/_layout.tsx`; this list drives it anyway, because the coordinator picks the active scroll
+ * source natively. There is no `onScroll` handler here and no ref is handed to either.
  */
 export default function GalleryScreen() {
   const [selected, setSelected] = useState<string | null>(null);
@@ -31,7 +32,6 @@ export default function GalleryScreen() {
           placeholderContentFit="cover"
           // Keeps the grid readable before the network resolves, so the scroll behaviour can be
           // tested offline too.
-          backgroundColor={item.tint}
         />
       </Pressable>
     ),
@@ -50,27 +50,6 @@ export default function GalleryScreen() {
 
       <MaterialTopAppBar title="Gallery" variant="medium" scrollBehavior="exitUntilCollapsed" />
 
-      <MaterialToolbar.Root
-        placement="bottom"
-        insets="safe"
-        scrollBehavior="exitAlways"
-        expanded={selected !== null}
-        style={styles.toolbar}>
-        <MaterialToolbar.Content>
-          <MaterialToolbar.IconButton id="share" accessibilityLabel="Share">
-            <MaterialToolbar.Icon fallback="initial" />
-          </MaterialToolbar.IconButton>
-          <MaterialToolbar.IconButton id="album" accessibilityLabel="Add to album">
-            <MaterialToolbar.Icon fallback="initial" />
-          </MaterialToolbar.IconButton>
-          <MaterialToolbar.IconButton id="delete" accessibilityLabel="Delete">
-            <MaterialToolbar.Icon fallback="initial" />
-          </MaterialToolbar.IconButton>
-        </MaterialToolbar.Content>
-        <MaterialToolbar.Fab accessibilityLabel="Edit" onPress={() => setSelected(null)}>
-          <MaterialToolbar.Icon fallback="initial" />
-        </MaterialToolbar.Fab>
-      </MaterialToolbar.Root>
 
       {selected ? (
         <View pointerEvents="none" style={styles.badge}>
@@ -88,7 +67,6 @@ const styles = StyleSheet.create({
   cell: { flex: 1 / COLUMNS, aspectRatio: 1, padding: 1 },
   image: { flex: 1, borderRadius: 2 },
   imageSelected: { borderRadius: 14 },
-  toolbar: { marginBottom: 56 },
   badge: {
     position: 'absolute',
     bottom: 130,
