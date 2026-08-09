@@ -1,7 +1,6 @@
+import { requireNativeViewManager } from 'expo-modules-core';
 import type { ComponentType, RefAttributes } from 'react';
 import type { ColorValue, NativeSyntheticEvent, ViewProps } from 'react-native';
-
-import { requireToolbarView } from './native/requireToolbarView';
 
 import type {
   MaterialToolbarAlignment,
@@ -81,6 +80,4 @@ type NativeComponent = ComponentType<
   NativeMaterialToolbarProps & RefAttributes<MaterialToolbarRef>
 >;
 
-export default requireToolbarView<
-  NativeMaterialToolbarProps & RefAttributes<MaterialToolbarRef>
->('ExpoMaterialToolbar', 'MaterialToolbarView') as NativeComponent;
+export default requireNativeViewManager('ExpoMaterialToolbar') as NativeComponent;

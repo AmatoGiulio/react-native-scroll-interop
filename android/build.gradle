@@ -1,21 +1,4 @@
-// Dual-mode Android library.
-//
-// The same Gradle project is consumed by two kinds of app:
-//   * an Expo app, where `expo-module-gradle-plugin` is on the classpath and supplies the SDK
-//     levels, the Kotlin plugin and the React Native dependency;
-//   * a bare React Native app, where none of that exists and this file has to stand on its own.
-//
-// Everything Expo-specific is confined to the `src/expo` source set, which is only compiled when
-// the Expo plugin is actually present.
-
-def resolveExt = { String name, Object fallback ->
-  if (rootProject.hasProperty(name)) return rootProject.property(name)
-  if (rootProject.ext.has(name)) return rootProject.ext.get(name)
-  return fallback
-}
-
-def kotlinVersion = resolveExt('kotlinVersion', '2.1.20')
-
+// Expo local module + Jetpack Compose compiler setup.
 buildscript {
   repositories {
     google()
@@ -24,47 +7,23 @@ buildscript {
   }
 
   dependencies {
-    def kotlinVersion = rootProject.hasProperty('kotlinVersion')
-      ? rootProject.property('kotlinVersion')
-      : (rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : '2.1.20')
     classpath("org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:${kotlinVersion}")
-    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}")
   }
 }
 
 apply plugin: 'com.android.library'
-
-def hasExpoModules = false
-try {
-  apply plugin: 'expo-module-gradle-plugin'
-  hasExpoModules = true
-} catch (Throwable ignored) {
-  logger.lifecycle('expo-material-toolbar: Expo modules not detected, building the bare React Native binding only.')
-}
-
-if (!hasExpoModules) {
-  apply plugin: 'org.jetbrains.kotlin.android'
-}
+apply plugin: 'expo-module-gradle-plugin'
 apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 
-group = 'com.materialtoolbar'
-version = '2.1.0-alpha.1'
+group = 'expo.modules.materialtoolbar'
+version = '2.0.0-alpha.24'
 
 android {
-  namespace 'com.materialtoolbar'
-
-  if (!hasExpoModules) {
-    compileSdk resolveExt('compileSdkVersion', 36)
-  }
+  namespace 'expo.modules.materialtoolbar'
 
   defaultConfig {
-    if (!hasExpoModules) {
-      minSdk resolveExt('minSdkVersion', 24)
-      targetSdk resolveExt('targetSdkVersion', 36)
-    }
-    versionCode 25
-    versionName '2.1.0-alpha.1'
-    consumerProguardFiles 'consumer-rules.pro'
+    versionCode 24
+    versionName '2.0.0-alpha.24'
   }
 
   buildFeatures {
@@ -80,33 +39,18 @@ android {
     jvmTarget = '17'
   }
 
-  sourceSets {
-    main {
-      // The Expo binding is additive. Without it the library still exposes every feature through
-      // MaterialToolbarPackage; with it, both bindings coexist in one artifact.
-      if (hasExpoModules) {
-        java.srcDirs += ['src/expo/java']
-      }
-    }
-  }
-
   lintOptions {
     abortOnError false
-  }
-
-  testOptions {
-    unitTests.returnDefaultValues = true
   }
 }
 
 dependencies {
-  // React Native Android classes are supplied by the host app's React Native Gradle setup in both
-  // the Expo and the bare case.
-  implementation 'com.facebook.react:react-android'
+  // Expo modules do not automatically expose React Native Android classes on this
+  // library module's Kotlin compile classpath. The app's React Native Gradle setup
+  // supplies the matching RN version.
+  implementation("com.facebook.react:react-android")
 
   implementation 'androidx.compose.material3:material3:1.5.0-alpha17'
   implementation 'io.coil-kt.coil3:coil-compose:3.3.0'
   implementation 'io.coil-kt.coil3:coil-network-okhttp:3.3.0'
-
-  testImplementation 'junit:junit:4.13.2'
 }

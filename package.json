@@ -1,52 +1,11 @@
 {
   "name": "expo-material-toolbar",
-  "version": "2.1.0-alpha.1",
-  "description": "Material 3 floating toolbar and top app bar for React Native on Android, driven by a native scroll-interop coordinator instead of a per-frame JS onScroll handler.",
-  "main": "build/index.js",
-  "types": "build/index.d.ts",
-  "source": "src/index.ts",
-  "files": [
-    "build",
-    "src",
-    "android",
-    "expo-module.config.json",
-    "react-native.config.js",
-    "README.md",
-    "ARCHITECTURE.md",
-    "LICENSE"
-  ],
-  "scripts": {
-    "build": "tsc",
-    "build:watch": "tsc --watch",
-    "clean": "rm -rf build",
-    "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
-  },
-  "keywords": [
-    "react-native",
-    "expo",
-    "android",
-    "material3",
-    "jetpack-compose",
-    "floating-toolbar",
-    "top-app-bar",
-    "nested-scroll"
-  ],
-  "license": "MIT",
-  "author": "Giulio Amato <giulioamato19.92@gmail.com>",
+  "version": "2.0.0-alpha.24",
+  "main": "index.ts",
+  "private": true,
   "peerDependencies": {
+    "expo": "*",
     "react": "*",
     "react-native": "*"
-  },
-  "peerDependenciesMeta": {
-    "expo": {
-      "optional": true
-    }
-  },
-  "devDependencies": {
-    "@types/react": "~19.2.0",
-    "react": "19.2.0",
-    "react-native": "0.83.10",
-    "typescript": "^5.9.2"
   }
 }

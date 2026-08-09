@@ -1,6 +1,6 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 
-package com.materialtoolbar.views
+package expo.modules.materialtoolbar
 
 import android.content.Context
 import android.graphics.Color
@@ -66,8 +66,9 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
-import com.materialtoolbar.consumers.FloatingToolbarScrollConsumer
-import com.materialtoolbar.interop.NativeScrollCoordinator
+import expo.modules.kotlin.AppContext
+import expo.modules.kotlin.viewevent.EventDispatcher
+import expo.modules.kotlin.views.ExpoView
 import kotlinx.coroutines.CoroutineScope
 
 private data class ToolbarAction(
@@ -123,21 +124,16 @@ private data class ToolbarState(
   val unselectedContentArgb: Int? = null,
 )
 
-/**
- * Platform-neutral host for the Material 3 floating toolbar.
- *
- * This class owns all state, Compose content, measurement and scroll wiring. It knows nothing
- * about Expo or about any particular React Native view-manager API, so the same host backs both
- * the Expo module binding and the bare React Native `ViewManager` binding.
- */
-open class MaterialToolbarHostView(context: Context) : ViewGroup(context), ReactPointerEventsView {
+class ExpoMaterialToolbarView(
+  context: Context,
+  appContext: AppContext,
+) : ExpoView(context, appContext), ReactPointerEventsView {
 
   override val pointerEvents: PointerEvents
     get() = PointerEvents.BOX_NONE
 
-  /** Set by whichever binding created this view. */
-  var onActionPress: ((String) -> Unit)? = null
-  var onFabPress: (() -> Unit)? = null
+  internal val onActionPress by EventDispatcher()
+  internal val onFabPress by EventDispatcher()
 
   private val state = mutableStateOf(ToolbarState())
 
@@ -153,7 +149,7 @@ open class MaterialToolbarHostView(context: Context) : ViewGroup(context), React
   }
 
   private val floatingToolbarScrollConsumer = FloatingToolbarScrollConsumer(this, composeView)
-  private val nativeScrollCoordinator = NativeScrollCoordinator(this, floatingToolbarScrollConsumer)
+  private val nativeScrollCoordinator = ReactNativeScrollCoordinator(this, floatingToolbarScrollConsumer)
 
   init {
     isClickable = false
@@ -229,7 +225,7 @@ open class MaterialToolbarHostView(context: Context) : ViewGroup(context), React
     floatingToolbarScrollConsumer.applyCurrentOffset()
   }
 
-  private fun recordsToActions(records: List<ToolbarActionSpec>): List<ToolbarAction> =
+  private fun recordsToActions(records: List<ToolbarActionRecord>): List<ToolbarAction> =
     records.mapNotNull { record ->
       if (record.id.isBlank()) {
         null
@@ -250,13 +246,13 @@ open class MaterialToolbarHostView(context: Context) : ViewGroup(context), React
       }
     }
 
-  fun setContent(records: List<ToolbarActionSpec>) =
+  fun setContent(records: List<ToolbarActionRecord>) =
     updateState { it.copy(content = recordsToActions(records)) }
 
-  fun setLeadingContent(records: List<ToolbarActionSpec>) =
+  fun setLeadingContent(records: List<ToolbarActionRecord>) =
     updateState { it.copy(leadingContent = recordsToActions(records)) }
 
-  fun setTrailingContent(records: List<ToolbarActionSpec>) =
+  fun setTrailingContent(records: List<ToolbarActionRecord>) =
     updateState { it.copy(trailingContent = recordsToActions(records)) }
 
   fun setVisibleState(visible: Boolean) = updateState { it.copy(visible = visible) }
@@ -345,20 +341,20 @@ open class MaterialToolbarHostView(context: Context) : ViewGroup(context), React
   fun setCollapsedShadowElevation(value: Float?) = updateState {
     it.copy(collapsedShadowElevationDp = value?.coerceAtLeast(0f))
   }
-  fun setToolbarContainerColor(argb: Int?) =
-    updateState { it.copy(toolbarContainerArgb = argb) }
-  fun setToolbarContentColor(argb: Int?) =
-    updateState { it.copy(toolbarContentArgb = argb) }
-  fun setFabContainerColor(argb: Int?) =
-    updateState { it.copy(fabContainerArgb = argb) }
-  fun setFabContentColor(argb: Int?) =
-    updateState { it.copy(fabContentArgb = argb) }
-  fun setSelectedContainerColor(argb: Int?) =
-    updateState { it.copy(selectedContainerArgb = argb) }
-  fun setSelectedContentColor(argb: Int?) =
-    updateState { it.copy(selectedContentArgb = argb) }
-  fun setUnselectedContentColor(argb: Int?) =
-    updateState { it.copy(unselectedContentArgb = argb) }
+  fun setToolbarContainerColor(color: Color?) =
+    updateState { it.copy(toolbarContainerArgb = color?.toArgb()) }
+  fun setToolbarContentColor(color: Color?) =
+    updateState { it.copy(toolbarContentArgb = color?.toArgb()) }
+  fun setFabContainerColor(color: Color?) =
+    updateState { it.copy(fabContainerArgb = color?.toArgb()) }
+  fun setFabContentColor(color: Color?) =
+    updateState { it.copy(fabContentArgb = color?.toArgb()) }
+  fun setSelectedContainerColor(color: Color?) =
+    updateState { it.copy(selectedContainerArgb = color?.toArgb()) }
+  fun setSelectedContentColor(color: Color?) =
+    updateState { it.copy(selectedContentArgb = color?.toArgb()) }
+  fun setUnselectedContentColor(color: Color?) =
+    updateState { it.copy(unselectedContentArgb = color?.toArgb()) }
 
   @Composable
   private fun MaterialToolbarContent(uiState: ToolbarState) {
@@ -602,7 +598,7 @@ open class MaterialToolbarHostView(context: Context) : ViewGroup(context), React
 
     if (action.presentation == "text") {
       TextButton(
-        onClick = { onActionPress?.invoke(action.id) },
+        onClick = { onActionPress(mapOf("id" to action.id)) },
         enabled = action.enabled,
         modifier = accessibilityModifier,
         colors = ButtonDefaults.textButtonColors(
@@ -631,7 +627,7 @@ open class MaterialToolbarHostView(context: Context) : ViewGroup(context), React
       }
     } else {
       IconButton(
-        onClick = { onActionPress?.invoke(action.id) },
+        onClick = { onActionPress(mapOf("id" to action.id)) },
         enabled = action.enabled,
         modifier = accessibilityModifier.background(indicatorColor, CircleShape),
       ) {
@@ -671,7 +667,7 @@ open class MaterialToolbarHostView(context: Context) : ViewGroup(context), React
 
     if (uiState.variant == "vibrant") {
       FloatingToolbarDefaults.VibrantFloatingActionButton(
-        onClick = { onFabPress?.invoke() },
+        onClick = { onFabPress(emptyMap<String, Any>()) },
         modifier = modifier,
         shape = if (uiState.fabShape == "circle") CircleShape else FloatingActionButtonDefaults.shape,
         containerColor = toolbarColors.fabContainerColor,
@@ -680,7 +676,7 @@ open class MaterialToolbarHostView(context: Context) : ViewGroup(context), React
       )
     } else {
       FloatingToolbarDefaults.StandardFloatingActionButton(
-        onClick = { onFabPress?.invoke() },
+        onClick = { onFabPress(emptyMap<String, Any>()) },
         modifier = modifier,
         shape = if (uiState.fabShape == "circle") CircleShape else FloatingActionButtonDefaults.shape,
         containerColor = toolbarColors.fabContainerColor,

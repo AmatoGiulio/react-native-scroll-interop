@@ -1,6 +1,6 @@
+import { requireNativeViewManager } from 'expo-modules-core';
+import type { ComponentType } from 'react';
 import type { ViewProps } from 'react-native';
-
-import { requireToolbarView } from './native/requireToolbarView';
 
 import type {
   MaterialTopAppBarScrollBehavior,
@@ -17,7 +17,4 @@ export type NativeMaterialTopAppBarProps = ViewProps & {
   dynamicColor: boolean;
 };
 
-export default requireToolbarView<NativeMaterialTopAppBarProps>(
-  'ExpoMaterialTopAppBar',
-  'MaterialTopAppBarView',
-);
+export default requireNativeViewManager('ExpoMaterialTopAppBar') as ComponentType<NativeMaterialTopAppBarProps>;

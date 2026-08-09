@@ -1,41 +1,8 @@
 # expo-material-toolbar
 
-Android-only native module that bridges Material 3 Compose floating toolbars and top app bars to
-React Native — including their real scroll behaviour, driven natively rather than from a JavaScript
-`onScroll` handler.
+Android-only Expo native module that bridges Material 3 Compose floating toolbars to React Native.
 
-This branch targets Expo SDK 55 / React Native 0.83 and
-`androidx.compose.material3:material3:1.5.0-alpha17`, and intentionally follows the current Compose
-toolbar model instead of implementing a tab/navigation component inside the toolbar.
-
-## Install
-
-```bash
-npm install expo-material-toolbar
-```
-
-**Expo** apps need nothing further: the module is picked up by expo-modules-autolinking and the
-views are registered by `ExpoMaterialToolbarModule`.
-
-**Bare React Native** apps are supported too. `react-native.config.js` autolinks
-`com.materialtoolbar.rn.MaterialToolbarPackage`, which registers the same views through plain
-`ViewManager`s. Expo is an optional peer dependency; nothing in the Android library's `src/main`
-imports `expo.modules`, and the Expo binding lives in a separate source set that is only compiled
-when the Expo Gradle plugin is present.
-
-Either way the JavaScript API is identical — `src/native/requireToolbarView.ts` resolves whichever
-binding the app actually has.
-
-## Try it
-
-```bash
-cd example && npx expo run:android
-```
-
-The example is shaped like a real app on purpose: three bottom tabs mounted at once, a FlashList
-image grid, a FlashList feed, and a plain `ScrollView` screen, each with a different Material scroll
-behaviour. See [TESTING.md](TESTING.md) for the validation matrix and
-[ARCHITECTURE.md](ARCHITECTURE.md) for how the scroll interop works.
+This Expo 55 compatibility branch targets `androidx.compose.material3:material3:1.5.0-alpha17` and intentionally follows the current Compose toolbar model instead of implementing a tab/navigation component inside the toolbar.
 
 ## What is native Compose
 

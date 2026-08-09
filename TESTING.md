@@ -1,107 +1,145 @@
-# Validation
+# Host-app validation checklist
 
-Everything below runs against the example app in `example/`, which is deliberately shaped like a
-real app: three bottom tabs, all mounted at once, a FlashList image grid, a FlashList feed, and a
-plain React Native `ScrollView`.
+This archive is a local Expo module, not a complete Android host project. Validate it from the app that consumes the module.
 
-```bash
-cd example && npx expo run:android
+## Rebuild native code
+
+```powershell
+npx expo run:android
 ```
 
-```bash
-adb shell setprop log.tag.MaterialToolbar DEBUG && adb logcat -c && adb logcat -s MaterialToolbar:D
+If Gradle fails, keep the first Material3/Compose/Kotlin dependency or compiler error; later errors are often cascading.
+
+## Minimal checks
+
+1. Horizontal, standard, no FAB: `expanded` toggles leading/trailing content and keeps main content.
+2. Horizontal, standard, attached FAB: `expanded` uses the native with-FAB animation.
+3. `variant="vibrant"`: toolbar and FAB use vibrant Material defaults when colors are omitted.
+4. Vertical: test `floatingActionButtonPosition="top"` and `"bottom"`.
+5. `themeMode="system"`: switch Android light/dark mode while the app remains mounted.
+6. `dynamicColor`: test on Android 12+ with no explicit color overrides first.
+7. `insets="safe"`: verify gesture navigation and 3-button navigation.
+8. `imeBehavior="hide"`: focus a text input and verify hide/show without JS keyboard state.
+9. Icons: test an Android vector drawable via `resource`, a Metro `require(...)`, and a remote URI.
+10. Overlay host: with `style={StyleSheet.absoluteFill}`, verify touches outside the toolbar still reach React Native content.
+
+## Useful failure report
+
+For a build issue, send:
+
+- Expo SDK version;
+- React Native version;
+- Kotlin version from the host Gradle configuration;
+- Android Gradle Plugin version;
+- first Gradle/Kotlin compiler error around `expo-material-toolbar`;
+- whether the app also uses another Compose-based Expo/native module.
+
+For a runtime/layout issue, send a screenshot plus the `MaterialToolbar.Root` props used for that test.
+
+## Overlay host / touch pass-through
+
+1. Render `MaterialToolbar.Root` without a `style` prop and verify `placement="bottom"` + `insets="safe"` positions it above the navigation bar.
+2. Tap/drag the RN screen outside the toolbar and verify underlying controls/scrollables still receive gestures.
+3. Tap every toolbar action and the attached FAB and verify Compose click handling still works.
+4. Toggle `visible` and `imeBehavior="hide"`; hidden toolbar bounds must stop intercepting touches.
+
+
+## alpha.6 regression checks
+
+1. Render `Root` without a `style` prop.
+2. Tap buttons and scroll content in the screen above the toolbar; all must respond.
+3. Tap the toolbar actions and FAB; they must still respond.
+4. Set `Fab shape="circle"`; verify the container is circular in both standard and vibrant variants.
+5. Verify a visible `Home` label by using `TextButton`, not `IconButton`.
+6. Toggle `expanded` and `visible` to confirm the wrap-content child remeasures/repositions.
+
+## Alpha 12 native scroll interop
+
+With `scrollBehavior="exitAlways"` enabled on a bottom toolbar:
+
+1. Use a standard React Native `ScrollView` or FlashList 2.0.2 with its default scroller; do not add a toolbar-specific `onScroll`.
+2. Drag upward in the active list: the entire Material3 toolbar + attached FAB should move toward the inferred exit edge.
+3. Drag downward: the toolbar should re-enter using the same Material3 scroll state.
+4. Release in an intermediate position: Material3 should snap the toolbar to its final shown/hidden position.
+5. After it is fully hidden, list rows in the former toolbar rectangle must remain tappable; reverse scrolling must make the toolbar visible again.
+6. Switch tabs and scroll the newly interacted list; native `BEGIN_DRAG` should select that list as the active source without a ref or wrapper.
+7. Verify toolbar buttons/FAB remain tappable while visible.
+
+Custom FlashList `renderScrollComponent` implementations that do not use React Native Android `ReactScrollView` are not covered by automatic interop.
+
+## Alpha 19 generic-consumer proof
+
+First verify the existing FloatingToolbar behavior is unchanged from alpha.16. Then mount the experimental `MaterialTopAppBar` above the same RN/FlashList screen.
+
+```tsx
+import { MaterialTopAppBar } from 'expo-material-toolbar';
+
+<MaterialTopAppBar
+  title="Native scroll PoC"
+  variant="medium"
+  scrollBehavior="exitUntilCollapsed"
+/>
 ```
 
-The trace works in release builds too — it is gated on `Log.isLoggable`, not on `BuildConfig`.
+Checks:
 
-## Automated
+1. `variant="medium"` + `exitUntilCollapsed`: upward content scroll collapses the expanded row using Material3 `TopAppBarScrollBehavior`.
+2. Return to y=0, then continue dragging downward after the RN child reaches the top edge; the native boundary gesture channel must provide Material3 post-scroll available distance and fully re-expand the app bar.
+3. `variant="small"` + `enterAlways`: upward scroll hides/collapses, reverse scroll re-enters immediately.
+4. Fling and release at an intermediate app-bar offset: Material3 performs the final settle/snap.
+5. Mount the existing FloatingToolbar and TopAppBar together. Debug log lines beginning with `source frame` should report `clients=2` while both are visible on the same Fabric surface.
+6. Confirm the FloatingToolbar still ignores top-edge bounce and does not remain partially translated after returning to y=0.
+7. Switch tabs/screens: only native chrome hosts that are attached/shown on the active source's Fabric surface should react.
+8. No list-specific JS `onScroll`, ref, or wrapper should be added for either native consumer.
+
+Useful logs:
 
 ```bash
-cd example/android && ./gradlew :expo-material-toolbar:testDebugUnitTest
+adb logcat -c
+adb logcat -s ExpoMaterialToolbar:D
 ```
 
-`InteropBoundaryTest` fails if a Material consumer or the transport-neutral contract acquires a
-`com.facebook.react` or `expo.modules` import. It is the executable form of the architecture claim,
-so treat a failure as a design regression rather than a lint nit.
+Expected TopAppBar diagnostics include `TOPAPPBAR_BEGIN`, `mode=EnterAlways|ExitUntilCollapsed`, `heightOffset`, `limit`, `boundary pull`, and `postAvailableY`.
 
-```bash
-npm run typecheck   # library
-```
+Alpha.24 inset checks:
 
-## Per-screen expectations
+1. `variant="small"`: verify the title row starts below the status bar with no JS safe-area padding.
+2. Debug log should include `topappbar rootInsets left=... top=... right=...`; on a normal portrait device `top` should be non-zero while status bars are visible.
+3. Rotate / change edge-to-edge or cutout conditions and verify the expanded host / scroll-away geometry is remeasured rather than retaining the old inset.
 
-| screen | source | app bar | toolbar |
-| --- | --- | --- | --- |
-| Gallery | FlashList grid | `medium` + `exitUntilCollapsed` | floating, `exitAlways` |
-| Feed | FlashList rows | `small` + `enterAlways` | — |
-| Profile | plain `ScrollView` | `large` + `exitUntilCollapsed` | — |
 
-Profile exists to prove the transport is not accidentally coupled to how FlashList happens to
-scroll. If Profile behaves differently from Gallery, that is the bug.
+### Alpha 19 repeated boundary cycle
 
-## Manual matrix
+For `variant="medium"` + `scrollBehavior="exitUntilCollapsed"`, repeat this at least five times without remounting the screen:
 
-### 1. Basic collapse and expand
+1. Start fully expanded at `scrollY=0`.
+2. Scroll upward until the app bar is fully collapsed.
+3. Scroll content away from the top.
+4. Return to `scrollY=0`.
+5. Continue dragging downward while the list is already at the top edge.
+6. The app bar must follow the remaining finger distance toward `heightOffset=0`.
+7. Release: Material3 may settle to the nearest endpoint, but a sufficiently long pull must settle fully expanded.
+8. Collapse again and repeat.
 
-1. Gallery, from the top: scroll up until the app bar is fully collapsed.
-2. Scroll well into the grid, then back toward the top slowly.
-3. Expansion should begin while the source traverses the collapse range, and the bar should be
-   fully expanded exactly when the first row reaches the top.
-4. Repeat five times. `contentOffset` in the trace must never drift positive.
+The debug trace should show positive `boundary pull ... dy=...` lines followed by `postAvailableY>0` frames while `scrollY=0`. A bounce-back of Android's visual overscroll must not create negative/false content deltas in FloatingToolbar.
 
-### 2. Endpoint races
 
-1. Repeat expand → collapse → expand ten times with slow drags and short releases near both ends.
-2. Start a new drag while the previous Material snap is still settling. The cancelled settle must
-   not move the list after the new gesture takes over.
-3. At full expansion, the first content row must align with the app bar with no residual gap.
+## Alpha.20 exitUntilCollapsed reconciliation
 
-### 3. Fling and settle
+For `medium + exitUntilCollapsed`, verify repeated cycles without relying on Android edge stretch:
 
-1. Fling hard, then let it come to rest without touching the screen.
-2. Release mid-collapse at low and high velocity and compare the snap direction with a real Compose
-   app. Velocity is now forwarded to `onPostFling`; a wrong sign shows up here as a snap that goes
-   the wrong way at speed.
-3. Trace lines should show `phase=Fling` during momentum and `phase=Drag` only while touching.
+1. Start expanded at `scrollY=0`.
+2. Scroll up until the app bar is fully collapsed.
+3. Scroll well into the list.
+4. Scroll back toward the top slowly. Expansion should begin while the RN source traverses the Material collapse range, and the app bar should be fully expanded when the logical child reaches the top.
+5. Repeat at least five times.
 
-### 4. Scrolls that are not gestures — the accessibility case
+In debug logs, `contentOffset` must never drift positive. At the expanded logical top it should be `0.0`; while content is below the top it should be non-positive. Alpha.19 `boundary pull` / `postAvailableY` remains a fallback diagnostic only after physical `scrollY=0`.
 
-This is the class of bug that a drag-gated implementation cannot even see.
+### Alpha 24 endpoint race regression
 
-1. Enable TalkBack. Swipe-navigate through grid items past the bottom of the viewport, so TalkBack
-   issues `ACTION_SCROLL_FORWARD`. The app bar must collapse as the content moves.
-2. With a mouse or trackpad attached, scroll with the wheel. Same expectation.
-3. Trace should show `phase=Programmatic` sessions with no `BEGIN_DRAG`.
-
-### 5. Multiple mounted lists
-
-1. Scroll Gallery to a collapsed state, switch to Feed, scroll, switch back.
-2. Each screen must retain its own state, and only the visible screen's chrome may react.
-3. With both a top app bar and a floating toolbar visible, both must react to the same drag.
-
-### 6. Self-driven scroll must not oscillate
-
-1. Release exactly at an endpoint repeatedly.
-2. `endpointSync` / settle repositioning must be one-shot. Any repeating pattern in the trace at
-   rest is the re-entrancy guard failing.
-
-### 7. Touch pass-through
-
-1. With the floating toolbar hidden by scroll, grid cells in its former rectangle stay tappable.
-2. Toolbar actions and the FAB respond while visible.
-
-## Declared unsupported
-
-Stated explicitly, because ambiguity is worse than a documented gap:
-
-- custom FlashList `renderScrollComponent` that is not a React Native `ReactScrollView`;
-- horizontal and inverted lists;
-- nested vertical scrollers — discovery resolves to the outer one;
-- `maintainVisibleContentPosition` combined with `exitUntilCollapsed`;
-- iOS: the module is Android-only.
-
-## Reporting a failure
-
-Include the Expo SDK and React Native version, the screen, the trace around the failure, and
-whether the same behaviour reproduces on Profile (plain `ScrollView`) as well as on a FlashList
-screen. That last detail separates transport bugs from list-library bugs faster than anything else.
+1. Repeat `expanded -> collapse -> expand` at least 10 times with slow drags and short releases near both endpoints.
+2. Start a new drag immediately while the previous Material snap is still settling; the canceled settle must not move the list after the new gesture begins.
+3. At fully expanded, verify the first content coordinate aligns exactly with expanded app-bar geometry (no residual 1-5 px overlap/gap).
+4. At fully collapsed, verify the list reaches the collapse-corridor boundary together with the app bar.
+5. Debug logs may include `topappbar endpointSync`; it should be a one-shot endpoint correction, never an oscillation.
