@@ -6,7 +6,6 @@ import android.content.Context
 import android.os.Build
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -22,16 +22,12 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.facebook.react.uimanager.PointerEvents
-import com.facebook.react.uimanager.ReactPointerEventsView
 import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.views.ExpoView
 import kotlinx.coroutines.CoroutineScope
 
 private data class TopAppBarHostState(
@@ -43,12 +39,6 @@ private data class TopAppBarHostState(
   val dynamicColor: Boolean = false,
 )
 
-private data class TopAppBarRootInsets(
-  val left: Int = 0,
-  val top: Int = 0,
-  val right: Int = 0,
-)
-
 /**
  * Minimal second Material3 consumer used to prove that native RN scroll interop is not specific to
  * FloatingToolbar. The outer Expo view is a full-screen BOX_NONE overlay; only the wrap-content,
@@ -57,47 +47,58 @@ private data class TopAppBarRootInsets(
 class ExpoMaterialTopAppBarView(
   context: Context,
   appContext: AppContext,
-) : ExpoView(context, appContext), ReactPointerEventsView {
-
-  override val pointerEvents: PointerEvents
-    get() = PointerEvents.BOX_NONE
+) : ComposeChromeHostView(context, appContext) {
 
   private val state = mutableStateOf(TopAppBarHostState())
-  private val rootInsets = mutableStateOf(TopAppBarRootInsets())
-
-  private val composeView = ComposeView(context).apply {
-    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-    layoutParams = ViewGroup.LayoutParams(
-      ViewGroup.LayoutParams.MATCH_PARENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT,
-    )
-    setContent {
-      MaterialTopAppBarContent(state.value, rootInsets.value)
-    }
-  }
+  private var lastTopInsetPx = -1
 
   private val topAppBarScrollConsumer = TopAppBarScrollConsumer()
   private val nativeScrollCoordinator = ReactNativeScrollCoordinator(this, topAppBarScrollConsumer)
 
   init {
-    isClickable = false
-    isFocusable = false
-    addView(composeView)
-
-    // React Native / Expo can consume window insets before they reach the embedded ComposeView.
-    // Observe the Android root window instead, then pass those physical insets explicitly to the
-    // Material3 app bar. Returning the incoming object unchanged keeps this observer non-consuming.
-    ViewCompat.setOnApplyWindowInsetsListener(this) { _, insets ->
-      refreshRootInsets(insets)
-      insets
+    composeView.layoutParams = ViewGroup.LayoutParams(
+      ViewGroup.LayoutParams.MATCH_PARENT,
+      ViewGroup.LayoutParams.WRAP_CONTENT,
+    )
+    composeView.setContent {
+      MaterialTopAppBarContent(state.value)
     }
+  }
+
+  /**
+   * Non-consuming inset observer.
+   *
+   * The window insets are not lost on the way to this view: they arrive unconsumed, with the real
+   * status-bar/cutout top, and Material resolves `TopAppBarDefaults.windowInsets` from them exactly
+   * as it would in a plain Compose app. The host only has to notice that the expanded geometry the
+   * scroll-away coordinator caches is now stale; [ComposeChromeHostView] takes care of measuring the
+   * app bar again at its new height.
+   */
+  override fun onApplyWindowInsets(insets: android.view.WindowInsets): android.view.WindowInsets {
+    val topInset = WindowInsetsCompat.toWindowInsetsCompat(insets, this)
+      .getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      .top
+    if (topInset != lastTopInsetPx) {
+      lastTopInsetPx = topInset
+      // The expanded app-bar height includes this inset, and both the child's bounds and scroll-away
+      // spacing are derived from it. Drop the cached maximum so a rotation, cutout change or
+      // edge-to-edge transition can shrink it again — the cache only ever grows.
+      resetExpandedChromeGeometry()
+      scheduleHostMeasureAndLayout()
+      if (BuildConfig.DEBUG) {
+        android.util.Log.d(NATIVE_SCROLL_LOG_TAG, "topappbar topInset=$topInset")
+      }
+    }
+    return super.onApplyWindowInsets(insets)
   }
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     nativeScrollCoordinator.attach()
+
+    // An overlay mounted after the window already settled its insets would otherwise never see a
+    // dispatch. The host schedules its own deferred measure/layout.
     ViewCompat.requestApplyInsets(this)
-    post { refreshRootInsets() }
   }
 
   override fun onDetachedFromWindow() {
@@ -127,54 +128,48 @@ class ExpoMaterialTopAppBarView(
     composeView.requestLayout()
   }
 
-  private fun refreshRootInsets(fallback: WindowInsetsCompat? = null) {
-    if (!isAttachedToWindow && fallback == null) return
-
-    val insets = ViewCompat.getRootWindowInsets(rootView) ?: fallback ?: return
-    val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-    val displayCutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
-    val next = TopAppBarRootInsets(
-      left = maxOf(systemBars.left, displayCutout.left),
-      top = maxOf(systemBars.top, displayCutout.top),
-      right = maxOf(systemBars.right, displayCutout.right),
-    )
-    if (rootInsets.value == next) return
-
-    rootInsets.value = next
-    // The expanded host height includes these explicit insets. Reset the cached maximum so a
-    // rotation, cutout change, or edge-to-edge transition can grow or shrink the scroll-away range.
-    topAppBarScrollConsumer.resetExpandedChromeHeight()
-    requestLayout()
-    composeView.requestLayout()
-
-    if (BuildConfig.DEBUG) {
-      android.util.Log.d(
-        NATIVE_SCROLL_LOG_TAG,
-        "topappbar rootInsets left=${next.left} top=${next.top} right=${next.right}",
-      )
-    }
-  }
-
-  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-    val width = View.MeasureSpec.getSize(widthMeasureSpec)
-    val height = View.MeasureSpec.getSize(heightMeasureSpec)
-    setMeasuredDimension(width, height)
-
+  // A Material app bar spans the full width and takes the height its variant and window insets ask
+  // for, so the child is measured exactly wide and at most as tall as the host.
+  override fun onMeasureComposeChild(hostWidthPx: Int, hostHeightPx: Int) {
     composeView.measure(
-      View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-      View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST),
+      View.MeasureSpec.makeMeasureSpec(hostWidthPx, View.MeasureSpec.EXACTLY),
+      View.MeasureSpec.makeMeasureSpec(hostHeightPx, View.MeasureSpec.AT_MOST),
     )
   }
 
+  /**
+   * The Compose child is laid out at the *expanded* app-bar height and left there.
+   *
+   * Material collapses the app bar by shrinking what it draws, and it does so on the UI frame clock.
+   * The host cannot follow that with layout passes: React Native terminates the layout-request chain,
+   * so every correction has to be posted, and a violent fling delays the post by several frames. Any
+   * frame where the child's bounds disagree with the height Material is drawing is visible — the bar
+   * gets clipped, or a band of empty overlay opens between the bar and the list.
+   *
+   * Pinning the bounds removes the race instead of chasing it. The drawn height and the list's
+   * position both derive from the same `heightOffset` (the list through React Native's scroll-away
+   * translation), so they stay glued at every point of the animation with no layout pass at all. The
+   * region the collapsed bar leaves empty is transparent and holds no Compose pointer-input node, so
+   * touches there fall through to the React Native content underneath.
+   */
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-    refreshRootInsets()
     val parentWidth = right - left
     val parentHeight = bottom - top
-    val childHeight = composeView.measuredHeight.coerceAtMost(parentHeight)
+    // A collapsing app bar measures smaller; the expanded geometry is the maximum ever observed.
+    expandedChromeHeightPx = maxOf(expandedChromeHeightPx, composeView.measuredHeight)
+    val childHeight = expandedChromeHeightPx.coerceAtMost(parentHeight)
     composeView.layout(0, 0, parentWidth, childHeight)
     if (topAppBarScrollConsumer.updateExpandedChromeHeight(childHeight)) {
       nativeScrollCoordinator.discoverSources()
     }
+  }
+
+  private var expandedChromeHeightPx = 0
+
+  /** Called when the expanded app bar can legitimately become a different height. */
+  private fun resetExpandedChromeGeometry() {
+    expandedChromeHeightPx = 0
+    topAppBarScrollConsumer.resetExpandedChromeHeight()
   }
 
   fun setTitle(title: String) = updateState { it.copy(title = title) }
@@ -187,7 +182,7 @@ class ExpoMaterialTopAppBarView(
       else -> "medium"
     }
     if (state.value.variant != normalized) {
-      topAppBarScrollConsumer.resetExpandedChromeHeight()
+      resetExpandedChromeGeometry()
     }
     updateState { it.copy(variant = normalized) }
   }
@@ -213,10 +208,7 @@ class ExpoMaterialTopAppBarView(
   fun setDynamicColor(dynamic: Boolean) = updateState { it.copy(dynamicColor = dynamic) }
 
   @Composable
-  private fun MaterialTopAppBarContent(
-    uiState: TopAppBarHostState,
-    visualInsets: TopAppBarRootInsets,
-  ) {
+  private fun MaterialTopAppBarContent(uiState: TopAppBarHostState) {
     val context = LocalContext.current
     val systemDark = isSystemInDarkTheme()
     val useDarkTheme = when (uiState.themeMode) {
@@ -231,20 +223,25 @@ class ExpoMaterialTopAppBarView(
     }
 
     MaterialTheme(colorScheme = colorScheme) {
-      // Material3 defaults to systemBars.union(displayCutout), but an embedded ComposeView under a
-      // React Native root may observe those insets as already consumed. Recreate the same physical
-      // visual-component inset contract from the Android root window in pixels.
-      val appBarWindowInsets = WindowInsets(
-        left = visualInsets.left,
-        top = visualInsets.top,
-        right = visualInsets.right,
-        bottom = 0,
-      )
+      // The state and the canScroll lambda must be stable. Material remembers the behavior keyed on
+      // exactly these, and the default `canScroll` is a fresh `{ true }` on every call — so leaving
+      // it to the default produces a brand new behavior object on every recomposition. The
+      // DisposableEffect below is keyed on that identity, so the consumer would unbind and rebind
+      // continuously and end up mutating a behavior the app bar is no longer drawing from: the bar
+      // collapses once and then never reacts again.
+      val topAppBarState = rememberTopAppBarState()
+      val canScroll = remember { { true } }
 
       val materialScrollBehavior = if (uiState.visible) {
         when (uiState.scrollBehavior) {
-          "enterAlways" -> TopAppBarDefaults.enterAlwaysScrollBehavior()
-          "exitUntilCollapsed" -> TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+          "enterAlways" -> TopAppBarDefaults.enterAlwaysScrollBehavior(
+            state = topAppBarState,
+            canScroll = canScroll,
+          )
+          "exitUntilCollapsed" -> TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
+            state = topAppBarState,
+            canScroll = canScroll,
+          )
           else -> null
         }
       } else {
@@ -266,17 +263,14 @@ class ExpoMaterialTopAppBarView(
         when (uiState.variant) {
           "small" -> TopAppBar(
             title = { Text(uiState.title) },
-            windowInsets = appBarWindowInsets,
             scrollBehavior = materialScrollBehavior,
           )
           "large" -> LargeTopAppBar(
             title = { Text(uiState.title) },
-            windowInsets = appBarWindowInsets,
             scrollBehavior = materialScrollBehavior,
           )
           else -> MediumTopAppBar(
             title = { Text(uiState.title) },
-            windowInsets = appBarWindowInsets,
             scrollBehavior = materialScrollBehavior,
           )
         }

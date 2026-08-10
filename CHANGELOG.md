@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.0.0-alpha.25
+
+- Fixes the `variant="small"` TopAppBar geometry at its real cause. Runtime traces show the window insets are **not** lost on the way to the overlay: they arrive unconsumed with the true status-bar/cutout top. What was missing is the second half of the contract — nothing measured the Compose child again once it knew them. `ReactViewGroup.requestLayout()` is deliberately a no-op, so the `requestLayout()` the ComposeView raises when its intrinsic height changes dies at the first React Native ancestor and never reaches `ViewRootImpl`.
+- Replaces the one-shot post-attach measure with a coalesced `requestLayout()` observer on the host. Every reason the Compose child can change height — first insets, cutout/rotation change, a `variant` change, font scale — now completes a measure/layout pass against the bounds React Native already assigned, instead of only the initial attach.
+- Removes the alpha.24 explicit `windowInsets` mirroring and the interim `dispatchApplyWindowInsets` forwarding. Both were measured to be no-ops here, and neither can fix a genuinely consumed inset: `dispatchApplyWindowInsets` is only invoked when an ancestor has *not* consumed. Material3 now resolves `TopAppBarDefaults.windowInsets` from the insets Android delivers, exactly as in a plain Compose app, so the inset cannot be double-applied by construction and a non-edge-to-edge window does not gain a spurious top gap.
+- Restores the alpha.24 behaviour of dropping the cached expanded chrome height when the top inset actually changes, so scroll-away spacing can shrink as well as grow across rotation / cutout / edge-to-edge transitions.
+- Extracts `ComposeChromeHostView`, the shared Android host for both Material chrome views. Hit testing (full-screen `BOX_NONE` outer view, wrap-content interactive Compose child) and the layout recovery above now live in one place instead of being duplicated — and half-implemented — per host. `ExpoMaterialToolbarView` and `ExpoMaterialTopAppBarView` describe geometry only: which measure spec the Compose child gets, and where it sits.
+- Pins the TopAppBar's Compose child to the **expanded** app-bar height instead of re-laying it out at whatever Material currently draws. Material collapses on the UI frame clock, but the host can only correct layout from a posted message — React Native terminates the layout-request chain — and a violent fling delays that post by several frames. Runtime traces showed the host laying the child out exactly *once* across a whole fling (426px → 300px), so for the frames in between the child's bounds disagreed with the height Material was drawing: the bar was clipped, or a band of empty overlay opened between the bar and the list, filling in a moment later. With the bounds pinned, the drawn height and the list position both derive from the same `heightOffset` and stay glued at every point of the animation with no layout pass at all. The region a collapsed bar leaves empty is transparent and holds no Compose pointer-input node, so touches there fall through to the React Native content (verified: a drag started inside that band scrolls the list).
+- Every intrinsic-size request from the Compose child must be honoured, including the one raised on each frame of a collapse animation: this host is the only thing that can grant the child a layout pass, so skipping any of them starves the animation. A gate that skipped them while the app bar animated — added to keep a transient measured height from reaching Material, which derives its limits from measured geometry (`heightOffsetLimit` read -167.5 instead of -168 for a frame or two when a drag interrupted a running snap) — was measured on device and reverted: Material's state and the React Native content kept advancing while the Compose surface went on drawing the previous height, so the list visibly slid under an app bar that had not shrunk yet. The sub-pixel limit artifact self-corrects and never drifts; starving the layout does not.
+### Known issue — blank list window under a hard fling
+
+Flinging hard leaves the list unrendered for a moment (the app bar itself stays correct); the content fills in a beat later. Isolated on one screen by changing only `scrollBehavior`, so list, data and masonry layout are identical across the three runs:
+
+| run | scroll-away padding | settle `scrollTo` | blank |
+|---|---|---|---|
+| `none` | — | — | no |
+| `enterAlways` | yes | — | **yes** |
+| `exitUntilCollapsed` | yes | yes | **yes** |
+
+That rules out FlashList on its own and rules out the settle synchronization. A fourth run with the alpha.22 bottom-padding / `clipToPadding` compensation disabled still reproduced it, which leaves `ReactScrollView.setScrollAwayTopPaddingEnabledUnstable(...)` itself: while it translates the content, FlashList's render window and the drawn content disagree, and a fling outruns the correction.
+
+This is the unstable React Native primitive the architecture already isolates inside the RN source adapter, so replacing it does not reach the Material consumers. Not yet fixed.
+
+- Verified on Pixel 8 (API 36, edge-to-edge, density 2.625): expanded host height 300px for `small` (132 inset + 64dp), 426px for `medium` (+112dp), 531px for `large` (+152dp); repeated collapse/expand cycles return to `heightOffset=0` / `scrollY=0` with no drift; no bottom blank strip; FloatingToolbar and `clients=2` fan-out unchanged.
+
 ## 2.0.0-alpha.24
 
 - Fixes embedded Compose TopAppBar system insets under React Native / Expo by mirroring root-window `systemBars + displayCutout` into Material3 explicitly; this restores the expected status-bar clearance for `variant="small"`.

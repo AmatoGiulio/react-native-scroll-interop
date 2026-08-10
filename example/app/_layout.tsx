@@ -8,6 +8,7 @@ export default function RootLayout() {
           translucent and the header owns that region. */}
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
       </Stack>
     </>

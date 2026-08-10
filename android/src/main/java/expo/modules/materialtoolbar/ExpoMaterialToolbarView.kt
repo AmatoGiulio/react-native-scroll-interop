@@ -55,20 +55,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import com.facebook.react.uimanager.PointerEvents
-import com.facebook.react.uimanager.ReactPointerEventsView
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
-import expo.modules.kotlin.views.ExpoView
 import kotlinx.coroutines.CoroutineScope
 
 private data class ToolbarAction(
@@ -127,34 +122,24 @@ private data class ToolbarState(
 class ExpoMaterialToolbarView(
   context: Context,
   appContext: AppContext,
-) : ExpoView(context, appContext), ReactPointerEventsView {
-
-  override val pointerEvents: PointerEvents
-    get() = PointerEvents.BOX_NONE
+) : ComposeChromeHostView(context, appContext) {
 
   internal val onActionPress by EventDispatcher()
   internal val onFabPress by EventDispatcher()
 
   private val state = mutableStateOf(ToolbarState())
 
-  private val composeView = ComposeView(context).apply {
-    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-    layoutParams = ViewGroup.LayoutParams(
-      ViewGroup.LayoutParams.WRAP_CONTENT,
-      ViewGroup.LayoutParams.WRAP_CONTENT,
-    )
-    setContent {
-      MaterialToolbarContent(state.value)
-    }
-  }
-
   private val floatingToolbarScrollConsumer = FloatingToolbarScrollConsumer(this, composeView)
   private val nativeScrollCoordinator = ReactNativeScrollCoordinator(this, floatingToolbarScrollConsumer)
 
   init {
-    isClickable = false
-    isFocusable = false
-    addView(composeView)
+    composeView.layoutParams = ViewGroup.LayoutParams(
+      ViewGroup.LayoutParams.WRAP_CONTENT,
+      ViewGroup.LayoutParams.WRAP_CONTENT,
+    )
+    composeView.setContent {
+      MaterialToolbarContent(state.value)
+    }
   }
 
   override fun onAttachedToWindow() {
@@ -185,14 +170,12 @@ class ExpoMaterialToolbarView(
     composeView.requestLayout()
   }
 
-  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-    val width = View.MeasureSpec.getSize(widthMeasureSpec)
-    val height = View.MeasureSpec.getSize(heightMeasureSpec)
-    setMeasuredDimension(width, height)
-
+  // The toolbar is wrap-content in both axes: Material sizes it from its own content, and only that
+  // rectangle is interactive.
+  override fun onMeasureComposeChild(hostWidthPx: Int, hostHeightPx: Int) {
     composeView.measure(
-      View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.AT_MOST),
-      View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST),
+      View.MeasureSpec.makeMeasureSpec(hostWidthPx, View.MeasureSpec.AT_MOST),
+      View.MeasureSpec.makeMeasureSpec(hostHeightPx, View.MeasureSpec.AT_MOST),
     )
   }
 
