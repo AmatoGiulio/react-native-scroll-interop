@@ -1,6 +1,6 @@
 export { MaterialTopAppBar } from './src/MaterialTopAppBar';
 export { MaterialToolbar } from './src/MaterialToolbar';
-
+export { MaterialScrollProbe } from './src/MaterialScrollProbe';
 export type {
   MaterialToolbarAlignment,
   MaterialToolbarColors,

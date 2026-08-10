@@ -32,5 +32,21 @@ class ExpoMaterialTopAppBarModule : Module() {
         view.setDynamicColor(dynamic)
       }
     }
+
+    // Alpha.33 diagnostic-only native transaction host. This is intentionally a second named
+    // view in the same Expo module, so no autolinking/config change is required for the probe.
+    View(ExpoMaterialScrollProbeView::class) {
+      Name("ExpoMaterialScrollProbeView")
+
+      GroupView<ExpoMaterialScrollProbeView> {
+        AddChildView<android.view.View> { parent, child, index ->
+          parent.addProbeChild(child, index)
+        }
+        GetChildCount { parent -> parent.childCount }
+        GetChildViewAt<android.view.View> { parent, index -> parent.getChildAt(index) }
+        RemoveChildView<android.view.View> { parent, child -> parent.removeProbeChild(child) }
+        RemoveChildViewAt { parent, index -> parent.removeProbeChildAt(index) }
+      }
+    }
   }
 }

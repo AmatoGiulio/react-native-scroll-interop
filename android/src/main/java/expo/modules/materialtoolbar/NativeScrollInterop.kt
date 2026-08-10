@@ -2,27 +2,41 @@ package expo.modules.materialtoolbar
 
 import android.graphics.Rect
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.views.scroll.ReactScrollView
 import com.facebook.react.views.scroll.ReactScrollViewHelper
 import com.facebook.react.views.scroll.ScrollEventType
+import kotlin.math.abs
 
 internal const val NATIVE_SCROLL_LOG_TAG = "ExpoMaterialToolbar"
-private const val STABLE_FRAME_COUNT = 4
+
+// A drag release with no fling should settle quickly, but a real Android fling can start a few
+// display frames after END_DRAG. Keep those cases separate instead of using one frame-count timeout
+// whose meaning changes between 60/90/120 Hz displays.
+private const val NON_FLING_SETTLE_GRACE_MS = 40L
+private const val FLING_START_GRACE_MS = 180L
+private const val POST_FLING_IDLE_TIMEOUT_MS = 96L
 
 /**
  * One display-frame sample from the active native RN vertical scroll source.
  *
- * [deltaY] is based on normalized content scroll coordinates and is therefore safe for consumers
- * that should ignore Android edge bounce. [postAvailableY] is deliberately separate: while a user
- * drag is active, the RN adapter observes the non-consuming finger distance that remains after the
- * vertical child has reached y=0. This maps to nested-scroll post-scroll `available.y`; it is not
- * inferred from Android's visual overscroll distance.
+ * [deltaY] is based on a transport-normalized content coordinate. The transport deliberately does
+ * not derive the upper scroll bound from the ReactScrollView content child's current measured
+ * height: virtualized lists can update that height behind a fast native fling, which would clamp a
+ * legitimate scroll delta to zero and make native chrome appear frozen until the list slows down.
+ * Top-edge Android bounce is clamped to zero, while bottom-edge bounce is frozen at a session-local
+ * anchor until the view becomes scrollable upward again.
+ *
+ * [postAvailableY] is deliberately separate: while a user drag is active, the RN adapter observes
+ * the non-consuming finger distance that remains after the vertical child has reached y=0. This maps
+ * to nested-scroll post-scroll `available.y`; it is not inferred from Android's visual overscroll.
  */
 internal data class NativeScrollFrame(
   val deltaY: Int,
@@ -108,14 +122,29 @@ internal class ReactNativeScrollCoordinator(
     private var activeClients: List<Client> = emptyList()
     private var activeScrollView: ViewGroup? = null
     private var lastSampledScrollY = 0
+
     private var userDragActive = false
+    private var momentumActive = false
+    private var momentumEndObserved = false
+    private var flingExpectedAfterRelease = false
+    private var postReleaseMovementObserved = false
+    private var releaseUptimeMs = 0L
+    private var lastMovementUptimeMs = 0L
+
+    // Android edge-effect normalization is stateful. At the top, negative scrollY is always bounce
+    // and clamps to zero. At the bottom we freeze at the first non-scrollable-down coordinate until
+    // canScrollVertically(1) becomes true again, so the edge-effect spring does not look like a real
+    // reverse scroll to Material3.
+    private var bottomEdgeAnchorY: Int? = null
+
     private var trackedTouchSource: ViewGroup? = null
     private var lastTouchY: Float? = null
     private var pendingPostAvailableY = 0f
     private var listenerRegistered = false
     private var frameCallbackPosted = false
-    private var stableFrameCount = 0
     private var debugFrameCounter = 0
+    private var orphanScrollLogUptimeMs = 0L
+    private var virtualRangeLagLogUptimeMs = 0L
 
     /**
      * ReactScrollView does not expose the user's unconsumed drag distance through scrollY once the
@@ -139,10 +168,10 @@ internal class ReactNativeScrollCoordinator(
           if (previousTouchY != null) {
             val fingerDeltaY = currentTouchY - previousTouchY
             // OnTouchListener runs before ScrollView.onTouchEvent for the current MotionEvent, so
-            // the scrollY value here describes the child state after the previous MotionEvent. Once
+            // the raw scrollY here describes the child state after the previous MotionEvent. Once
             // that state is at the top edge, positive finger movement is true post-scroll available
             // distance: the child can no longer consume it.
-            if (fingerDeltaY > 0f && normalizedScrollY(source) == 0 && !source.canScrollVertically(-1)) {
+            if (fingerDeltaY > 0f && source.scrollY <= 0 && !source.canScrollVertically(-1)) {
               pendingPostAvailableY += fingerDeltaY
               requestFrame()
               if (BuildConfig.DEBUG) {
@@ -169,11 +198,11 @@ internal class ReactNativeScrollCoordinator(
         client in clients && client.hasEnabledConsumer() && isClientEligibleForSource(client, source)
       }
       if (activeClients.isEmpty()) {
-        finishSession()
+        finishSession("no-clients")
         return@FrameCallback
       }
       if (!source.isAttachedToWindow || source.windowVisibility != View.VISIBLE) {
-        finishSession()
+        finishSession("source-hidden")
         return@FrameCallback
       }
 
@@ -185,8 +214,29 @@ internal class ReactNativeScrollCoordinator(
       lastSampledScrollY = currentY
       pendingPostAvailableY = 0f
 
-      if (deltaY != 0 || postAvailableY != 0f) {
-        stableFrameCount = 0
+      val movedThisFrame = deltaY != 0 || postAvailableY != 0f
+      val now = SystemClock.uptimeMillis()
+
+      if (BuildConfig.DEBUG && rawY > 0 && source.canScrollVertically(1)) {
+        val content = source.getChildAt(0)
+        if (content != null) {
+          val legacyViewportHeight =
+            (source.height - source.paddingTop - source.paddingBottom).coerceAtLeast(0)
+          val legacyMaxY = (content.height - legacyViewportHeight).coerceAtLeast(0)
+          if (rawY > legacyMaxY && now - virtualRangeLagLogUptimeMs >= 100L) {
+            virtualRangeLagLogUptimeMs = now
+            Log.d(
+              NATIVE_SCROLL_LOG_TAG,
+              "VIRTUAL_RANGE_LAG view=${source.id} rawY=$rawY childMaxY=$legacyMaxY contentH=${content.height} viewportH=$legacyViewportHeight",
+            )
+          }
+        }
+      }
+
+      if (movedThisFrame) {
+        lastMovementUptimeMs = now
+        if (!userDragActive) postReleaseMovementObserved = true
+
         val frame = NativeScrollFrame(
           deltaY = deltaY,
           scrollY = currentY,
@@ -199,15 +249,29 @@ internal class ReactNativeScrollCoordinator(
           if (debugFrameCounter % 8 == 1) {
             Log.d(
               NATIVE_SCROLL_LOG_TAG,
-              "source frame view=${source.id} clients=${activeClients.size} dy=$deltaY scrollY=$currentY rawY=$rawY postAvailableY=$postAvailableY",
+              "source frame view=${source.id} clients=${activeClients.size} dy=$deltaY scrollY=$currentY rawY=$rawY postAvailableY=$postAvailableY drag=$userDragActive momentum=$momentumActive flingExpected=$flingExpectedAfterRelease",
             )
           }
         }
-      } else if (!userDragActive) {
-        stableFrameCount += 1
       }
 
-      if (userDragActive || stableFrameCount < STABLE_FRAME_COUNT) requestFrame() else finishSession()
+      val keepSampling = when {
+        userDragActive -> true
+        momentumActive -> true
+        movedThisFrame -> true
+        // If RN emitted a real MOMENTUM_END, the transport owns an explicit terminal signal.
+        momentumEndObserved -> false
+        // A real fling can begin a few frames after END_DRAG. Do not snap Material chrome in that
+        // start gap just because scrollY has not advanced yet.
+        flingExpectedAfterRelease && !postReleaseMovementObserved ->
+          now - releaseUptimeMs < FLING_START_GRACE_MS
+        // Once post-release movement was actually observed, settle only after a genuine idle gap.
+        postReleaseMovementObserved ->
+          now - lastMovementUptimeMs < POST_FLING_IDLE_TIMEOUT_MS
+        else -> now - releaseUptimeMs < NON_FLING_SETTLE_GRACE_MS
+      }
+
+      if (keepSampling) requestFrame() else finishSession("stable")
     }
 
     fun register(client: Client) {
@@ -263,53 +327,124 @@ internal class ReactNativeScrollCoordinator(
       when (scrollEventType) {
         ScrollEventType.BEGIN_DRAG -> {
           if (!isEligibleVerticalSource(source)) return
-          val eligibleClients = clients.filter { client ->
-            client.hasEnabledConsumer() && isClientEligibleForSource(client, source)
-          }
+          val eligibleClients = eligibleClientsFor(source)
           if (eligibleClients.isEmpty()) return
 
-          if (activeScrollView != null) finishSession()
+          // A new finger gesture supersedes the old transaction. Do NOT call onPostFling on the old
+          // one first: both Material consumers start their settle undispatched, so an unnecessary
+          // terminal callback here can move chrome toward an endpoint before the new drag cancels it.
+          if (activeScrollView != null) {
+            if (BuildConfig.DEBUG) {
+              Log.d(
+                NATIVE_SCROLL_LOG_TAG,
+                "session interrupt oldView=${activeScrollView?.id} newView=${source.id}",
+              )
+            }
+            clearSessionWithoutCallbacks()
+          }
+
           stopFrame()
           activeClients = eligibleClients
           activeScrollView = source
+          bottomEdgeAnchorY = null
           val currentY = normalizedScrollY(source)
           lastSampledScrollY = currentY
           pendingPostAvailableY = 0f
           lastTouchY = null
-          stableFrameCount = 0
           debugFrameCounter = 0
+
           userDragActive = true
+          momentumActive = false
+          momentumEndObserved = false
+          flingExpectedAfterRelease = false
+          postReleaseMovementObserved = false
+          releaseUptimeMs = 0L
+          lastMovementUptimeMs = SystemClock.uptimeMillis()
+
           if (activeClients.any { it.requiresTopBoundaryGesture() }) {
             installBoundaryTouchTracking(source)
           }
           activeClients.forEach { it.start(source) }
           requestFrame()
         }
-        ScrollEventType.SCROLL -> if (source === activeScrollView) requestFrame()
+
+        ScrollEventType.SCROLL -> {
+          if (source === activeScrollView) {
+            requestFrame()
+          } else if (activeScrollView == null && BuildConfig.DEBUG) {
+            // Do not auto-adopt this yet. A Material settle can itself move ReactScrollView, so a
+            // naive "SCROLL starts a session" rule can feed our own correction back into the hub.
+            // This diagnostic tells us whether a future source adapter needs an explicit recovery
+            // channel for user/programmatic scroll that occurs outside a drag transaction.
+            val now = SystemClock.uptimeMillis()
+            if (now - orphanScrollLogUptimeMs >= 100L && eligibleClientsFor(source).isNotEmpty()) {
+              orphanScrollLogUptimeMs = now
+              Log.d(
+                NATIVE_SCROLL_LOG_TAG,
+                "ORPHAN_SCROLL view=${source.id} rawY=${source.scrollY} vx=$xVelocity vy=$yVelocity",
+              )
+            }
+          }
+        }
+
         ScrollEventType.END_DRAG -> {
           if (source !== activeScrollView) return
           userDragActive = false
+          momentumActive = false
+          momentumEndObserved = false
+          postReleaseMovementObserved = false
+          releaseUptimeMs = SystemClock.uptimeMillis()
+          lastMovementUptimeMs = releaseUptimeMs
+
+          // VelocityHelper reports pixels/millisecond; Android's minimum fling threshold is
+          // pixels/second. This tells the fallback lifecycle whether it must allow for a delayed
+          // OverScroller start without inventing a fixed delay for ordinary low-velocity releases.
+          val minimumFlingVelocityPxPerMs =
+            ViewConfiguration.get(source.context).scaledMinimumFlingVelocity / 1000f
+          flingExpectedAfterRelease = abs(yVelocity) >= minimumFlingVelocityPxPerMs
+
           uninstallBoundaryTouchTracking()
-          stableFrameCount = 0
+          if (BuildConfig.DEBUG) {
+            Log.d(
+              NATIVE_SCROLL_LOG_TAG,
+              "END_DRAG view=${source.id} vy=$yVelocity minFling=$minimumFlingVelocityPxPerMs flingExpected=$flingExpectedAfterRelease",
+            )
+          }
           requestFrame()
         }
+
         ScrollEventType.MOMENTUM_BEGIN -> {
           if (source !== activeScrollView) return
           userDragActive = false
+          momentumActive = true
+          momentumEndObserved = false
+          flingExpectedAfterRelease = true
+          postReleaseMovementObserved = true
+          lastMovementUptimeMs = SystemClock.uptimeMillis()
           uninstallBoundaryTouchTracking()
-          stableFrameCount = 0
           requestFrame()
         }
+
         ScrollEventType.MOMENTUM_END -> {
           if (source !== activeScrollView) return
           userDragActive = false
+          momentumActive = false
+          momentumEndObserved = true
           requestFrame()
         }
+
         null -> Unit
       }
     }
 
-    private fun finishSession() {
+    private fun finishSession(reason: String) {
+      val source = activeScrollView
+      if (BuildConfig.DEBUG && source != null) {
+        Log.d(
+          NATIVE_SCROLL_LOG_TAG,
+          "session end view=${source.id} reason=$reason scrollY=$lastSampledScrollY drag=$userDragActive momentum=$momentumActive postReleaseMoved=$postReleaseMovementObserved",
+        )
+      }
       stopFrame()
       val clientsToEnd = activeClients
       clearSessionState()
@@ -325,7 +460,13 @@ internal class ReactNativeScrollCoordinator(
 
     private fun clearSessionState() {
       userDragActive = false
-      stableFrameCount = 0
+      momentumActive = false
+      momentumEndObserved = false
+      flingExpectedAfterRelease = false
+      postReleaseMovementObserved = false
+      releaseUptimeMs = 0L
+      lastMovementUptimeMs = 0L
+      bottomEdgeAnchorY = null
       uninstallBoundaryTouchTracking()
       activeScrollView = null
       activeClients = emptyList()
@@ -360,17 +501,46 @@ internal class ReactNativeScrollCoordinator(
       lastTouchY = null
     }
 
+    /**
+     * Normalize only actual Android edge-effect motion.
+     *
+     * Do not calculate maxY from child.height. FlashList / other virtualized sources may update the
+     * content child's measured extent independently from the native ScrollView's current fling. On a
+     * fast fling that makes a child-height-derived max temporarily stale and suppresses legitimate
+     * deltas for every consumer. The ScrollView's own scrollY is the transport coordinate.
+     */
     private fun normalizedScrollY(scrollView: ViewGroup): Int {
       val rawY = scrollView.scrollY
-      val content = scrollView.getChildAt(0) ?: return rawY.coerceAtLeast(0)
-      // ReactScrollView's native scroll-away padding increases the effective viewport scroll range
-      // through bottom padding. Include View padding here so normalization does not clamp away the
-      // extra range introduced by TopAppBar content coordination.
-      val viewportHeight =
-        (scrollView.height - scrollView.paddingTop - scrollView.paddingBottom).coerceAtLeast(0)
-      val maxY = (content.height - viewportHeight).coerceAtLeast(0)
-      return rawY.coerceIn(0, maxY)
+      if (rawY <= 0) {
+        bottomEdgeAnchorY = null
+        return 0
+      }
+
+      if (!scrollView.canScrollVertically(1)) {
+        val existingAnchor = bottomEdgeAnchorY
+        if (existingAnchor != null) return existingAnchor
+
+        bottomEdgeAnchorY = rawY
+        if (BuildConfig.DEBUG) {
+          Log.d(NATIVE_SCROLL_LOG_TAG, "bottom edge anchor view=${scrollView.id} y=$rawY")
+        }
+        return rawY
+      }
+
+      if (bottomEdgeAnchorY != null && BuildConfig.DEBUG) {
+        Log.d(
+          NATIVE_SCROLL_LOG_TAG,
+          "bottom edge release view=${scrollView.id} anchor=$bottomEdgeAnchorY rawY=$rawY",
+        )
+      }
+      bottomEdgeAnchorY = null
+      return rawY
     }
+
+    private fun eligibleClientsFor(source: ViewGroup): List<Client> =
+      clients.filter { client ->
+        client.hasEnabledConsumer() && isClientEligibleForSource(client, source)
+      }
 
     private fun findBestEligibleReactScrollView(client: Client): ReactScrollView? {
       val candidates = mutableListOf<ReactScrollView>()

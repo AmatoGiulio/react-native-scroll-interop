@@ -74,16 +74,13 @@ abstract class ComposeChromeHostView(
   }
 
   /**
-   * Every intrinsic-size request has to be honoured, including the one the Compose child raises on
-   * each frame of a Material collapse animation. This host is the only thing that can grant the
-   * child a layout pass — React Native will not — so skipping any of them starves the animation:
-   * Material's state keeps advancing and the React Native content keeps scrolling, while the Compose
-   * surface goes on drawing the app bar at its previous height and the list slides under it.
+   * Honour Android-level size requests that can genuinely change this Compose surface. React Native
+   * owns the parent geometry through Yoga, so such requests otherwise stop at the first RN parent.
    *
-   * (An earlier attempt gated this while the app bar animated, to avoid feeding the transient height
-   * back into Material — measured as a `heightOffsetLimit` of -167.5 instead of -168 for a frame or
-   * two when a drag interrupted a running snap. That sub-pixel artifact self-corrects and never
-   * drifts; starving the layout is visible. The gate was the worse trade.)
+   * A continuously-collapsing TopAppBar must not make the Android surface itself change size each
+   * frame; that host pins a fixed Compose root after its expanded geometry is known. With fixed root
+   * constraints Compose can remeasure the inner app bar during its own draw pass, while this bridge
+   * remains responsible only for real host-geometry changes (insets, variant, font/configuration).
    */
   override fun requestLayout() {
     super.requestLayout()

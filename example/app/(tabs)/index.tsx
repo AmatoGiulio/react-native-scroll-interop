@@ -1,10 +1,11 @@
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { MaterialTopAppBar } from 'expo-material-toolbar';
+import { MaterialScrollProbe, MaterialTopAppBar } from 'expo-material-toolbar';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PHOTOS, type Photo } from '../../src/photos';
+import { ZoomIn } from 'react-native-reanimated';
 
 const COLUMNS = 3;
 
@@ -39,16 +40,18 @@ export default function GalleryScreen() {
 
 	return (
 		<View style={styles.root}>
-			
-			<FlashList
-				data={PHOTOS}
-				masonry
-				numColumns={COLUMNS}
-				keyExtractor={(item) => item.id}
-				showsVerticalScrollIndicator={false}
-				renderItem={renderItem}
-			/>
-			<MaterialTopAppBar title="Gallery" variant="small" scrollBehavior="exitUntilCollapsed" />
+			<MaterialScrollProbe style={{ flex: 1 }}>
+
+				<FlashList
+					data={PHOTOS}
+					masonry
+					numColumns={COLUMNS}
+					keyExtractor={(item) => item.id}
+					showsVerticalScrollIndicator={false}
+					renderItem={renderItem}
+				/>
+			</MaterialScrollProbe>
+			<MaterialTopAppBar title="Gallery" variant="large" scrollBehavior="exitUntilCollapsed" />
 		</View>
 	);
 }

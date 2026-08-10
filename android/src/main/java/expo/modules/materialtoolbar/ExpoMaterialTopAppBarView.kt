@@ -7,6 +7,10 @@ import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumTopAppBar
@@ -21,10 +25,15 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import expo.modules.kotlin.AppContext
@@ -50,7 +59,14 @@ class ExpoMaterialTopAppBarView(
 ) : ComposeChromeHostView(context, appContext) {
 
   private val state = mutableStateOf(TopAppBarHostState())
-  private var lastTopInsetPx = -1
+  private val chromeInsetsPx = mutableStateOf(Insets.NONE)
+
+  // Android/Compose interop invariant: once the expanded Material geometry has been measured, the
+  // Compose surface itself stays that size. The TopAppBar is free to collapse *inside* this fixed
+  // surface. This prevents a child-size animation from repeatedly resizing the Android ComposeView
+  // through the React Native/Fabric hierarchy.
+  private val pinnedSurfaceHeightPx = mutableIntStateOf(0)
+  private val geometryGeneration = mutableIntStateOf(0)
 
   private val topAppBarScrollConsumer = TopAppBarScrollConsumer()
   private val nativeScrollCoordinator = ReactNativeScrollCoordinator(this, topAppBarScrollConsumer)
@@ -66,42 +82,57 @@ class ExpoMaterialTopAppBarView(
   }
 
   /**
-   * Non-consuming inset observer.
+   * Capture the real root-window system/cutout insets without consuming them.
    *
-   * The window insets are not lost on the way to this view: they arrive unconsumed, with the real
-   * status-bar/cutout top, and Material resolves `TopAppBarDefaults.windowInsets` from them exactly
-   * as it would in a plain Compose app. The host only has to notice that the expanded geometry the
-   * scroll-away coordinator caches is now stale; [ComposeChromeHostView] takes care of measuring the
-   * app bar again at its new height.
+   * The Expo/RN host is not a normal all-Compose hierarchy, so depending on the ComposeView to
+   * reconstruct the same insets from inherited dispatch is fragile. Keep Android's root window as
+   * the source of truth and pass fixed Compose WindowInsets explicitly to every Material app bar.
+   * This replaces (rather than adds to) TopAppBarDefaults.windowInsets, so double application is
+   * impossible. React code never needs safe-area padding or Material height constants.
    */
   override fun onApplyWindowInsets(insets: android.view.WindowInsets): android.view.WindowInsets {
-    val topInset = WindowInsetsCompat.toWindowInsetsCompat(insets, this)
-      .getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
-      .top
-    if (topInset != lastTopInsetPx) {
-      lastTopInsetPx = topInset
-      // The expanded app-bar height includes this inset, and both the child's bounds and scroll-away
-      // spacing are derived from it. Drop the cached maximum so a rotation, cutout change or
-      // edge-to-edge transition can shrink it again — the cache only ever grows.
-      resetExpandedChromeGeometry()
-      scheduleHostMeasureAndLayout()
-      if (BuildConfig.DEBUG) {
-        android.util.Log.d(NATIVE_SCROLL_LOG_TAG, "topappbar topInset=$topInset")
-      }
-    }
+    updateChromeInsets(WindowInsetsCompat.toWindowInsetsCompat(insets, this))
     return super.onApplyWindowInsets(insets)
+  }
+
+  private fun updateChromeInsets(insets: WindowInsetsCompat?) {
+    insets ?: return
+    val system = insets.getInsets(
+      WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+    )
+    val resolved = Insets.of(system.left, system.top, system.right, 0)
+    if (resolved == chromeInsetsPx.value) return
+
+    chromeInsetsPx.value = resolved
+    resetExpandedChromeGeometry()
+    scheduleHostMeasureAndLayout()
+    composeView.requestLayout()
+
+    if (BuildConfig.DEBUG) {
+      android.util.Log.d(
+        NATIVE_SCROLL_LOG_TAG,
+        "topappbar hostInsets left=${resolved.left} top=${resolved.top} right=${resolved.right}",
+      )
+    }
   }
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-    nativeScrollCoordinator.attach()
 
-    // An overlay mounted after the window already settled its insets would otherwise never see a
-    // dispatch. The host schedules its own deferred measure/layout.
+    // If this overlay mounts after the Activity already completed its first inset pass, read the
+    // settled root insets immediately so the first visible small-app-bar frame is not measured at 0.
+    updateChromeInsets(ViewCompat.getRootWindowInsets(this))
     ViewCompat.requestApplyInsets(this)
+
+    // Alpha.33: register the chrome host before the sampled fallback attaches. If an explicit
+    // MaterialScrollProbe already exists on this Fabric surface, the consumer marks itself as
+    // transactional and the sampled coordinator will see it as disabled from the first gesture.
+    NativeNestedScrollRegistry.registerTopBar(this, topAppBarScrollConsumer)
+    nativeScrollCoordinator.attach()
   }
 
   override fun onDetachedFromWindow() {
+    NativeNestedScrollRegistry.unregisterTopBar(this)
     nativeScrollCoordinator.detach()
     topAppBarScrollConsumer.onHostDetached()
     super.onDetachedFromWindow()
@@ -113,6 +144,7 @@ class ExpoMaterialTopAppBarView(
     mode: TopAppBarInteropMode?,
   ) {
     topAppBarScrollConsumer.bind(behavior, scope, mode)
+    NativeNestedScrollRegistry.topBarStateChanged(this)
     if (behavior != null && scope != null && mode != null) {
       nativeScrollCoordinator.discoverSources()
     }
@@ -120,6 +152,7 @@ class ExpoMaterialTopAppBarView(
 
   private fun unbindComposeScrollBehavior(behavior: TopAppBarScrollBehavior?) {
     topAppBarScrollConsumer.unbind(behavior)
+    NativeNestedScrollRegistry.topBarStateChanged(this)
   }
 
   private fun updateState(transform: (TopAppBarHostState) -> TopAppBarHostState) {
@@ -128,48 +161,64 @@ class ExpoMaterialTopAppBarView(
     composeView.requestLayout()
   }
 
-  // A Material app bar spans the full width and takes the height its variant and window insets ask
-  // for, so the child is measured exactly wide and at most as tall as the host.
+  // First pass: let Material report its real expanded height (variant + explicit window inset).
+  // Once observed, measure the Android ComposeView at that exact height forever for this geometry
+  // generation. The TopAppBar then collapses only inside the fixed Compose surface.
   override fun onMeasureComposeChild(hostWidthPx: Int, hostHeightPx: Int) {
+    val pinnedHeight = pinnedSurfaceHeightPx.intValue.coerceAtMost(hostHeightPx)
+    val heightSpec = if (pinnedHeight > 0) {
+      View.MeasureSpec.makeMeasureSpec(pinnedHeight, View.MeasureSpec.EXACTLY)
+    } else {
+      View.MeasureSpec.makeMeasureSpec(hostHeightPx, View.MeasureSpec.AT_MOST)
+    }
     composeView.measure(
       View.MeasureSpec.makeMeasureSpec(hostWidthPx, View.MeasureSpec.EXACTLY),
-      View.MeasureSpec.makeMeasureSpec(hostHeightPx, View.MeasureSpec.AT_MOST),
+      heightSpec,
     )
   }
 
   /**
-   * The Compose child is laid out at the *expanded* app-bar height and left there.
+   * Pin the Android Compose surface to the first expanded Material measure for this geometry.
    *
-   * Material collapses the app bar by shrinking what it draws, and it does so on the UI frame clock.
-   * The host cannot follow that with layout passes: React Native terminates the layout-request chain,
-   * so every correction has to be posted, and a violent fling delays the post by several frames. Any
-   * frame where the child's bounds disagree with the height Material is drawing is visible — the bar
-   * gets clipped, or a band of empty overlay opens between the bar and the list.
+   * Material3 intentionally changes the TopAppBar layout height from `heightOffset`; if that
+   * changing root height is allowed to resize the Android ComposeView, Compose must request Android
+   * layout every frame. That request crosses a React Native/Fabric parent that owns layout from Yoga
+   * and can arrive several frames late during a fast fling, producing the observed frozen header or
+   * temporary blank band.
    *
-   * Pinning the bounds removes the race instead of chasing it. The drawn height and the list's
-   * position both derive from the same `heightOffset` (the list through React Native's scroll-away
-   * translation), so they stay glued at every point of the animation with no layout pass at all. The
-   * region the collapsed bar leaves empty is transparent and holds no Compose pointer-input node, so
-   * touches there fall through to the React Native content underneath.
+   * The fixed Compose root below makes the collapsing app bar an *inner* layout change. Compose can
+   * then remeasure it during its own draw pass while this Android child's bounds stay immutable.
    */
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
     val parentWidth = right - left
     val parentHeight = bottom - top
-    // A collapsing app bar measures smaller; the expanded geometry is the maximum ever observed.
-    expandedChromeHeightPx = maxOf(expandedChromeHeightPx, composeView.measuredHeight)
-    val childHeight = expandedChromeHeightPx.coerceAtMost(parentHeight)
+
+    if (pinnedSurfaceHeightPx.intValue <= 0 && composeView.measuredHeight > 0) {
+      pinnedSurfaceHeightPx.intValue = composeView.measuredHeight.coerceAtMost(parentHeight)
+      if (BuildConfig.DEBUG) {
+        android.util.Log.d(
+          NATIVE_SCROLL_LOG_TAG,
+          "topappbar pinSurface height=${pinnedSurfaceHeightPx.intValue} generation=${geometryGeneration.intValue}",
+        )
+      }
+    }
+
+    val childHeight = (pinnedSurfaceHeightPx.intValue.takeIf { it > 0 }
+      ?: composeView.measuredHeight).coerceAtMost(parentHeight)
     composeView.layout(0, 0, parentWidth, childHeight)
+
     if (topAppBarScrollConsumer.updateExpandedChromeHeight(childHeight)) {
+      NativeNestedScrollRegistry.topBarStateChanged(this)
       nativeScrollCoordinator.discoverSources()
     }
   }
 
-  private var expandedChromeHeightPx = 0
-
-  /** Called when the expanded app bar can legitimately become a different height. */
+  /** Called only when the expanded app-bar geometry can legitimately change. */
   private fun resetExpandedChromeGeometry() {
-    expandedChromeHeightPx = 0
+    pinnedSurfaceHeightPx.intValue = 0
+    geometryGeneration.intValue += 1
     topAppBarScrollConsumer.resetExpandedChromeHeight()
+    NativeNestedScrollRegistry.topBarStateChanged(this)
   }
 
   fun setTitle(title: String) = updateState { it.copy(title = title) }
@@ -222,57 +271,87 @@ class ExpoMaterialTopAppBarView(
       if (useDarkTheme) darkColorScheme() else lightColorScheme()
     }
 
-    MaterialTheme(colorScheme = colorScheme) {
-      // The state and the canScroll lambda must be stable. Material remembers the behavior keyed on
-      // exactly these, and the default `canScroll` is a fresh `{ true }` on every call — so leaving
-      // it to the default produces a brand new behavior object on every recomposition. The
-      // DisposableEffect below is keyed on that identity, so the consumer would unbind and rebind
-      // continuously and end up mutating a behavior the app bar is no longer drawing from: the bar
-      // collapses once and then never reacts again.
-      val topAppBarState = rememberTopAppBarState()
-      val canScroll = remember { { true } }
+    val geometryKey = geometryGeneration.intValue
+    key(geometryKey) {
+      MaterialTheme(colorScheme = colorScheme) {
+        val hostInsets = chromeInsetsPx.value
+        val appBarWindowInsets = remember(hostInsets) {
+          WindowInsets(
+            left = hostInsets.left,
+            top = hostInsets.top,
+            right = hostInsets.right,
+            bottom = 0,
+          )
+        }
 
-      val materialScrollBehavior = if (uiState.visible) {
-        when (uiState.scrollBehavior) {
-          "enterAlways" -> TopAppBarDefaults.enterAlwaysScrollBehavior(
-            state = topAppBarState,
-            canScroll = canScroll,
-          )
-          "exitUntilCollapsed" -> TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
-            state = topAppBarState,
-            canScroll = canScroll,
-          )
+        // The state and the canScroll lambda must be stable. Material remembers the behavior keyed
+        // on these identities. The geometry key deliberately recreates them only when variant or
+        // real window insets changed, guaranteeing that the first measure of a new geometry is the
+        // fully-expanded state we can safely pin.
+        val topAppBarState = rememberTopAppBarState()
+        val canScroll = remember { { true } }
+
+        val materialScrollBehavior = if (uiState.visible) {
+          when (uiState.scrollBehavior) {
+            "enterAlways" -> TopAppBarDefaults.enterAlwaysScrollBehavior(
+              state = topAppBarState,
+              canScroll = canScroll,
+            )
+            "exitUntilCollapsed" -> TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
+              state = topAppBarState,
+              canScroll = canScroll,
+            )
+            else -> null
+          }
+        } else {
+          null
+        }
+        val interopMode = when (uiState.scrollBehavior) {
+          "enterAlways" -> TopAppBarInteropMode.EnterAlways
+          "exitUntilCollapsed" -> TopAppBarInteropMode.ExitUntilCollapsed
           else -> null
         }
-      } else {
-        null
-      }
-      val interopMode = when (uiState.scrollBehavior) {
-        "enterAlways" -> TopAppBarInteropMode.EnterAlways
-        "exitUntilCollapsed" -> TopAppBarInteropMode.ExitUntilCollapsed
-        else -> null
-      }
-      val materialScrollScope = rememberCoroutineScope()
+        val materialScrollScope = rememberCoroutineScope()
 
-      DisposableEffect(materialScrollBehavior, materialScrollScope, interopMode) {
-        bindComposeScrollBehavior(materialScrollBehavior, materialScrollScope, interopMode)
-        onDispose { unbindComposeScrollBehavior(materialScrollBehavior) }
-      }
+        DisposableEffect(materialScrollBehavior, materialScrollScope, interopMode) {
+          bindComposeScrollBehavior(materialScrollBehavior, materialScrollScope, interopMode)
+          onDispose { unbindComposeScrollBehavior(materialScrollBehavior) }
+        }
 
-      if (uiState.visible) {
-        when (uiState.variant) {
-          "small" -> TopAppBar(
-            title = { Text(uiState.title) },
-            scrollBehavior = materialScrollBehavior,
-          )
-          "large" -> LargeTopAppBar(
-            title = { Text(uiState.title) },
-            scrollBehavior = materialScrollBehavior,
-          )
-          else -> MediumTopAppBar(
-            title = { Text(uiState.title) },
-            scrollBehavior = materialScrollBehavior,
-          )
+        if (uiState.visible) {
+          val appBar: @Composable () -> Unit = {
+            when (uiState.variant) {
+              "small" -> TopAppBar(
+                title = { Text(uiState.title) },
+                windowInsets = appBarWindowInsets,
+                scrollBehavior = materialScrollBehavior,
+              )
+              "large" -> LargeTopAppBar(
+                title = { Text(uiState.title) },
+                windowInsets = appBarWindowInsets,
+                scrollBehavior = materialScrollBehavior,
+              )
+              else -> MediumTopAppBar(
+                title = { Text(uiState.title) },
+                windowInsets = appBarWindowInsets,
+                scrollBehavior = materialScrollBehavior,
+              )
+            }
+          }
+
+          val pinnedHeight = pinnedSurfaceHeightPx.intValue
+          if (pinnedHeight > 0) {
+            val density = LocalDensity.current
+            Box(
+              modifier = Modifier
+                .fillMaxWidth()
+                .height(with(density) { pinnedHeight.toDp() }),
+            ) {
+              appBar()
+            }
+          } else {
+            appBar()
+          }
         }
       }
     }

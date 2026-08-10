@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { MaterialTopAppBar } from 'expo-material-toolbar';
+import { MaterialScrollProbe, MaterialTopAppBar } from 'expo-material-toolbar';
 import { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -22,7 +22,6 @@ export default function FeedScreen() {
           style={styles.thumb}
           contentFit="cover"
           transition={120}
-          backgroundColor={item.tint}
         />
         <View style={styles.cardBody}>
           <Text style={styles.cardTitle}>{item.title}</Text>
@@ -35,13 +34,16 @@ export default function FeedScreen() {
 
   return (
     <View style={styles.root}>
-      <FlashList
-        data={PHOTOS}
-        keyExtractor={(item) => item.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.listContent}
-      />
-      <MaterialTopAppBar title="Feed" variant="small" scrollBehavior="enterAlways" />
+      <MaterialScrollProbe style={{ flex: 1 }}>
+
+        <FlashList
+          data={PHOTOS}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={styles.listContent}
+        />
+      </MaterialScrollProbe>
+      <MaterialTopAppBar title="Feed" variant="small" scrollBehavior="none" />
     </View>
   );
 }

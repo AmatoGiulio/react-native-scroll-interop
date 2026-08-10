@@ -244,7 +244,7 @@ const MaterialToolbarRoot = forwardRef<MaterialToolbarRef, MaterialToolbarRootPr
     return (
       <ExpoMaterialToolbarNativeView
         ref={forwardedRef}
-        style={style ?? StyleSheet.absoluteFillObject}
+        style={style ?? StyleSheet.absoluteFill}
         pointerEvents="box-none"
         content={model.content}
         leadingContent={model.leadingContent}

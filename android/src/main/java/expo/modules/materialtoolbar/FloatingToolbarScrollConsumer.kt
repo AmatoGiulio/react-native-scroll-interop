@@ -13,6 +13,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.Velocity
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -25,8 +26,10 @@ internal class FloatingToolbarScrollConsumer(
   private var behavior: FloatingToolbarScrollBehavior? = null
   private var scope: CoroutineScope? = null
   private var settleJob: Job? = null
+  private var settleGeneration = 0L
   private var offsetObserverJob: Job? = null
   private var debugFrameCounter = 0
+  private var lastInputDeltaY = 0
 
   override val isEnabled: Boolean
     get() = behavior != null && scope != null
@@ -65,6 +68,7 @@ internal class FloatingToolbarScrollConsumer(
   override fun onScrollSessionStart(source: ViewGroup) {
     cancelSettle()
     debugFrameCounter = 0
+    lastInputDeltaY = 0
     syncGeometry()
     val current = behavior?.state?.offset ?: 0f
     applyOffset(current)
@@ -79,6 +83,7 @@ internal class FloatingToolbarScrollConsumer(
   override fun onScrollFrame(frame: NativeScrollFrame) {
     if (frame.deltaY == 0) return
     val currentBehavior = behavior ?: return
+    lastInputDeltaY = frame.deltaY
     currentBehavior.onPostScroll(
       consumed = Offset(0f, -frame.deltaY.toFloat()),
       available = Offset.Zero,
@@ -100,10 +105,37 @@ internal class FloatingToolbarScrollConsumer(
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     cancelSettle()
-    settleJob = currentScope.launch {
-      currentBehavior.onPostFling(consumed = Velocity.Zero, available = Velocity.Zero)
-      applyOffset(currentBehavior.state.offset)
-      settleJob = null
+    val generation = settleGeneration
+
+    if (BuildConfig.DEBUG) {
+      val limit = currentBehavior.state.offsetLimit
+      val fraction = if (limit != 0f) currentBehavior.state.offset / limit else 0f
+      Log.d(
+        NATIVE_SCROLL_LOG_TAG,
+        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction",
+      )
+    }
+
+    settleJob = currentScope.launch(start = CoroutineStart.UNDISPATCHED) {
+      var completedNormally = false
+      try {
+        currentBehavior.onPostFling(consumed = Velocity.Zero, available = Velocity.Zero)
+        completedNormally = true
+        applyOffset(currentBehavior.state.offset)
+      } finally {
+        if (BuildConfig.DEBUG) {
+          val limit = currentBehavior.state.offsetLimit
+          val fraction = if (limit != 0f) currentBehavior.state.offset / limit else 0f
+          Log.d(
+            NATIVE_SCROLL_LOG_TAG,
+            "FLOAT_SETTLE_END gen=$generation completed=$completedNormally currentGen=$settleGeneration offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction",
+          )
+        }
+        // A canceled/older settle must never clear the Job reference of a newer transaction.
+        if (generation == settleGeneration) {
+          settleJob = null
+        }
+      }
     }
   }
 
@@ -173,6 +205,7 @@ internal class FloatingToolbarScrollConsumer(
   }
 
   private fun cancelSettle() {
+    settleGeneration += 1
     settleJob?.cancel()
     settleJob = null
   }
