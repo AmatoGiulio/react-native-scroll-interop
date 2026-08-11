@@ -80,6 +80,11 @@ class ExpoNestedScrollHostView(
   // input clears it.
   private var flingHandoffPending = false
 
+  // Whether the source asked for a fling before ending this gesture. A release that never did is a
+  // release whose movement is genuinely over, which is the only case where the transport can report
+  // the end of a touch without racing a fling that has not started yet.
+  private var flingRequestedThisSession = false
+
   init {
     clipChildren = false
     clipToPadding = false
@@ -250,6 +255,8 @@ class ExpoNestedScrollHostView(
       chromeCanDrive = react != null && topBar != null && topBar.canDriveFling(react, direction),
       handoffPending = flingHandoffPending,
     )
+
+    flingRequestedThisSession = true
 
     log(
       "NESTED_PRE_FLING vx=$velocityX vy=$velocityY preCount=$preCount postCount=$postCount " +
@@ -510,6 +517,7 @@ class ExpoNestedScrollHostView(
     preCount = 0
     postCount = 0
     transactionCount = 0
+    flingRequestedThisSession = false
 
     val react = target as? ReactScrollView
     val topBar = NativeNestedScrollRegistry.resolveTopBar(target)
@@ -528,6 +536,20 @@ class ExpoNestedScrollHostView(
     if (!directTransactionActive || proxyScroller != null) return
     val source = target as? ReactScrollView ?: activeSource ?: return
     activeTopBar?.endNestedTransaction(source, "touch-stop")
+
+    // A release with no fling behind it ends the movement here, and the sampling coordinator would
+    // otherwise only work that out after NON_FLING_SETTLE_GRACE_MS of stillness. Report it, exactly
+    // as the proxy does when its fling finishes, so chrome settles from the frame the finger left
+    // instead of a beat later. The velocity is zero because there is none: that is what no fling
+    // means.
+    //
+    // Gated on the source never having asked for a fling. onNestedPreFling always precedes
+    // onStopNestedScroll, so by here the answer is known — and reporting the end while a fling is
+    // about to start would settle chrome into a movement still to come.
+    if (!flingRequestedThisSession) {
+      ReactNativeScrollCoordinator.transportSettled(source, "touch-stop")
+    }
+
     directTransactionActive = false
   }
 
@@ -636,11 +658,10 @@ class ExpoNestedScrollHostView(
       // The sampling coordinator drives the floating toolbar and cannot see that momentum ended
       // here; left to its inactivity timeout it settles ~80ms late, which reads as a step in the
       // toolbar's travel. We own the last frame of this fling, so hand it the exact moment — and
-      // the velocity still on it, which is what a decay-based Material settle needs to continue
-      // the travel instead of restarting it. At an edge that residual is large: the source stops
-      // dead against the boundary while the chrome still has ground to cover.
-      val residualVelocityY = currVelocity * if (proxyLastVelocityY < 0) -1f else 1f
-      ReactNativeScrollCoordinator.transportSettled(target, reason, residualVelocityY)
+      // No velocity travels with it: every frame of this fling already reached the consumers as a
+      // scroll delta, so handing them the velocity too would decay a second time over movement
+      // already applied.
+      ReactNativeScrollCoordinator.transportSettled(target, reason)
     }
     directTransactionActive = false
   }

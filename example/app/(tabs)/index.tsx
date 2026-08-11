@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { MaterialScrollProbe, MaterialTopAppBar } from 'expo-material-toolbar';
+import { NativeScrollHost, MaterialTopAppBar } from 'expo-material-toolbar';
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -40,7 +40,7 @@ export default function GalleryScreen() {
 
 	return (
 		<View style={styles.root}>
-			<MaterialScrollProbe style={{ flex: 1 }}>
+			<NativeScrollHost style={{ flex: 1 }}>
 
 				<FlashList
 					data={PHOTOS}
@@ -50,7 +50,7 @@ export default function GalleryScreen() {
 					showsVerticalScrollIndicator={false}
 					renderItem={renderItem}
 				/>
-			</MaterialScrollProbe>
+			</NativeScrollHost>
 			<MaterialTopAppBar title="Gallery" variant="large" scrollBehavior="exitUntilCollapsed" />
 		</View>
 	);

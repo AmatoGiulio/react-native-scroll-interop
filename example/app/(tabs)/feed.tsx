@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { MaterialScrollProbe, MaterialTopAppBar } from 'expo-material-toolbar';
+import { NativeScrollHost, MaterialTopAppBar } from 'expo-material-toolbar';
 import { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -34,7 +34,7 @@ export default function FeedScreen() {
 
   return (
     <View style={styles.root}>
-      <MaterialScrollProbe style={{ flex: 1 }}>
+      <NativeScrollHost style={{ flex: 1 }}>
 
         <FlashList
           data={PHOTOS}
@@ -42,7 +42,7 @@ export default function FeedScreen() {
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
         />
-      </MaterialScrollProbe>
+      </NativeScrollHost>
       <MaterialTopAppBar title="Feed" variant="small" scrollBehavior="none" />
     </View>
   );

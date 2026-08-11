@@ -61,12 +61,7 @@ internal interface NativeScrollConsumer {
   fun onScrollSourceUnavailable(source: ViewGroup) = Unit
   fun onScrollSessionStart(source: ViewGroup)
   fun onScrollFrame(frame: NativeScrollFrame)
-  /**
-   * [velocityY] is the source's residual velocity in Android sign convention (px/s), non-zero only
-   * when a transport that owns the movement reported it. Material settles are decay-based: handing
-   * them zero makes chrome stop dead and then restart from rest, which reads as a step.
-   */
-  fun onScrollSessionEnd(velocityY: Float)
+  fun onScrollSessionEnd()
 }
 
 /**
@@ -131,8 +126,8 @@ internal class ReactNativeScrollCoordinator(
       }
     }
 
-    fun end(velocityY: Float) {
-      consumers.forEach { it.onScrollSessionEnd(velocityY) }
+    fun end() {
+      consumers.forEach { it.onScrollSessionEnd() }
     }
   }
 
@@ -152,10 +147,9 @@ internal class ReactNativeScrollCoordinator(
      * Ignored unless it refers to the session actually running, and never while a finger is down:
      * the drag owns the chrome and its own release will settle it.
      */
-    fun transportSettled(source: ViewGroup, reason: String, velocityY: Float) {
+    fun transportSettled(source: ViewGroup, reason: String) {
       if (activeScrollView !== source || userDragActive) return
       transportSettledReason = reason
-      transportSettledVelocityY = velocityY
     }
 
     private val clients = LinkedHashSet<Client>()
@@ -171,7 +165,6 @@ internal class ReactNativeScrollCoordinator(
     private var releaseUptimeMs = 0L
     private var lastMovementUptimeMs = 0L
     private var transportSettledReason: String? = null
-    private var transportSettledVelocityY = 0f
 
     // Android edge-effect normalization is stateful. At the top, negative scrollY is always bounce
     // and clamps to zero. At the bottom we freeze at the first non-scrollable-down coordinate until
@@ -503,11 +496,9 @@ internal class ReactNativeScrollCoordinator(
       }
       stopFrame()
       val clientsToEnd = activeClients
-      // Read before clearing: clearSessionState() resets the reported velocity to zero.
-      val endVelocityY = transportSettledVelocityY
       clearSessionState()
       clientsToEnd.forEach { client ->
-        if (client in clients) client.end(endVelocityY)
+        if (client in clients) client.end()
       }
     }
 
@@ -525,7 +516,6 @@ internal class ReactNativeScrollCoordinator(
       releaseUptimeMs = 0L
       lastMovementUptimeMs = 0L
       transportSettledReason = null
-      transportSettledVelocityY = 0f
       bottomEdgeAnchorY = null
       uninstallBoundaryTouchTracking()
       activeScrollView = null

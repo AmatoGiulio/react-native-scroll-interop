@@ -105,18 +105,11 @@ internal class FloatingToolbarScrollConsumer(
     }
   }
 
-  override fun onScrollSessionEnd(velocityY: Float) {
+  override fun onScrollSessionEnd() {
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     cancelSettle()
     val generation = settleGeneration
-
-    // Material settles through a DecayAnimationSpec, so the residual velocity is what carries the
-    // toolbar through the handover. Passing Velocity.Zero here stops it dead at whatever offset the
-    // last frame left and restarts the travel from rest, which is visible as a step — most of all
-    // when a fling hits the top edge and the source stops abruptly with velocity still on it.
-    // Offsets use Compose's sign convention (see onScrollFrame), hence the negation.
-    val settleVelocity = Velocity(0f, -velocityY)
 
     // This offset is an integral: it is built by accumulating per-frame deltas and never derives
     // from an absolute position, unlike the TopAppBar, which resynchronises against the source when
@@ -142,7 +135,7 @@ internal class FloatingToolbarScrollConsumer(
       val fraction = if (limit != 0f) currentBehavior.state.offset / limit else 0f
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY vy=${settleVelocity.y} offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction restoreForTop=$restoreForTop",
+        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction restoreForTop=$restoreForTop",
       )
     }
 
@@ -162,7 +155,14 @@ internal class FloatingToolbarScrollConsumer(
             applyOffset(value)
           }
         } else {
-          currentBehavior.onPostFling(consumed = Velocity.Zero, available = settleVelocity)
+          // Zero, deliberately, and for the same reason the TopAppBar passes zero: every frame of
+          // the fling already reached this consumer as a scroll delta, so the movement is in the
+          // offset. Handing Material the velocity on top of that decays a second time over motion
+          // already applied — the toolbar overshoots what the content did.
+          //
+          // Compose passes the velocity the child could NOT consume; ours is the velocity the child
+          // did consume, which is not the same number and not interchangeable with it.
+          currentBehavior.onPostFling(consumed = Velocity.Zero, available = Velocity.Zero)
         }
         completedNormally = true
         applyOffset(currentBehavior.state.offset)
