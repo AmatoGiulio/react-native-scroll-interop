@@ -27,7 +27,7 @@ internal enum class TopAppBarInteropMode {
  * contract used by FloatingToolbarScrollConsumer and forwards them into the real Material3
  * TopAppBarScrollBehavior nested-scroll connection.
  *
- * Alpha.24 owns the RN-specific visual bridge required for a full-screen overlay TopAppBar:
+ * Owns the RN-specific visual bridge required for a full-screen overlay TopAppBar:
  * the active ReactScrollView receives React Native's native scroll-away top padding using the
  * measured expanded Compose host height. This keeps the first list item aligned with the real
  * Material app-bar geometry and makes the physical RN content move in lockstep with collapse /
@@ -42,8 +42,8 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
   private var debugFrameCounter = 0
   private var lastInputDeltaY = 0
 
-  // Alpha.33: when an explicit MaterialScrollProbe is mounted on the same native scope, the
-  // transactional nested-scroll adapter owns input. The old sampled coordinator stays attached as
+  // When a nested-scroll host is mounted on the same native scope, the transactional adapter owns
+  // input. The sampled coordinator stays attached as
   // a fallback transport, but this consumer becomes invisible to it so the same gesture can never
   // reach Material twice.
   private var nestedTransportAvailable = false
@@ -70,7 +70,11 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
   override val requiresTopBoundaryGesture: Boolean
     get() = isEnabled && mode == TopAppBarInteropMode.ExitUntilCollapsed
 
-  /** Alpha.33 intentionally enables the direct transport only for exitUntilCollapsed. */
+  /**
+   * The direct transport is enabled only for exitUntilCollapsed. The other modes collapse without
+   * needing the child's scroll withheld, so routing them through the transaction driver would add
+   * its risks for no gain.
+   */
   val isNestedDirectCapable: Boolean
     get() = nestedTransportAvailable && isBound && mode == TopAppBarInteropMode.ExitUntilCollapsed
 

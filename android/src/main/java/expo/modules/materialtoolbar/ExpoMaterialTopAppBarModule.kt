@@ -33,19 +33,19 @@ class ExpoMaterialTopAppBarModule : Module() {
       }
     }
 
-    // Alpha.33 diagnostic-only native transaction host. This is intentionally a second named
-    // view in the same Expo module, so no autolinking/config change is required for the probe.
-    View(ExpoMaterialScrollProbeView::class) {
-      Name("ExpoMaterialScrollProbeView")
+    // The nested-scroll host ships as a second named view in this same module so that adopting it
+    // needs no autolinking or config change.
+    View(ExpoNestedScrollHostView::class) {
+      Name("ExpoNestedScrollHostView")
 
-      GroupView<ExpoMaterialScrollProbeView> {
+      GroupView<ExpoNestedScrollHostView> {
         AddChildView<android.view.View> { parent, child, index ->
-          parent.addProbeChild(child, index)
+          parent.addHostChild(child, index)
         }
         GetChildCount { parent -> parent.childCount }
         GetChildViewAt<android.view.View> { parent, index -> parent.getChildAt(index) }
-        RemoveChildView<android.view.View> { parent, child -> parent.removeProbeChild(child) }
-        RemoveChildViewAt { parent, index -> parent.removeProbeChildAt(index) }
+        RemoveChildView<android.view.View> { parent, child -> parent.removeHostChild(child) }
+        RemoveChildViewAt { parent, index -> parent.removeHostChildAt(index) }
       }
     }
   }

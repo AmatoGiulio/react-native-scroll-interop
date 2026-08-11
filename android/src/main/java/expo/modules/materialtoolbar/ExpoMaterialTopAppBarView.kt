@@ -124,9 +124,10 @@ class ExpoMaterialTopAppBarView(
     updateChromeInsets(ViewCompat.getRootWindowInsets(this))
     ViewCompat.requestApplyInsets(this)
 
-    // Alpha.33: register the chrome host before the sampled fallback attaches. If an explicit
-    // MaterialScrollProbe already exists on this Fabric surface, the consumer marks itself as
-    // transactional and the sampled coordinator will see it as disabled from the first gesture.
+    // Register with the transactional transport before the sampled fallback attaches. If a
+    // nested-scroll host already exists on this Fabric surface, the consumer marks itself
+    // transactional and the sampled coordinator sees it as disabled from the very first gesture,
+    // so the two never drive the same chrome.
     NativeNestedScrollRegistry.registerTopBar(this, topAppBarScrollConsumer)
     nativeScrollCoordinator.attach()
   }

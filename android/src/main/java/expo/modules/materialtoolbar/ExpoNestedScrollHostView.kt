@@ -21,17 +21,29 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
- * Alpha.33 transactional nested-scroll probe.
+ * A nested-scrolling ancestor for a React Native scroll source, so native chrome can follow it.
  *
- * Alpha.31 proved platform PRE/POST during touch. Alpha.32 proved that RN's private OverScroller can
- * be replaced by a parent-owned OverScroller so momentum also has an explicit per-frame transport.
- * Alpha.33 joins those paths and lets the real Material3 TopAppBarScrollBehavior participate in the
- * transaction before the RN child is advanced.
+ * Android chrome that reacts to scrolling is driven through nested scrolling. A [ReactScrollView]
+ * emits those callbacks to its native ancestors, and nothing in the RN view tree listens — which is
+ * why Compose Material3 behaviors, which are themselves NestedScrollConnections, cannot be reached
+ * from React Native at all. Being that ancestor is the entire trick; no patch to React Native, no
+ * JS involvement, no ref handed anywhere.
  *
- * This wrapper is still diagnostic and intentionally temporary. It is a physical Android ancestor
- * only so we can prove the primitive that should eventually live in the screen/navigation layer.
+ * Two things make it usable rather than merely possible:
+ *
+ *  - **One transaction per frame.** Material's pre-scroll phase decides how much of the delta the
+ *    chrome takes, and the child must scroll by the remainder. Both run synchronously inside
+ *    [onNestedPreScroll], so chrome never trails the content by a frame.
+ *  - **Parent-owned momentum.** RN's own fling emits no per-frame nested-scroll callbacks, so a
+ *    fling would move the list while chrome stood still. [onNestedPreFling] takes the fling over
+ *    and drives it through the same transaction driver. This is the invasive part, and the rules
+ *    gating it live in [NestedFlingPolicy] with the regressions they prevent written down.
+ *
+ * Being an explicit component the app wraps around its list is a limitation of this module, not of
+ * the approach: the natural home for this is the screen layer, which already wraps screen content
+ * in a view group of its own.
  */
-class ExpoMaterialScrollProbeView(
+class ExpoNestedScrollHostView(
   context: Context,
   appContext: AppContext,
 ) : ExpoView(context, appContext), NestedScrollingParent3 {
@@ -89,13 +101,13 @@ class ExpoMaterialScrollProbeView(
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-    NativeNestedScrollRegistry.registerProbe(this)
+    NativeNestedScrollRegistry.registerHost(this)
     post { refreshNestedChromeBinding() }
   }
 
   override fun onDetachedFromWindow() {
     stopProxyFling("host-detached", allowHandoff = false)
-    NativeNestedScrollRegistry.unregisterProbe(this)
+    NativeNestedScrollRegistry.unregisterHost(this)
     flingHandoffPending = false
     touchDownPending = false
     activeTopBar = null
@@ -104,7 +116,7 @@ class ExpoMaterialScrollProbeView(
     super.onDetachedFromWindow()
   }
 
-  fun addProbeChild(child: View, index: Int) {
+  fun addHostChild(child: View, index: Int) {
     addView(child, index)
     // FlashList 2.0.2 does not forward nestedScrollEnabled to the actual ReactScrollView in this
     // setup. Enable it on the real native source and prepare the scroll-away chrome binding before
@@ -115,11 +127,11 @@ class ExpoMaterialScrollProbeView(
     postDelayed({ refreshNestedChromeBinding() }, 750L)
   }
 
-  fun removeProbeChild(child: View) {
+  fun removeHostChild(child: View) {
     removeView(child)
   }
 
-  fun removeProbeChildAt(index: Int) {
+  fun removeHostChildAt(index: Int) {
     removeViewAt(index)
   }
 
@@ -129,7 +141,7 @@ class ExpoMaterialScrollProbeView(
     val found = mutableListOf<View>()
     collectScrollableDescendants(this, found)
     if (found.isEmpty()) {
-      log("PROBE_TREE no-scrollable-descendant childCount=$childCount")
+      log("SOURCE_TREE no-scrollable-descendant childCount=$childCount")
       return
     }
 
@@ -140,7 +152,7 @@ class ExpoMaterialScrollProbeView(
       }
       val after = ViewCompat.isNestedScrollingEnabled(view)
       if (before != after) {
-        log("PROBE_ENABLE_NESTED ${targetLabel(view)} before=$before after=$after")
+        log("SOURCE_ENABLE_NESTED ${targetLabel(view)} before=$before after=$after")
       }
 
       val react = view as? ReactScrollView
@@ -152,7 +164,7 @@ class ExpoMaterialScrollProbeView(
       }
 
       log(
-        "PROBE_TREE ${targetLabel(view)} " +
+        "SOURCE_TREE ${targetLabel(view)} " +
           "canUp=${view.canScrollVertically(-1)} canDown=${view.canScrollVertically(1)} " +
           "topBar=${topBar != null} chromePrepared=$prepared",
       )
@@ -247,8 +259,8 @@ class ExpoMaterialScrollProbeView(
 
     if (!canDrive) return false
     startProxyFling(react!!, velocityY)
-    // Consume pre-fling so RN never starts the private OverScroller that alpha.31 proved does not
-    // emit per-frame nested PRE/POST callbacks.
+    // Consume the pre-fling so RN never starts its private OverScroller, which emits no per-frame
+    // nested callbacks and would move the list while chrome stood still.
     return true
   }
 
@@ -698,11 +710,11 @@ class ExpoMaterialScrollProbeView(
     runCatching { com.facebook.react.uimanager.UIManagerHelper.getSurfaceId(view) }.getOrDefault(-1)
 
   private fun log(message: String) {
-    if (!BuildConfig.DEBUG) return
+    if (!NativeScrollTracing.enabled) return
     eventSequence += 1
     Log.d(
       NATIVE_SCROLL_LOG_TAG,
-      "PROBE seq=$eventSequence t=${SystemClock.uptimeMillis()} $message",
+      "SCROLL seq=$eventSequence t=${SystemClock.uptimeMillis()} $message",
     )
   }
 }

@@ -7,7 +7,7 @@ type MaterialScrollProbeProps = PropsWithChildren<ViewProps>;
 
 const NativeMaterialScrollProbe = requireNativeViewManager<MaterialScrollProbeProps>(
   'ExpoMaterialTopAppBar',
-  'ExpoMaterialScrollProbeView',
+  'ExpoNestedScrollHostView',
 );
 
 /**

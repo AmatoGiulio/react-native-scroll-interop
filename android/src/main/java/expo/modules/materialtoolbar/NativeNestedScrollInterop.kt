@@ -6,15 +6,18 @@ import android.view.ViewGroup
 import com.facebook.react.uimanager.UIManagerHelper
 
 /**
- * Alpha.33 diagnostic registry between an explicit native scroll marker and native chrome hosts.
+ * Pairs a nested-scroll host with the native chrome that should follow its scroll source.
  *
- * The scroll source is explicit because [ExpoMaterialScrollProbeView] is its real Android ancestor.
- * Chrome lookup is intentionally fail-closed: exactly one eligible TopAppBar on the same Fabric
- * surface/root may participate. We never pick "the largest visible ScrollView" or guess a source.
+ * The source is never guessed. It is whichever scrolling view sits under an
+ * [ExpoNestedScrollHostView], because that host is its real Android ancestor and therefore the one
+ * the view already talks to. Chrome lookup is fail-closed to match: exactly one eligible TopAppBar
+ * on the same Fabric surface may participate, and ambiguity resolves to nothing rather than to a
+ * heuristic. Picking "the largest visible ScrollView" is how this kind of code starts producing bug
+ * reports nobody can reproduce.
  *
- * This is still probe infrastructure, not the final public API. In the intended upstream shape the
- * screen/navigation layer owns this registration, because the screen is what already knows which
- * content is its own — an app-level API cannot resolve that ambiguity.
+ * Registration belongs here only because the module has nowhere better to put it. In the upstream
+ * shape the screen layer owns it: a screen already knows which content is its own, and no
+ * app-level API can resolve that ambiguity from the outside.
  */
 internal object NativeNestedScrollRegistry {
   private data class TopBarEntry(
@@ -22,17 +25,17 @@ internal object NativeNestedScrollRegistry {
     val consumer: TopAppBarScrollConsumer,
   )
 
-  private val probes = LinkedHashSet<ExpoMaterialScrollProbeView>()
+  private val hosts = LinkedHashSet<ExpoNestedScrollHostView>()
   private val topBars = LinkedHashSet<TopBarEntry>()
 
-  fun registerProbe(probe: ExpoMaterialScrollProbeView) {
-    probes += probe
+  fun registerHost(host: ExpoNestedScrollHostView) {
+    hosts += host
     refreshAvailability()
-    probe.post { probe.refreshNestedChromeBinding() }
+    host.post { host.refreshNestedChromeBinding() }
   }
 
-  fun unregisterProbe(probe: ExpoMaterialScrollProbeView) {
-    probes -= probe
+  fun unregisterHost(host: ExpoNestedScrollHostView) {
+    hosts -= host
     refreshAvailability()
   }
 
@@ -40,7 +43,7 @@ internal object NativeNestedScrollRegistry {
     topBars.removeAll { it.owner === owner }
     topBars += TopBarEntry(owner, consumer)
     refreshAvailability()
-    refreshProbesFor(owner)
+    refreshHostsFor(owner)
   }
 
   fun unregisterTopBar(owner: ExpoMaterialTopAppBarView) {
@@ -53,7 +56,7 @@ internal object NativeNestedScrollRegistry {
   /** Call whenever Compose binds/unbinds behavior or expanded chrome geometry changes. */
   fun topBarStateChanged(owner: ExpoMaterialTopAppBarView) {
     refreshAvailability()
-    refreshProbesFor(owner)
+    refreshHostsFor(owner)
   }
 
   fun resolveTopBar(source: View): TopAppBarScrollConsumer? {
@@ -80,26 +83,26 @@ internal object NativeNestedScrollRegistry {
   private fun refreshAvailability() {
     cleanupDetached()
     topBars.forEach { entry ->
-      val available = probes.any { probe ->
-        probe.isAttachedToWindow &&
-          probe.isShown &&
-          probe.windowVisibility == View.VISIBLE &&
-          sameNativeScope(entry.owner, probe)
+      val available = hosts.any { host ->
+        host.isAttachedToWindow &&
+          host.isShown &&
+          host.windowVisibility == View.VISIBLE &&
+          sameNativeScope(entry.owner, host)
       }
       entry.consumer.setNestedTransportAvailable(available)
     }
   }
 
-  private fun refreshProbesFor(owner: View) {
-    probes.forEach { probe ->
-      if (sameNativeScope(owner, probe)) {
-        probe.post { probe.refreshNestedChromeBinding() }
+  private fun refreshHostsFor(owner: View) {
+    hosts.forEach { host ->
+      if (sameNativeScope(owner, host)) {
+        host.post { host.refreshNestedChromeBinding() }
       }
     }
   }
 
   private fun cleanupDetached() {
-    probes.removeAll { !it.isAttachedToWindow }
+    hosts.removeAll { !it.isAttachedToWindow }
     val detached = topBars.filter { !it.owner.isAttachedToWindow }
     topBars.removeAll(detached.toSet())
     detached.forEach { it.consumer.setNestedTransportAvailable(false) }
