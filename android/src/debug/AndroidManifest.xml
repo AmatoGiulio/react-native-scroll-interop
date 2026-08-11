@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!--
+      Pure Compose reference for the FloatingToolbar settle, for comparing the module's behavior
+      against Material's own. Debug source set only: neither this declaration nor the activity's
+      code exist in a release build.
+
+      `exported` is true because it is launched from `adb shell am start`, which runs as the shell
+      uid and cannot start a non-exported activity. The screen shows static content and reads no
+      state, so exporting it in a debug build costs nothing.
+    -->
+    <activity
+      android:name="expo.modules.materialtoolbar.ComposeReferenceActivity"
+      android:exported="true"
+      android:theme="@style/Theme.AppCompat.DayNight.NoActionBar" />
+  </application>
+</manifest>

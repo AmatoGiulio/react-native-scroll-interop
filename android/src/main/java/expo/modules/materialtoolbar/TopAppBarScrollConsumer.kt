@@ -433,7 +433,7 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
     }
   }
 
-  override fun onScrollSessionEnd() {
+  override fun onScrollSessionEnd(velocityY: Float) {
     if (nestedTransportAvailable) return
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return

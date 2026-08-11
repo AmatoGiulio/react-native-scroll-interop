@@ -53,7 +53,12 @@ internal interface NativeScrollConsumer {
   fun onScrollSourceUnavailable(source: ViewGroup) = Unit
   fun onScrollSessionStart(source: ViewGroup)
   fun onScrollFrame(frame: NativeScrollFrame)
-  fun onScrollSessionEnd()
+  /**
+   * [velocityY] is the source's residual velocity in Android sign convention (px/s), non-zero only
+   * when a transport that owns the movement reported it. Material settles are decay-based: handing
+   * them zero makes chrome stop dead and then restart from rest, which reads as a step.
+   */
+  fun onScrollSessionEnd(velocityY: Float)
 }
 
 /**
@@ -112,12 +117,33 @@ internal class ReactNativeScrollCoordinator(
       }
     }
 
-    fun end() {
-      consumers.forEach { it.onScrollSessionEnd() }
+    fun end(velocityY: Float) {
+      consumers.forEach { it.onScrollSessionEnd(velocityY) }
     }
   }
 
-  private companion object Hub : ReactScrollViewHelper.ScrollListener {
+  internal companion object Hub : ReactScrollViewHelper.ScrollListener {
+    /**
+     * Signal from a transport that owns the end of the movement, currently the probe's proxy fling.
+     * Sampling alone can only infer the end from an inactivity timeout
+     * ([POST_FLING_IDLE_TIMEOUT_MS]), and that gap is visible: chrome stops wherever the last frame
+     * left it, holds for ~80ms, then snaps the remaining pixels.
+     *
+     * This does NOT end the session, because the movement is not necessarily over: a TopAppBar
+     * settle keeps scrolling the source afterwards to align its scroll-away padding, and consumers
+     * that integrate deltas need every one of those frames or their offset drifts from the source.
+     * It only drops the idle grace to a single still frame, so the session ends as soon as the
+     * source has genuinely stopped.
+     *
+     * Ignored unless it refers to the session actually running, and never while a finger is down:
+     * the drag owns the chrome and its own release will settle it.
+     */
+    fun transportSettled(source: ViewGroup, reason: String, velocityY: Float) {
+      if (activeScrollView !== source || userDragActive) return
+      transportSettledReason = reason
+      transportSettledVelocityY = velocityY
+    }
+
     private val clients = LinkedHashSet<Client>()
     private var activeClients: List<Client> = emptyList()
     private var activeScrollView: ViewGroup? = null
@@ -130,6 +156,8 @@ internal class ReactNativeScrollCoordinator(
     private var postReleaseMovementObserved = false
     private var releaseUptimeMs = 0L
     private var lastMovementUptimeMs = 0L
+    private var transportSettledReason: String? = null
+    private var transportSettledVelocityY = 0f
 
     // Android edge-effect normalization is stateful. At the top, negative scrollY is always bounce
     // and clamps to zero. At the bottom we freeze at the first non-scrollable-down coordinate until
@@ -257,8 +285,12 @@ internal class ReactNativeScrollCoordinator(
 
       val keepSampling = when {
         userDragActive -> true
-        momentumActive -> true
         movedThisFrame -> true
+        // The transport told us its movement ended. Anything still moving after that is chrome
+        // aligning the source, which the frames above have already delivered, so one still frame is
+        // enough to end here instead of waiting out the idle timeout.
+        transportSettledReason != null -> false
+        momentumActive -> true
         // If RN emitted a real MOMENTUM_END, the transport owns an explicit terminal signal.
         momentumEndObserved -> false
         // A real fling can begin a few frames after END_DRAG. Do not snap Material chrome in that
@@ -271,10 +303,14 @@ internal class ReactNativeScrollCoordinator(
         else -> now - releaseUptimeMs < NON_FLING_SETTLE_GRACE_MS
       }
 
-      if (keepSampling) requestFrame() else finishSession("stable")
+      if (keepSampling) {
+        requestFrame()
+      } else {
+        finishSession(transportSettledReason?.let { "transport-$it" } ?: "stable")
+      }
     }
 
-    fun register(client: Client) {
+    private fun register(client: Client) {
       if (!clients.add(client)) return
       if (!listenerRegistered) {
         ReactScrollViewHelper.addScrollListener(this)
@@ -283,14 +319,14 @@ internal class ReactNativeScrollCoordinator(
       discoverFor(client)
     }
 
-    fun discoverFor(client: Client) {
+    private fun discoverFor(client: Client) {
       client.ownerView.post {
         if (client !in clients || !client.hasEnabledConsumer()) return@post
         findBestEligibleReactScrollView(client)?.let(client::sourceAvailable)
       }
     }
 
-    fun unregister(client: Client) {
+    private fun unregister(client: Client) {
       if (!clients.remove(client)) return
       activeScrollView?.let(client::sourceUnavailable)
       activeClients = activeClients.filterNot { it === client }
@@ -447,9 +483,11 @@ internal class ReactNativeScrollCoordinator(
       }
       stopFrame()
       val clientsToEnd = activeClients
+      // Read before clearing: clearSessionState() resets the reported velocity to zero.
+      val endVelocityY = transportSettledVelocityY
       clearSessionState()
       clientsToEnd.forEach { client ->
-        if (client in clients) client.end()
+        if (client in clients) client.end(endVelocityY)
       }
     }
 
@@ -466,6 +504,8 @@ internal class ReactNativeScrollCoordinator(
       postReleaseMovementObserved = false
       releaseUptimeMs = 0L
       lastMovementUptimeMs = 0L
+      transportSettledReason = null
+      transportSettledVelocityY = 0f
       bottomEdgeAnchorY = null
       uninstallBoundaryTouchTracking()
       activeScrollView = null

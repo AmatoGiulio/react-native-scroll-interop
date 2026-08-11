@@ -3,7 +3,9 @@ package expo.modules.materialtoolbar
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.OverScroller
 import androidx.core.view.NestedScrollingParent3
@@ -55,9 +57,34 @@ class ExpoMaterialScrollProbeView(
   private var proxyLastVelocityY = 0
   private var proxyRunnable: Runnable? = null
 
+  // Armed by a real ACTION_DOWN reaching this ancestor, consumed by the nested session it opens.
+  // A session that starts without one is the source re-entering after we intercepted its fling, not
+  // a new gesture, and must not be allowed to take the source away from a running proxy.
+  private var touchDownPending = false
+
+  // Set when a proxy fling is cancelled before executing a single frame. That only happens when the
+  // source re-opens a nested session as a consequence of the interception itself, which spins a
+  // start/cancel loop at frame rate. While pending we hand the fling back to the source; real scroll
+  // input clears it.
+  private var flingHandoffPending = false
+
   init {
     clipChildren = false
     clipToPadding = false
+  }
+
+  override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+    // Observed before the scrolling child sees it, so the flag is always set by the time that child
+    // opens its nested session. This is the only evidence of a genuinely new gesture we can get.
+    when (ev.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        touchDownPending = true
+        log("TOUCH_DOWN pointers=${ev.pointerCount} downTime=${ev.downTime} eventTime=${ev.eventTime}")
+      }
+      MotionEvent.ACTION_UP -> log("TOUCH_UP eventTime=${ev.eventTime}")
+      MotionEvent.ACTION_CANCEL -> log("TOUCH_CANCEL eventTime=${ev.eventTime}")
+    }
+    return super.dispatchTouchEvent(ev)
   }
 
   override fun onAttachedToWindow() {
@@ -67,8 +94,10 @@ class ExpoMaterialScrollProbeView(
   }
 
   override fun onDetachedFromWindow() {
-    stopProxyFling("host-detached")
+    stopProxyFling("host-detached", allowHandoff = false)
     NativeNestedScrollRegistry.unregisterProbe(this)
+    flingHandoffPending = false
+    touchDownPending = false
     activeTopBar = null
     activeSource = null
     directTransactionActive = false
@@ -123,7 +152,7 @@ class ExpoMaterialScrollProbeView(
       }
 
       log(
-        "PROBE_TREE ${targetLabel(view)} nestedEnabled=$after " +
+        "PROBE_TREE ${targetLabel(view)} " +
           "canUp=${view.canScrollVertically(-1)} canDown=${view.canScrollVertically(1)} " +
           "topBar=${topBar != null} chromePrepared=$prepared",
       )
@@ -160,6 +189,9 @@ class ExpoMaterialScrollProbeView(
 
   override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) {
     preCount += 1
+    // Real scroll input is the only thing that clears the handoff: it proves the source is being
+    // driven by a finger again rather than re-entering from our own interception.
+    if (dy != 0) flingHandoffPending = false
     val tx = driveTransaction(target, dy, NativeNestedInputType.Touch)
     if (tx != null) {
       // The adapter already performed both Material and child phases synchronously. Claim the full
@@ -200,19 +232,27 @@ class ExpoMaterialScrollProbeView(
       velocityY < 0f -> -1
       else -> 0
     }
+    // A velocity needs at least two samples to exist. A session with fewer scroll frames than that
+    // has no measurable velocity, so whatever the tracker reports is noise: either a re-entrant
+    // fling, or synthetic input such as a mouse wheel, where every notch arrives as a complete
+    // one-frame DOWN/UP gesture with a saturated velocity. Driving those spins the proxy at frame
+    // rate without ever completing a fling.
     val canDrive =
       react != null &&
         topBar != null &&
         directTransactionActive &&
+        preCount >= MIN_FLING_SCROLL_SAMPLES &&
+        !flingHandoffPending &&
         topBar.canDriveFling(react, direction)
 
     log(
       "NESTED_PRE_FLING vx=$velocityX vy=$velocityY preCount=$preCount postCount=$postCount " +
-        "proxyIntercept=$canDrive direct=$directTransactionActive ${targetLabel(target)}",
+        "proxyIntercept=$canDrive direct=$directTransactionActive " +
+        "handoffPending=$flingHandoffPending ${targetLabel(target)}",
     )
 
-    if (!canDrive || react == null) return false
-    startProxyFling(react, velocityY)
+    if (!canDrive) return false
+    startProxyFling(react!!, velocityY)
     // Consume pre-fling so RN never starts the private OverScroller that alpha.31 proved does not
     // emit per-frame nested PRE/POST callbacks.
     return true
@@ -449,7 +489,18 @@ class ExpoMaterialScrollProbeView(
 
   private fun beginNestedSession(target: View) {
     // A fresh touch owns the source immediately and must interrupt parent-owned momentum/snap.
-    stopProxyFling("new-touch")
+    // Without one, this is the source re-opening a session as a consequence of our own fling
+    // interception: leave the running proxy alone, or it gets torn down before its first frame and
+    // the source retries, spinning a start/cancel loop at frame rate.
+    val freshTouch = touchDownPending
+    touchDownPending = false
+    if (freshTouch) {
+      stopProxyFling("new-touch")
+    } else if (proxyScroller != null) {
+      log("TX_REENTRY proxyKept frames=$proxyFrameCount ${targetLabel(target)}")
+      return
+    }
+
     preCount = 0
     postCount = 0
     transactionCount = 0
@@ -461,7 +512,8 @@ class ExpoMaterialScrollProbeView(
     directTransactionActive = react != null && topBar?.beginNestedTransaction(react) == true
 
     log(
-      "TX_BIND source=${react?.id} topBar=${topBar != null} direct=$directTransactionActive " +
+      "TX_BIND source=${react?.id} topBar=${topBar != null} freshTouch=$freshTouch " +
+        "direct=$directTransactionActive " +
         "surfaceSource=${surfaceId(target)} surfaceHost=${surfaceId(this)}",
     )
   }
@@ -478,7 +530,7 @@ class ExpoMaterialScrollProbeView(
   // ---------------------------------------------------------------------------
 
   private fun startProxyFling(target: ReactScrollView, velocityY: Float) {
-    stopProxyFling("replace")
+    stopProxyFling("replace", allowHandoff = false)
 
     val scrollState = (target as? HasScrollState)?.reactScrollViewScrollState
     val decelerationRate = scrollState?.decelerationRate ?: 0.985f
@@ -487,7 +539,12 @@ class ExpoMaterialScrollProbeView(
     }
 
     val startY = target.scrollY.coerceAtLeast(0)
-    val roundedVelocityY = velocityY.roundToInt()
+    // RN's velocity tracker can report well past the platform ceiling on a violent swipe. The
+    // source's own fling would have been clamped, so clamp too or the proxy runs a physics the
+    // source would never have produced.
+    val maxFlingVelocity = ViewConfiguration.get(context).scaledMaximumFlingVelocity.toFloat()
+    val clampedVelocityY = velocityY.coerceIn(-maxFlingVelocity, maxFlingVelocity)
+    val roundedVelocityY = clampedVelocityY.roundToInt()
     val viewportHeight = max(0, target.height - target.paddingTop - target.paddingBottom)
 
     scroller.fling(
@@ -512,6 +569,7 @@ class ExpoMaterialScrollProbeView(
 
     log(
       "PROXY_FLING_START gen=$generation startY=$startY vy=$roundedVelocityY " +
+        "requestedVy=$velocityY maxVy=$maxFlingVelocity " +
         "decelerationRate=$decelerationRate friction=${1.0f - decelerationRate} " +
         "viewport=$viewportHeight finalY=${scroller.finalY} ${targetLabel(target)}",
     )
@@ -566,25 +624,44 @@ class ExpoMaterialScrollProbeView(
 
     // Remove the proxy before launching Material snap so a new touch can cancel only the snap and
     // never see a stale momentum owner.
-    stopProxyFling(null)
+    stopProxyFling(null, allowHandoff = false)
     if (target != null) {
       activeTopBar?.endNestedTransaction(target, "proxy-$reason")
+      // The sampling coordinator drives the floating toolbar and cannot see that momentum ended
+      // here; left to its inactivity timeout it settles ~80ms late, which reads as a step in the
+      // toolbar's travel. We own the last frame of this fling, so hand it the exact moment — and
+      // the velocity still on it, which is what a decay-based Material settle needs to continue
+      // the travel instead of restarting it. At an edge that residual is large: the source stops
+      // dead against the boundary while the chrome still has ground to cover.
+      val residualVelocityY = currVelocity * if (proxyLastVelocityY < 0) -1f else 1f
+      ReactNativeScrollCoordinator.transportSettled(target, reason, residualVelocityY)
     }
     directTransactionActive = false
   }
 
-  private fun stopProxyFling(reason: String?) {
+  /**
+   * [allowHandoff] is false for internal teardown (replacing one proxy with another, or finishing a
+   * fling that ran its course). Only an external interruption that killed a proxy before its first
+   * frame should arm the handoff.
+   */
+  private fun stopProxyFling(reason: String?, allowHandoff: Boolean = true) {
     val target = proxyTarget
     val runnable = proxyRunnable
     if (target != null && runnable != null) target.removeCallbacks(runnable)
     val hadProxy = proxyScroller != null || proxyTarget != null
+    val ranNoFrames = proxyFrameCount == 0L
     proxyScroller?.abortAnimation()
     proxyGeneration += 1
     proxyScroller = null
     proxyTarget = null
     proxyRunnable = null
     proxyFrameCount = 0
-    if (hadProxy && reason != null) log("PROXY_FLING_CANCEL reason=$reason")
+    if (hadProxy && allowHandoff && ranNoFrames) {
+      flingHandoffPending = true
+    }
+    if (hadProxy && reason != null) {
+      log("PROXY_FLING_CANCEL reason=$reason ranNoFrames=$ranNoFrames handoffPending=$flingHandoffPending")
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -633,5 +710,10 @@ class ExpoMaterialScrollProbeView(
       NATIVE_SCROLL_LOG_TAG,
       "PROBE seq=$eventSequence t=${SystemClock.uptimeMillis()} $message",
     )
+  }
+
+  private companion object {
+    /** Two scroll frames is the minimum from which a velocity can be derived at all. */
+    const val MIN_FLING_SCROLL_SAMPLES = 2L
   }
 }

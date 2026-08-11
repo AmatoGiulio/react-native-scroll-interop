@@ -101,25 +101,32 @@ internal class FloatingToolbarScrollConsumer(
     }
   }
 
-  override fun onScrollSessionEnd() {
+  override fun onScrollSessionEnd(velocityY: Float) {
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     cancelSettle()
     val generation = settleGeneration
+
+    // Material settles through a DecayAnimationSpec, so the residual velocity is what carries the
+    // toolbar through the handover. Passing Velocity.Zero here stops it dead at whatever offset the
+    // last frame left and restarts the travel from rest, which is visible as a step — most of all
+    // when a fling hits the top edge and the source stops abruptly with velocity still on it.
+    // Offsets use Compose's sign convention (see onScrollFrame), hence the negation.
+    val settleVelocity = Velocity(0f, -velocityY)
 
     if (BuildConfig.DEBUG) {
       val limit = currentBehavior.state.offsetLimit
       val fraction = if (limit != 0f) currentBehavior.state.offset / limit else 0f
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction",
+        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY vy=${settleVelocity.y} offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction",
       )
     }
 
     settleJob = currentScope.launch(start = CoroutineStart.UNDISPATCHED) {
       var completedNormally = false
       try {
-        currentBehavior.onPostFling(consumed = Velocity.Zero, available = Velocity.Zero)
+        currentBehavior.onPostFling(consumed = Velocity.Zero, available = settleVelocity)
         completedNormally = true
         applyOffset(currentBehavior.state.offset)
       } finally {
