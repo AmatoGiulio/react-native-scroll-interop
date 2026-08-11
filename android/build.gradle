@@ -53,4 +53,8 @@ dependencies {
   implementation 'androidx.compose.material3:material3:1.5.0-alpha17'
   implementation 'io.coil-kt.coil3:coil-compose:3.3.0'
   implementation 'io.coil-kt.coil3:coil-network-okhttp:3.3.0'
+
+  // The rules that gate parent-owned momentum are pure logic and are tested as such, on the JVM,
+  // with no device or Robolectric shadow involved.
+  testImplementation 'junit:junit:4.13.2'
 }

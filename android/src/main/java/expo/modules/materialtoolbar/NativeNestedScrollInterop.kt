@@ -13,7 +13,8 @@ import com.facebook.react.uimanager.UIManagerHelper
  * surface/root may participate. We never pick "the largest visible ScrollView" or guess a source.
  *
  * This is still probe infrastructure, not the final public API. In the intended upstream shape the
- * screen/navigation layer owns this registration (for example react-native-screens' scroll marker).
+ * screen/navigation layer owns this registration, because the screen is what already knows which
+ * content is its own — an app-level API cannot resolve that ambiguity.
  */
 internal object NativeNestedScrollRegistry {
   private data class TopBarEntry(

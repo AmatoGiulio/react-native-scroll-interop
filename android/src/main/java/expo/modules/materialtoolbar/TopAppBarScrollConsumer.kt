@@ -60,6 +60,10 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
   private val isBound: Boolean
     get() = behavior != null && scope != null && mode != null
 
+  /** True while the settle coroutine is still aligning the source's scroll-away padding. */
+  override val isSettlingChrome: Boolean
+    get() = settleJob?.isActive == true
+
   override val isEnabled: Boolean
     get() = isBound && !nestedTransportAvailable
 

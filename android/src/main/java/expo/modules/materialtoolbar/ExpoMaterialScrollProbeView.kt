@@ -194,10 +194,13 @@ class ExpoMaterialScrollProbeView(
     if (dy != 0) flingHandoffPending = false
     val tx = driveTransaction(target, dy, NativeNestedInputType.Touch)
     if (tx != null) {
-      // The adapter already performed both Material and child phases synchronously. Claim the full
-      // platform delta so ScrollView cannot execute the child phase a second time. Edge remainder
-      // is intentionally swallowed in alpha.33; edge-effect handoff is a later transport feature.
-      consumed[1] += dy
+      // Both the Material and the child phase already ran synchronously inside the transaction, so
+      // claim what they used and nothing more. The remainder is distance nobody could absorb — the
+      // content is at an edge and chrome has no travel left — and leaving it unclaimed is what lets
+      // ScrollView run its own overscroll: the stretch on Android 12+, the glow before it. Claiming
+      // it too, as this did while the edge handoff was unimplemented, silently deleted that motion
+      // and made the list feel dead against its boundaries.
+      consumed[1] += dy - tx.unconsumedY
       logTransaction("TOUCH", tx)
     } else {
       log(
@@ -227,23 +230,14 @@ class ExpoMaterialScrollProbeView(
   override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
     val react = target as? ReactScrollView
     val topBar = activeTopBar ?: NativeNestedScrollRegistry.resolveTopBar(target)
-    val direction = when {
-      velocityY > 0f -> 1
-      velocityY < 0f -> -1
-      else -> 0
-    }
-    // A velocity needs at least two samples to exist. A session with fewer scroll frames than that
-    // has no measurable velocity, so whatever the tracker reports is noise: either a re-entrant
-    // fling, or synthetic input such as a mouse wheel, where every notch arrives as a complete
-    // one-frame DOWN/UP gesture with a saturated velocity. Driving those spins the proxy at frame
-    // rate without ever completing a fling.
-    val canDrive =
-      react != null &&
-        topBar != null &&
-        directTransactionActive &&
-        preCount >= MIN_FLING_SCROLL_SAMPLES &&
-        !flingHandoffPending &&
-        topBar.canDriveFling(react, direction)
+    val direction = NestedFlingPolicy.directionOf(velocityY)
+    val canDrive = NestedFlingPolicy.shouldDriveFling(
+      scrollFrameCount = preCount,
+      hasDirectTransaction = directTransactionActive,
+      hasChrome = react != null && topBar != null,
+      chromeCanDrive = react != null && topBar != null && topBar.canDriveFling(react, direction),
+      handoffPending = flingHandoffPending,
+    )
 
     log(
       "NESTED_PRE_FLING vx=$velocityX vy=$velocityY preCount=$preCount postCount=$postCount " +
@@ -649,18 +643,18 @@ class ExpoMaterialScrollProbeView(
     val runnable = proxyRunnable
     if (target != null && runnable != null) target.removeCallbacks(runnable)
     val hadProxy = proxyScroller != null || proxyTarget != null
-    val ranNoFrames = proxyFrameCount == 0L
+    val framesRun = proxyFrameCount
     proxyScroller?.abortAnimation()
     proxyGeneration += 1
     proxyScroller = null
     proxyTarget = null
     proxyRunnable = null
     proxyFrameCount = 0
-    if (hadProxy && allowHandoff && ranNoFrames) {
+    if (NestedFlingPolicy.shouldArmHandoff(hadProxy, framesRun, externalInterruption = allowHandoff)) {
       flingHandoffPending = true
     }
     if (hadProxy && reason != null) {
-      log("PROXY_FLING_CANCEL reason=$reason ranNoFrames=$ranNoFrames handoffPending=$flingHandoffPending")
+      log("PROXY_FLING_CANCEL reason=$reason framesRun=$framesRun handoffPending=$flingHandoffPending")
     }
   }
 
@@ -710,10 +704,5 @@ class ExpoMaterialScrollProbeView(
       NATIVE_SCROLL_LOG_TAG,
       "PROBE seq=$eventSequence t=${SystemClock.uptimeMillis()} $message",
     )
-  }
-
-  private companion object {
-    /** Two scroll frames is the minimum from which a velocity can be derived at all. */
-    const val MIN_FLING_SCROLL_SAMPLES = 2L
   }
 }

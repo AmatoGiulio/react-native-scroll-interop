@@ -47,6 +47,14 @@ internal data class NativeScrollFrame(
 
 internal interface NativeScrollConsumer {
   val isEnabled: Boolean
+
+  /**
+   * Whether this consumer is currently running an animation that still moves the scroll source.
+   * A settle that aligns scroll-away padding keeps scrolling the view for a few hundred ms after
+   * the gesture ended; the session must outlive it, or those frames reach no one.
+   */
+  val isSettlingChrome: Boolean
+    get() = false
   val requiresTopBoundaryGesture: Boolean
     get() = false
   fun onScrollSourceAvailable(source: ViewGroup) = Unit
@@ -66,8 +74,9 @@ internal interface NativeScrollConsumer {
  *
  * Multiple native chrome hosts on the same visible Fabric surface (for example a TopAppBar and a
  * FloatingToolbar) are fanned out from the same active ReactScrollView sample. Consumers never
- * depend on ReactScrollViewHelper directly, so this transport can later be replaced by
- * react-native-screens ScrollViewMarker/ScrollViewSeeking without touching Material consumers.
+ * depend on ReactScrollViewHelper directly, so the transport underneath can be replaced — by a
+ * screen/navigation layer that owns the scroll source, for instance — without touching Material
+ * consumers.
  */
 internal class ReactNativeScrollCoordinator(
   ownerView: View,
@@ -88,6 +97,11 @@ internal class ReactNativeScrollCoordinator(
     val consumers: List<NativeScrollConsumer>,
   ) {
     fun hasEnabledConsumer(): Boolean = consumers.any { it.isEnabled }
+
+    // Not filtered by isEnabled, for the same reason chromeDrivenScrollOffsetPx was not: a TopAppBar
+    // driven by the nested transport reports isEnabled = false here, and it is exactly the one whose
+    // settle keeps scrolling the source.
+    fun isSettlingChrome(): Boolean = consumers.any { it.isSettlingChrome }
 
     fun requiresTopBoundaryGesture(): Boolean =
       consumers.any { it.isEnabled && it.requiresTopBoundaryGesture }
@@ -286,9 +300,12 @@ internal class ReactNativeScrollCoordinator(
       val keepSampling = when {
         userDragActive -> true
         movedThisFrame -> true
-        // The transport told us its movement ended. Anything still moving after that is chrome
-        // aligning the source, which the frames above have already delivered, so one still frame is
-        // enough to end here instead of waiting out the idle timeout.
+        // Chrome is still animating the source. Its remaining frames have to be delivered:
+        // consumers that integrate deltas have no absolute reference, so a frame lost here is a
+        // permanent error in their offset rather than a moment of lag.
+        anyEligibleChromeSettling(source) -> true
+        // The transport told us its movement ended, and no chrome is still moving the source, so a
+        // single still frame ends the session instead of waiting out the idle timeout.
         transportSettledReason != null -> false
         momentumActive -> true
         // If RN emitted a real MOMENTUM_END, the transport owns an explicit terminal signal.
@@ -472,6 +489,9 @@ internal class ReactNativeScrollCoordinator(
         null -> Unit
       }
     }
+
+    private fun anyEligibleChromeSettling(source: ViewGroup): Boolean =
+      clients.any { isClientEligibleForSource(it, source) && it.isSettlingChrome() }
 
     private fun finishSession(reason: String) {
       val source = activeScrollView

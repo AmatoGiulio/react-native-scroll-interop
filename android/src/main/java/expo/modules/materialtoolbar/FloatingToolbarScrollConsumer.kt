@@ -5,6 +5,7 @@ package expo.modules.materialtoolbar
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.animation.core.animate
 import androidx.compose.material3.FloatingToolbarExitDirection
 import androidx.compose.material3.FloatingToolbarScrollBehavior
 import androidx.compose.runtime.snapshotFlow
@@ -30,6 +31,7 @@ internal class FloatingToolbarScrollConsumer(
   private var offsetObserverJob: Job? = null
   private var debugFrameCounter = 0
   private var lastInputDeltaY = 0
+  private var activeSource: ViewGroup? = null
 
   override val isEnabled: Boolean
     get() = behavior != null && scope != null
@@ -63,10 +65,12 @@ internal class FloatingToolbarScrollConsumer(
 
   fun onHostDetached() {
     cancelSettle()
+    activeSource = null
   }
 
   override fun onScrollSessionStart(source: ViewGroup) {
     cancelSettle()
+    activeSource = source
     debugFrameCounter = 0
     lastInputDeltaY = 0
     syncGeometry()
@@ -114,19 +118,52 @@ internal class FloatingToolbarScrollConsumer(
     // Offsets use Compose's sign convention (see onScrollFrame), hence the negation.
     val settleVelocity = Velocity(0f, -velocityY)
 
+    // This offset is an integral: it is built by accumulating per-frame deltas and never derives
+    // from an absolute position, unlike the TopAppBar, which resynchronises against the source when
+    // it settles. Any frame the transport fails to deliver is therefore a permanent error, and it
+    // has one real source — chrome keeps scrolling the source after the session closed, so those
+    // pixels reach nobody.
+    //
+    // Accumulate enough of them and the settle decides its endpoint from a wrong number: Material
+    // snaps on `collapsedFraction < 0.5f`, and observed fractions sit at 0.46-0.47, a hair from the
+    // boundary. That is how the toolbar ends up hidden while the app bar sits expanded.
+    //
+    // A list at the top is the one position where the correct state is known without integrating
+    // anything: reaching it requires scrolling up by at least the toolbar's height, and exitAlways
+    // shows the toolbar for that. Restoring the invariant here bounds the error instead of letting
+    // it compound.
+    val restoreForTop = ChromeSettlePolicy.shouldRestoreAtTop(
+      sourceScrollY = activeSource?.scrollY ?: -1,
+      offset = currentBehavior.state.offset,
+    )
+
     if (BuildConfig.DEBUG) {
       val limit = currentBehavior.state.offsetLimit
       val fraction = if (limit != 0f) currentBehavior.state.offset / limit else 0f
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY vy=${settleVelocity.y} offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction",
+        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY vy=${settleVelocity.y} offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction restoreForTop=$restoreForTop",
       )
     }
 
     settleJob = currentScope.launch(start = CoroutineStart.UNDISPATCHED) {
       var completedNormally = false
       try {
-        currentBehavior.onPostFling(consumed = Velocity.Zero, available = settleVelocity)
+        if (restoreForTop) {
+          // Animated rather than assigned: a large accumulated error leaves the toolbar fully
+          // hidden, and snapping it back into place in one frame would be more visible than the
+          // drift it corrects.
+          animate(
+            initialValue = currentBehavior.state.offset,
+            targetValue = 0f,
+            animationSpec = currentBehavior.snapAnimationSpec,
+          ) { value, _ ->
+            currentBehavior.state.offset = value
+            applyOffset(value)
+          }
+        } else {
+          currentBehavior.onPostFling(consumed = Velocity.Zero, available = settleVelocity)
+        }
         completedNormally = true
         applyOffset(currentBehavior.state.offset)
       } finally {
