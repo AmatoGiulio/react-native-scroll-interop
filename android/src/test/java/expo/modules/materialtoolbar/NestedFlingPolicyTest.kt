@@ -72,6 +72,18 @@ class NestedFlingPolicyTest {
   }
 
   @Test
+  fun `drives nothing when parent-owned momentum is switched off`() {
+    // The switch exists for the day useNestedScrollViewAndroid ships: NestedScrollView dispatches
+    // during fling itself, and reproducing the source's physics is strictly worse than using it.
+    NestedFlingPolicy.parentOwnedMomentumEnabled = false
+    try {
+      assertFalse(drive(scrollFrameCount = 37))
+    } finally {
+      NestedFlingPolicy.parentOwnedMomentumEnabled = true
+    }
+  }
+
+  @Test
   fun `maps velocity sign to direction of travel`() {
     assertEquals(1, NestedFlingPolicy.directionOf(4085f))
     assertEquals(-1, NestedFlingPolicy.directionOf(-320f))

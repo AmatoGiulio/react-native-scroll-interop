@@ -26,6 +26,21 @@ internal object NestedFlingPolicy {
   const val MIN_SCROLL_SAMPLES = 2L
 
   /**
+   * Whether the parent takes flings over at all.
+   *
+   * This exists because the need for it is temporary. `ReactScrollView` extends
+   * `android.widget.ScrollView`, which emits no per-frame nested-scroll callbacks during a fling,
+   * so chrome would sit still through every momentum scroll unless the parent drives it. React
+   * Native has merged the fix upstream — `useNestedScrollViewAndroid` makes `ReactScrollView`
+   * extend `NestedScrollView`, which does dispatch during fling as TYPE_NON_TOUCH — and where that
+   * flag is on, this whole mechanism is redundant and should be off: the source's own physics is
+   * always a better answer than reproducing it.
+   *
+   * Turning it off is also how the claim above gets verified rather than asserted.
+   */
+  var parentOwnedMomentumEnabled = true
+
+  /**
    * @param scrollFrameCount pre-scroll frames this nested session has delivered so far.
    * @param hasDirectTransaction whether the parent is currently driving chrome for this source.
    * @param hasChrome whether a chrome consumer resolved for this source.
@@ -40,7 +55,8 @@ internal object NestedFlingPolicy {
     chromeCanDrive: Boolean,
     handoffPending: Boolean,
   ): Boolean =
-    hasChrome &&
+    parentOwnedMomentumEnabled &&
+      hasChrome &&
       hasDirectTransaction &&
       !handoffPending &&
       scrollFrameCount >= MIN_SCROLL_SAMPLES &&
