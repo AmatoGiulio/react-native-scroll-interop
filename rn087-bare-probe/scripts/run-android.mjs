@@ -21,6 +21,37 @@ if (!fs.existsSync(gradlew)) {
 
 const enabled = mode === 'on';
 const appId = 'com.rn087nestedscrollprobe';
+const sdkRoots = [
+  process.env.ANDROID_SDK_ROOT,
+  process.env.ANDROID_HOME,
+  path.join(os.homedir(), 'Library', 'Android', 'sdk'),
+  path.join(os.homedir(), 'Android', 'Sdk'),
+].filter(Boolean);
+
+function shellLookup(command) {
+  const result = spawnSync('sh', ['-lc', `command -v ${command}`], {
+    encoding: 'utf8',
+    env: process.env,
+  });
+  return (result.stdout ?? '').trim() || null;
+}
+
+function findSdkBinary(relativeParts, fallbackCommand) {
+  for (const sdkRoot of sdkRoots) {
+    const candidate = path.join(sdkRoot, ...relativeParts);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return shellLookup(fallbackCommand);
+}
+
+const adbBinary = findSdkBinary(['platform-tools', 'adb'], 'adb');
+if (!adbBinary) {
+  console.error(
+    'RN 0.87 probe: adb executable not found.\n' +
+      'Expected it under ~/Library/Android/sdk/platform-tools/adb or ANDROID_SDK_ROOT.',
+  );
+  process.exit(1);
+}
 
 function run(command, args, cwd = root) {
   const result = spawnSync(command, args, {cwd, stdio: 'inherit', env: process.env});
@@ -46,8 +77,12 @@ function sleep(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function adbCapture(args, allowFailure = false) {
+  return capture(adbBinary, args, root, allowFailure);
+}
+
 function readAdbDevices() {
-  return capture('adb', ['devices'])
+  return adbCapture(['devices'])
     .split(/\r?\n/)
     .slice(1)
     .map(line => line.trim())
@@ -59,24 +94,7 @@ function readAdbDevices() {
 }
 
 function findEmulatorBinary() {
-  const sdkRoots = [
-    process.env.ANDROID_SDK_ROOT,
-    process.env.ANDROID_HOME,
-    path.join(os.homedir(), 'Library', 'Android', 'sdk'),
-    path.join(os.homedir(), 'Android', 'Sdk'),
-  ].filter(Boolean);
-
-  for (const sdkRoot of sdkRoots) {
-    const candidate = path.join(sdkRoot, 'emulator', 'emulator');
-    if (fs.existsSync(candidate)) return candidate;
-  }
-
-  const pathLookup = spawnSync('sh', ['-lc', 'command -v emulator'], {
-    encoding: 'utf8',
-    env: process.env,
-  });
-  const candidate = (pathLookup.stdout ?? '').trim();
-  return candidate || null;
+  return findSdkBinary(['emulator', 'emulator'], 'emulator');
 }
 
 function waitForReadyDevice(preferredSerial = null) {
@@ -98,10 +116,8 @@ function waitForReadyDevice(preferredSerial = null) {
 
 function waitForAndroidBoot(serial) {
   for (let attempt = 0; attempt < 180; attempt += 1) {
-    const completed = capture(
-      'adb',
+    const completed = adbCapture(
       ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'],
-      root,
       true,
     ).trim();
     if (completed === '1') return;
@@ -111,16 +127,24 @@ function waitForAndroidBoot(serial) {
   process.exit(1);
 }
 
+function printEmulatorLog(logPath) {
+  if (!fs.existsSync(logPath)) return;
+  const log = fs.readFileSync(logPath, 'utf8').trim();
+  if (!log) return;
+  console.error(`\nAndroid emulator startup log (${logPath}):\n${log}\n`);
+}
+
 function startFirstAvailableEmulator() {
   const emulator = findEmulatorBinary();
   if (!emulator) {
     console.error(
       'RN 0.87 probe: Android emulator executable not found.\n' +
-        'Set ANDROID_SDK_ROOT/ANDROID_HOME or start an AVD from Android Studio Device Manager.',
+        'Expected it under ~/Library/Android/sdk/emulator/emulator or ANDROID_SDK_ROOT.',
     );
     process.exit(1);
   }
 
+  console.log(`RN 0.87 probe emulator binary: ${emulator}`);
   const avds = capture(emulator, ['-list-avds'])
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -143,22 +167,40 @@ function startFirstAvailableEmulator() {
     process.exit(1);
   }
 
+  const logPath = path.join(os.tmpdir(), 'rn087-emulator-startup.log');
+  const logFd = fs.openSync(logPath, 'w');
   console.log(`RN 0.87 probe: starting Android emulator ${avd}`);
-  const child = spawn(emulator, ['-avd', avd], {
+  console.log(`RN 0.87 probe: emulator startup log ${logPath}`);
+
+  const child = spawn(emulator, ['-avd', avd, '-no-snapshot-load'], {
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', logFd, logFd],
     env: process.env,
   });
   child.unref();
+  fs.closeSync(logFd);
+
+  sleep(2500);
+  try {
+    process.kill(child.pid, 0);
+  } catch {
+    printEmulatorLog(logPath);
+    console.error(`RN 0.87 probe: emulator ${avd} exited immediately.`);
+    process.exit(1);
+  }
 
   const serial = waitForReadyDevice();
   if (!serial) {
+    printEmulatorLog(logPath);
     console.error(`RN 0.87 probe: emulator ${avd} did not become available to adb.`);
     process.exit(1);
   }
   waitForAndroidBoot(serial);
   return serial;
 }
+
+console.log(`RN 0.87 probe adb binary: ${adbBinary}`);
+run(adbBinary, ['start-server']);
 
 const requestedSerial = process.env.ANDROID_SERIAL ?? null;
 const adbDevices = readAdbDevices();
@@ -203,7 +245,7 @@ if (requestedSerial) {
   }
 }
 
-const adb = args => run('adb', ['-s', deviceSerial, ...args]);
+const adb = args => run(adbBinary, ['-s', deviceSerial, ...args]);
 console.log(`RN 0.87 probe device: ${deviceSerial}`);
 
 run(
@@ -216,4 +258,4 @@ adb(['shell', 'am', 'force-stop', appId]);
 adb(['shell', 'am', 'start', '-n', `${appId}/.MainActivity`]);
 
 console.log(`RN 0.87 probe launched with useNestedScrollViewAndroid=${enabled}`);
-console.log(`Capture: adb -s ${deviceSerial} logcat -v time -s Rn087NestedScroll:I '*:S'`);
+console.log(`Capture: ${adbBinary} -s ${deviceSerial} logcat -v time -s Rn087NestedScroll:I '*:S'`);
