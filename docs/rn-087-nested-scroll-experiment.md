@@ -24,13 +24,23 @@ It also fails if `useNestedScrollViewAndroid` was already read before the overri
 
 This mechanism exists only to test the 0.87 implementation before proposing an upstream-supported opt-in. It is not production integration code.
 
+### Reanimated intentionally removed from Stage 1
+
+Expo 57 currently bundles Reanimated 4.5.1, whose published peer range stops at React Native 0.86. Reanimated main has begun the 4.6 development line with React Native 0.87 support, but that line also depends on a matching Worklets main build.
+
+Stage 1 does not use Reanimated at all; the only example reference was an unused `ZoomIn` import. Reanimated and Worklets are therefore removed from this host rather than bypassing npm peer validation or adding unrelated nightly dependencies. They can be restored later if a screen actually needs them.
+
 ## Build variants
 
 From `example/`:
 
 ```bash
+rm -rf node_modules package-lock.json android
 npm install
+npm run verify:rn087
 ```
+
+The verifier must report React Native and `@react-native/gradle-plugin` on the 0.87 line before either prebuild is allowed to run.
 
 Flag OFF baseline:
 
