@@ -319,7 +319,7 @@ const adb = args => run(adbBinary, ['-s', deviceSerial, ...args]);
 console.log(`RN 0.87 probe device: ${deviceSerial}`);
 
 if (buildReactNativeFromSource) {
-  run(process.execPath, [path.join(root, 'scripts', 'patch-rn087-source-fling.mjs')]);
+  run(process.execPath, [path.join(root, 'scripts', 'patch-rn087-source-snap-v6.mjs')]);
 }
 
 run(
