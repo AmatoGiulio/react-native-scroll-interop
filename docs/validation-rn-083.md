@@ -23,7 +23,7 @@ requested = chromePre + childConsumed + chromePost + remaining
 
 ## Stress matrix
 
-The test pass covered:
+The measured pass covered:
 
 - slow drag;
 - hard fling;
@@ -139,10 +139,10 @@ Because the control reproduces the same failure with no module geometry in the s
 
 ## Baseline conclusion
 
-For React Native 0.83, the parent-side architecture is considered validated when the source provides the required callbacks:
+For the measured React Native 0.83 baseline, the parent-side architecture is validated when the source provides the required callbacks:
 
 ```text
-single physics       yes
+single physics        yes
 single movement owner yes
 parent proxy fling    no
 scrollY sampling      no
@@ -151,4 +151,63 @@ true pre/child/post   yes
 transaction drift     0 / 566 measured frames
 ```
 
-Remaining correctness gaps are source-contract limitations of the 0.83 `android.widget.ScrollView` path, plus prototype plumbing such as source discovery and standalone-module chrome geometry ownership.
+The remaining correctness gaps demonstrated by that run are source-contract limitations of the 0.83 `android.widget.ScrollView` path, plus prototype plumbing such as standalone-module chrome geometry ownership.
+
+## Changes after the measured baseline
+
+The transaction algorithm itself has not been changed since the `0 / 566` run, but the current branch contains two behavioral cleanups that still need a device regression pass before the same measurement can be attributed to HEAD.
+
+### Layout-driven source preparation
+
+The fixed `32 / 250 / 750 ms` source-discovery retries were removed. The host now:
+
+1. checks for the native ReactScrollView in a posted turn;
+2. if Fabric/FlashList has not mounted it yet, waits on `OnGlobalLayoutListener`;
+3. removes the listener as soon as one source is available;
+4. treats multiple ReactScrollViews as ambiguous for pre-gesture geometry;
+5. never writes transaction-active source/chrome state during discovery.
+
+Regression checks:
+
+- first visible frame has correct TopAppBar inset on RN ScrollView;
+- first visible frame has correct TopAppBar inset on FlashList;
+- no first-gesture geometry jump;
+- source replacement/remount rebinds;
+- changing TopAppBar variant/insets re-prepares geometry;
+- logs show `SOURCE_WAIT` listener removed after mount rather than remaining armed.
+
+### FloatingToolbar drift workaround removed
+
+The old `ChromeSettlePolicy.shouldRestoreAtTop(...)` correction was deleted. That policy existed because the previous sampled/proxy transport could lose deltas after a session closed. With source-owned pre/child/post delivery, keeping the repair would make the toolbar diverge from Material based on an error source that no longer exists.
+
+The toolbar now always lets Material perform its terminal snap from the offset it actually observed, with zero velocity for the same reason as before: fling distance has already been delivered frame by frame.
+
+Regression checks:
+
+- TopAppBar + FloatingToolbar repeated collapse/expand cycles;
+- toolbar endpoint after a partial reverse scroll that reaches list top;
+- interrupt a toolbar settle with a new touch;
+- compare toolbar endpoint/motion with the repository's pure Compose reference screen;
+- transaction ledger remains at zero broken frames throughout.
+
+### React Native patch default semantics
+
+The 0.83 momentum patch now initializes its `NestedScrollingChildHelper` from the platform's existing nested-scroll state instead of forcing it enabled in every ReactScrollView. The host still enables nested scrolling explicitly for its source, so the PoC path should be unchanged.
+
+Regression checks:
+
+- source under `NativeScrollHost` still opens TOUCH and NON_TOUCH nested sessions;
+- an unrelated ReactScrollView outside the host keeps normal React Native `nestedScrollEnabled` default behavior.
+
+## HEAD acceptance gate
+
+Do not promote the current branch from “measured baseline + reviewed cleanups” to “revalidated” until the regression checks above pass on device.
+
+The acceptance condition remains:
+
+```text
+0 broken ledger frames
++ no first-gesture geometry jump
++ Material-consistent FloatingToolbar settle
++ unchanged unrelated ScrollView behavior
+```
