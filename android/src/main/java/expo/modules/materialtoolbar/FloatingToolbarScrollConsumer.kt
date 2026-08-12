@@ -5,7 +5,6 @@ package expo.modules.materialtoolbar
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.animation.core.animate
 import androidx.compose.material3.FloatingToolbarExitDirection
 import androidx.compose.material3.FloatingToolbarScrollBehavior
 import androidx.compose.runtime.snapshotFlow
@@ -38,7 +37,6 @@ internal class FloatingToolbarScrollConsumer(
   private var offsetObserverJob: Job? = null
   private var debugFrameCounter = 0
   private var lastInputDeltaY = 0
-  private var activeSource: ViewGroup? = null
 
   /** Whether this toolbar can take part in a transaction at all. */
   val isBound: Boolean
@@ -73,13 +71,11 @@ internal class FloatingToolbarScrollConsumer(
 
   fun onHostDetached() {
     cancelSettle()
-    activeSource = null
   }
 
   fun beginNestedTransaction(source: ViewGroup): Boolean {
     if (!isBound) return false
     cancelSettle()
-    activeSource = source
     debugFrameCounter = 0
     lastInputDeltaY = 0
     syncGeometry()
@@ -131,59 +127,28 @@ internal class FloatingToolbarScrollConsumer(
     cancelSettle()
     val generation = settleGeneration
 
-    // This offset is an integral: it is built by accumulating per-frame deltas and never derives
-    // from an absolute position, unlike the TopAppBar, which resynchronises against the source when
-    // it settles. Any frame the transport fails to deliver is therefore a permanent error, and it
-    // has one real source — chrome keeps scrolling the source after the session closed, so those
-    // pixels reach nobody.
-    //
-    // Accumulate enough of them and the settle decides its endpoint from a wrong number: Material
-    // snaps on `collapsedFraction < 0.5f`, and observed fractions sit at 0.46-0.47, a hair from the
-    // boundary. That is how the toolbar ends up hidden while the app bar sits expanded.
-    //
-    // A list at the top is the one position where the correct state is known without integrating
-    // anything: reaching it requires scrolling up by at least the toolbar's height, and exitAlways
-    // shows the toolbar for that. Restoring the invariant here bounds the error instead of letting
-    // it compound.
-    val restoreForTop = ChromeSettlePolicy.shouldRestoreAtTop(
-      sourceScrollY = activeSource?.scrollY ?: -1,
-      offset = currentBehavior.state.offset,
-    )
-
     if (BuildConfig.DEBUG) {
       val limit = currentBehavior.state.offsetLimit
       val fraction = if (limit != 0f) currentBehavior.state.offset / limit else 0f
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction restoreForTop=$restoreForTop",
+        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction",
       )
     }
 
     settleJob = currentScope.launch(start = CoroutineStart.UNDISPATCHED) {
       var completedNormally = false
       try {
-        if (restoreForTop) {
-          // Animated rather than assigned: a large accumulated error leaves the toolbar fully
-          // hidden, and snapping it back into place in one frame would be more visible than the
-          // drift it corrects.
-          animate(
-            initialValue = currentBehavior.state.offset,
-            targetValue = 0f,
-            animationSpec = currentBehavior.snapAnimationSpec,
-          ) { value, _ ->
-            currentBehavior.state.offset = value
-            applyOffset(value)
-          }
-        } else {
-          // Zero, deliberately, and for the same reason the TopAppBar passes zero: every frame of
-          // the fling already reached this consumer as a scroll delta, so the movement is in the
-          // offset. Handing Material the velocity on top of that decays a second time over motion
-          // already applied — the toolbar overshoots what the content did.
-          //
-          // Compose passes the velocity the child could NOT consume; ours is the velocity the child
-          // did consume, which is not the same number and not interchangeable with it.
-          currentBehavior.onPostFling(consumed = Velocity.Zero, available = Velocity.Zero)
-        }
+        // Zero, deliberately, and for the same reason the TopAppBar passes zero: every frame of the
+        // fling already reached this consumer as a scroll delta, so the movement is in the offset.
+        // Handing Material the velocity on top of that decays a second time over motion already
+        // applied — the toolbar overshoots what the content did.
+        //
+        // Compose passes the velocity the child could NOT consume; ours is the velocity the child
+        // did consume, which is not the same number and not interchangeable with it. With the real
+        // source transaction delivering every frame, there is no longer a transport-drift repair
+        // here: Material owns the terminal snap from the offset it actually observed.
+        currentBehavior.onPostFling(consumed = Velocity.Zero, available = Velocity.Zero)
         completedNormally = true
         applyOffset(currentBehavior.state.offset)
       } finally {
