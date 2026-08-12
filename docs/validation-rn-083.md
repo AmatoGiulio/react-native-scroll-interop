@@ -199,9 +199,43 @@ Regression checks:
 - source under `NativeScrollHost` still opens TOUCH and NON_TOUCH nested sessions;
 - an unrelated ReactScrollView outside the host keeps normal React Native `nestedScrollEnabled` default behavior.
 
+## Current HEAD partial revalidation — Gallery
+
+A new Gallery run was captured on the post-cleanup HEAD with FlashList, large `exitUntilCollapsed` TopAppBar and the shared FloatingToolbar.
+
+The raw trace contains a synthetic emulator/trackpad torture sequence. Those sessions repeatedly saturate the reported fling velocity at exactly `+/-21000 px/s` and can occur only a few milliseconds apart. They came from two-finger host-trackpad scrolling and are not counted as representative finger gestures for the acceptance sample.
+
+Android still reports those emulator events as `pointers=1`; this is therefore not application-level multi-touch. The distinction is about the input generator, not about a different nested-scroll contract.
+
+Results after excluding every session whose fling saturated at `abs(vy) == 21000`:
+
+```text
+representative ledger frames  627
+broken ledger frames            0
+balanced=false                  0
+```
+
+The raw trace, including the synthetic torture sessions, also contains no broken transaction. Those sessions are retained only as extra robustness evidence rather than included in the representative sample.
+
+Source preparation on this run took the immediate path:
+
+- one ReactScrollView source was found;
+- nested scrolling was enabled on that source;
+- TopAppBar and FloatingToolbar both resolved to it;
+- no `ambiguousReactSources` line occurred;
+- no `SOURCE_WAIT` line occurred because the source was already present when preparation ran.
+
+The absence of `SOURCE_WAIT` is valid for the immediate path but does not exercise the delayed `OnGlobalLayoutListener` fallback yet.
+
+The accompanying 28.336 s Gallery screen recording was also scanned frame by frame. Across 1018 decoded video frames, the list-content region never approached the previous blank-window threshold; the minimum measured purple-content occupancy was about 83.6%, with no blank frames detected in this recording.
+
+Completed FloatingToolbar settles in the full trace always ended at a Material endpoint: either `offset=0` or `offset=offsetLimit`. No completed settle ended at an intermediate toolbar offset.
+
+This is enough to mark **Gallery transaction + toolbar settle + immediate source preparation** as revalidated on current HEAD. It is not enough to mark the whole branch revalidated, because the RN ScrollView / Feed paths and the delayed source-mount fallback still need their own pass.
+
 ## HEAD acceptance gate
 
-Do not promote the current branch from “measured baseline + reviewed cleanups” to “revalidated” until the regression checks above pass on device.
+Do not promote the current branch from “measured baseline + reviewed cleanups” to “fully revalidated” until the remaining regression checks pass on device.
 
 The acceptance condition remains:
 
