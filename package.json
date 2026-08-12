@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
-    "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs"
+    "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs",
+    "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs"
   },
   "peerDependencies": {
     "expo": "*",
