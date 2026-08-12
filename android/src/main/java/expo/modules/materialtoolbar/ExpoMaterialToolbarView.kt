@@ -130,7 +130,6 @@ class ExpoMaterialToolbarView(
   private val state = mutableStateOf(ToolbarState())
 
   private val floatingToolbarScrollConsumer = FloatingToolbarScrollConsumer(this, composeView)
-  private val nativeScrollCoordinator = ReactNativeScrollCoordinator(this, floatingToolbarScrollConsumer)
 
   init {
     composeView.layoutParams = ViewGroup.LayoutParams(
@@ -144,11 +143,11 @@ class ExpoMaterialToolbarView(
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-    nativeScrollCoordinator.attach()
+    NativeNestedScrollRegistry.registerToolbar(this, floatingToolbarScrollConsumer)
   }
 
   override fun onDetachedFromWindow() {
-    nativeScrollCoordinator.detach()
+    NativeNestedScrollRegistry.unregisterToolbar(this)
     floatingToolbarScrollConsumer.onHostDetached()
     super.onDetachedFromWindow()
   }
@@ -158,10 +157,12 @@ class ExpoMaterialToolbarView(
     scope: CoroutineScope?,
   ) {
     floatingToolbarScrollConsumer.bind(behavior, scope)
+    NativeNestedScrollRegistry.toolbarStateChanged(this)
   }
 
   private fun unbindComposeScrollBehavior(behavior: FloatingToolbarScrollBehavior?) {
     floatingToolbarScrollConsumer.unbind(behavior)
+    NativeNestedScrollRegistry.toolbarStateChanged(this)
   }
 
   private fun updateState(transform: (ToolbarState) -> ToolbarState) {

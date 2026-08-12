@@ -69,7 +69,6 @@ class ExpoMaterialTopAppBarView(
   private val geometryGeneration = mutableIntStateOf(0)
 
   private val topAppBarScrollConsumer = TopAppBarScrollConsumer()
-  private val nativeScrollCoordinator = ReactNativeScrollCoordinator(this, topAppBarScrollConsumer)
 
   init {
     composeView.layoutParams = ViewGroup.LayoutParams(
@@ -124,17 +123,13 @@ class ExpoMaterialTopAppBarView(
     updateChromeInsets(ViewCompat.getRootWindowInsets(this))
     ViewCompat.requestApplyInsets(this)
 
-    // Register with the transactional transport before the sampled fallback attaches. If a
-    // nested-scroll host already exists on this Fabric surface, the consumer marks itself
-    // transactional and the sampled coordinator sees it as disabled from the very first gesture,
-    // so the two never drive the same chrome.
+    // The registry is how a nested-scroll host on this surface finds this app bar. There is no
+    // other transport: no host, no chrome movement.
     NativeNestedScrollRegistry.registerTopBar(this, topAppBarScrollConsumer)
-    nativeScrollCoordinator.attach()
   }
 
   override fun onDetachedFromWindow() {
     NativeNestedScrollRegistry.unregisterTopBar(this)
-    nativeScrollCoordinator.detach()
     topAppBarScrollConsumer.onHostDetached()
     super.onDetachedFromWindow()
   }
@@ -146,10 +141,6 @@ class ExpoMaterialTopAppBarView(
   ) {
     topAppBarScrollConsumer.bind(behavior, scope, mode)
     NativeNestedScrollRegistry.topBarStateChanged(this)
-    // Any visible mode needs a scroll source: the pinned one to inset it, the others to drive it.
-    if (mode != null) {
-      nativeScrollCoordinator.discoverSources()
-    }
   }
 
   private fun unbindComposeScrollBehavior(
@@ -214,7 +205,6 @@ class ExpoMaterialTopAppBarView(
 
     if (topAppBarScrollConsumer.updateExpandedChromeHeight(childHeight)) {
       NativeNestedScrollRegistry.topBarStateChanged(this)
-      nativeScrollCoordinator.discoverSources()
     }
   }
 

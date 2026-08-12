@@ -1,4 +1,4 @@
-import { MaterialTopAppBar } from 'expo-material-toolbar';
+import { NativeScrollHost, MaterialTopAppBar } from 'expo-material-toolbar';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const SECTIONS = [
@@ -19,24 +19,27 @@ const SECTIONS = [
 export default function ProfileScreen() {
   return (
     <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content}>
-        {SECTIONS.map((section) => (
-          <View key={section.title} style={styles.section}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            {section.rows.map((row) => (
-              <View key={row} style={styles.row}>
-                <Text style={styles.rowLabel}>{row}</Text>
-              </View>
-            ))}
-          </View>
-        ))}
-      </ScrollView>
-      <MaterialTopAppBar title="Profile" variant="large" scrollBehavior="exitUntilCollapsed" />
+      <NativeScrollHost style={styles.host}>
+        <ScrollView contentContainerStyle={styles.content}>
+          {SECTIONS.map((section) => (
+            <View key={section.title} style={styles.section}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              {section.rows.map((row) => (
+                <View key={row} style={styles.row}>
+                  <Text style={styles.rowLabel}>{row}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </ScrollView>
+      </NativeScrollHost>
+      <MaterialTopAppBar title="Profile" variant="large" scrollBehavior="enterAlways" />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  host: { flex: 1 },
   root: { flex: 1, backgroundColor: '#12141a' },
   content: { paddingBottom: 32 },
   section: { paddingTop: 20 },

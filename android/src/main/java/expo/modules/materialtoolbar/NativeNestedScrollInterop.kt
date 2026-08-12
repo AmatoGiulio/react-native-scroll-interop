@@ -2,7 +2,6 @@ package expo.modules.materialtoolbar
 
 import android.util.Log
 import android.view.View
-import android.view.ViewGroup
 import com.facebook.react.uimanager.UIManagerHelper
 
 /**
@@ -10,10 +9,10 @@ import com.facebook.react.uimanager.UIManagerHelper
  *
  * The source is never guessed. It is whichever scrolling view sits under an
  * [ExpoNestedScrollHostView], because that host is its real Android ancestor and therefore the one
- * the view already talks to. Chrome lookup is fail-closed to match: exactly one eligible TopAppBar
- * on the same Fabric surface may participate, and ambiguity resolves to nothing rather than to a
- * heuristic. Picking "the largest visible ScrollView" is how this kind of code starts producing bug
- * reports nobody can reproduce.
+ * the view already talks to. Chrome lookup is fail-closed to match: at most one eligible consumer
+ * of each kind on the same Fabric surface may participate, and ambiguity resolves to nothing rather
+ * than to a heuristic. Picking "the largest visible ScrollView" is how this kind of code starts
+ * producing bug reports nobody can reproduce.
  *
  * Registration belongs here only because the module has nowhere better to put it. In the upstream
  * shape the screen layer owns it: a screen already knows which content is its own, and no
@@ -25,73 +24,78 @@ internal object NativeNestedScrollRegistry {
     val consumer: TopAppBarScrollConsumer,
   )
 
+  private data class ToolbarEntry(
+    val owner: ExpoMaterialToolbarView,
+    val consumer: FloatingToolbarScrollConsumer,
+  )
+
   private val hosts = LinkedHashSet<ExpoNestedScrollHostView>()
   private val topBars = LinkedHashSet<TopBarEntry>()
+  private val toolbars = LinkedHashSet<ToolbarEntry>()
 
   fun registerHost(host: ExpoNestedScrollHostView) {
     hosts += host
-    refreshAvailability()
     host.post { host.refreshNestedChromeBinding() }
   }
 
   fun unregisterHost(host: ExpoNestedScrollHostView) {
     hosts -= host
-    refreshAvailability()
   }
 
   fun registerTopBar(owner: ExpoMaterialTopAppBarView, consumer: TopAppBarScrollConsumer) {
     topBars.removeAll { it.owner === owner }
     topBars += TopBarEntry(owner, consumer)
-    refreshAvailability()
     refreshHostsFor(owner)
   }
 
   fun unregisterTopBar(owner: ExpoMaterialTopAppBarView) {
-    val removed = topBars.filter { it.owner === owner }
     topBars.removeAll { it.owner === owner }
-    removed.forEach { it.consumer.setNestedTransportAvailable(false) }
-    refreshAvailability()
   }
 
-  /** Call whenever Compose binds/unbinds behavior or expanded chrome geometry changes. */
-  fun topBarStateChanged(owner: ExpoMaterialTopAppBarView) {
-    refreshAvailability()
+  fun registerToolbar(owner: ExpoMaterialToolbarView, consumer: FloatingToolbarScrollConsumer) {
+    toolbars.removeAll { it.owner === owner }
+    toolbars += ToolbarEntry(owner, consumer)
     refreshHostsFor(owner)
   }
 
+  fun unregisterToolbar(owner: ExpoMaterialToolbarView) {
+    toolbars.removeAll { it.owner === owner }
+  }
+
+  /** Call whenever Compose binds/unbinds behavior or expanded chrome geometry changes. */
+  fun topBarStateChanged(owner: ExpoMaterialTopAppBarView) = refreshHostsFor(owner)
+
+  fun toolbarStateChanged(owner: ExpoMaterialToolbarView) = refreshHostsFor(owner)
+
   fun resolveTopBar(source: View): TopAppBarScrollConsumer? {
     cleanupDetached()
-    val candidates = topBars.filter { entry ->
-      entry.owner.isAttachedToWindow &&
-        entry.owner.isShown &&
-        entry.owner.windowVisibility == View.VISIBLE &&
-        sameNativeScope(entry.owner, source) &&
-        entry.consumer.isNestedDirectCapable
-    }
+    val candidates = topBars.filter { isEligible(it.owner, source) && it.consumer.hasChrome }
+    return single(candidates.map { it.consumer }, "TopAppBar", source)
+  }
 
-    if (candidates.size == 1) return candidates.first().consumer
+  fun resolveToolbar(source: View): FloatingToolbarScrollConsumer? {
+    cleanupDetached()
+    val candidates = toolbars.filter { isEligible(it.owner, source) && it.consumer.isBound }
+    return single(candidates.map { it.consumer }, "FloatingToolbar", source)
+  }
 
+  private fun <T> single(candidates: List<T>, kind: String, source: View): T? {
+    if (candidates.size == 1) return candidates.first()
     if (BuildConfig.DEBUG && candidates.size > 1) {
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "TX_REGISTRY ambiguousTopBars count=${candidates.size} source=${source.javaClass.name}#${source.id}",
+        "TX_REGISTRY ambiguous$kind count=${candidates.size} " +
+          "source=${source.javaClass.name}#${source.id}",
       )
     }
     return null
   }
 
-  private fun refreshAvailability() {
-    cleanupDetached()
-    topBars.forEach { entry ->
-      val available = hosts.any { host ->
-        host.isAttachedToWindow &&
-          host.isShown &&
-          host.windowVisibility == View.VISIBLE &&
-          sameNativeScope(entry.owner, host)
-      }
-      entry.consumer.setNestedTransportAvailable(available)
-    }
-  }
+  private fun isEligible(owner: View, source: View): Boolean =
+    owner.isAttachedToWindow &&
+      owner.isShown &&
+      owner.windowVisibility == View.VISIBLE &&
+      sameNativeScope(owner, source)
 
   private fun refreshHostsFor(owner: View) {
     hosts.forEach { host ->
@@ -103,9 +107,8 @@ internal object NativeNestedScrollRegistry {
 
   private fun cleanupDetached() {
     hosts.removeAll { !it.isAttachedToWindow }
-    val detached = topBars.filter { !it.owner.isAttachedToWindow }
-    topBars.removeAll(detached.toSet())
-    detached.forEach { it.consumer.setNestedTransportAvailable(false) }
+    topBars.removeAll { !it.owner.isAttachedToWindow }
+    toolbars.removeAll { !it.owner.isAttachedToWindow }
   }
 
   private fun sameNativeScope(first: View, second: View): Boolean {

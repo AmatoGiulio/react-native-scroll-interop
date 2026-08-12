@@ -1,5 +1,7 @@
 package expo.modules.materialtoolbar
 
+internal const val NATIVE_SCROLL_LOG_TAG = "ExpoMaterialToolbar"
+
 /**
  * Switch for the transport's per-frame tracing.
  *

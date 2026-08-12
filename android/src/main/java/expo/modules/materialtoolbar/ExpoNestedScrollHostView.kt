@@ -5,21 +5,17 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.widget.OverScroller
 import androidx.core.view.NestedScrollingChild2
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
 import com.facebook.react.views.scroll.ReactScrollView
-import com.facebook.react.views.scroll.ReactScrollViewHelper.HasScrollState
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.ceil
-import kotlin.math.roundToInt
 
 /**
  * A nested-scrolling ancestor for a React Native scroll source, so native chrome can follow it.
@@ -30,15 +26,18 @@ import kotlin.math.roundToInt
  * from React Native at all. Being that ancestor is the entire trick; no patch to React Native, no
  * JS involvement, no ref handed anywhere.
  *
- * Two things make it usable rather than merely possible:
+ * There is exactly one transaction and exactly one physics.
  *
- *  - **One transaction per frame.** Material's pre-scroll phase decides how much of the delta the
- *    chrome takes, and the child must scroll by the remainder. Both run synchronously inside
- *    [onNestedPreScroll], so chrome never trails the content by a frame.
- *  - **Parent-owned momentum.** RN's own fling emits no per-frame nested-scroll callbacks, so a
- *    fling would move the list while chrome stood still. [onNestedPreFling] takes the fling over
- *    and drives it through the same transaction driver. This is the invasive part, and the rules
- *    gating it live in [NestedFlingPolicy] with the regressions they prevent written down.
+ * **One transaction per frame.** Material's pre-scroll phase decides how much of the delta the
+ * chrome takes, and the child must scroll by the remainder. Both run synchronously inside
+ * [onNestedPreScroll], so chrome never trails the content by a frame. Every consumer on the screen
+ * joins that same transaction in its own phase: an app bar that withholds scroll in pre, a floating
+ * toolbar that reacts to what the list actually did in post.
+ *
+ * **The source owns the physics.** Touch comes through `ScrollView.onTouchEvent`, momentum through
+ * the source's own `TYPE_NON_TOUCH` dispatch (see `docs/upstream/`). This parent never runs a
+ * scroller of its own: reproducing a fling next to the one already running is a second, slightly
+ * different scroll view driving the same pixels.
  *
  * Being an explicit component the app wraps around its list is a limitation of this module, not of
  * the approach: the natural home for this is the screen layer, which already wraps screen content
@@ -57,38 +56,13 @@ class ExpoNestedScrollHostView(
   private var transactionCount = 0L
 
   private var activeTopBar: TopAppBarScrollConsumer? = null
+  private var activeToolbar: FloatingToolbarScrollConsumer? = null
   private var activeSource: ReactScrollView? = null
   private var directTransactionActive = false
 
-  // Parent-owned momentum. RN's private fling is intercepted in onNestedPreFling; each OverScroller
-  // frame is then fed through the exact same transaction driver used by touch.
-  private var proxyScroller: OverScroller? = null
-  private var proxyTarget: ReactScrollView? = null
-  private var proxyGeneration = 0L
-  private var proxyFrameCount = 0L
-  private var proxyLastScrollerY = 0
-  private var proxyLastVelocityY = 0
-  private var proxyRunnable: Runnable? = null
-
-  // True between the source's own TYPE_NON_TOUCH start and stop — momentum the source is reporting
-  // itself, rather than momentum this parent had to reproduce.
+  // True between the source's own TYPE_NON_TOUCH start and stop. The movement is not over when the
+  // finger leaves; it changes owner, and chrome must not settle in between.
   private var momentumSessionActive = false
-
-  // Armed by a real ACTION_DOWN reaching this ancestor, consumed by the nested session it opens.
-  // A session that starts without one is the source re-entering after we intercepted its fling, not
-  // a new gesture, and must not be allowed to take the source away from a running proxy.
-  private var touchDownPending = false
-
-  // Set when a proxy fling is cancelled before executing a single frame. That only happens when the
-  // source re-opens a nested session as a consequence of the interception itself, which spins a
-  // start/cancel loop at frame rate. While pending we hand the fling back to the source; real scroll
-  // input clears it.
-  private var flingHandoffPending = false
-
-  // Whether the source asked for a fling before ending this gesture. A release that never did is a
-  // release whose movement is genuinely over, which is the only case where the transport can report
-  // the end of a touch without racing a fling that has not started yet.
-  private var flingRequestedThisSession = false
 
   init {
     clipChildren = false
@@ -96,15 +70,13 @@ class ExpoNestedScrollHostView(
   }
 
   override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-    // Observed before the scrolling child sees it, so the flag is always set by the time that child
-    // opens its nested session. This is the only evidence of a genuinely new gesture we can get.
-    when (ev.actionMasked) {
-      MotionEvent.ACTION_DOWN -> {
-        touchDownPending = true
-        log("TOUCH_DOWN pointers=${ev.pointerCount} downTime=${ev.downTime} eventTime=${ev.eventTime}")
+    if (NativeScrollTracing.enabled) {
+      when (ev.actionMasked) {
+        MotionEvent.ACTION_DOWN ->
+          log("TOUCH_DOWN pointers=${ev.pointerCount} downTime=${ev.downTime}")
+        MotionEvent.ACTION_UP -> log("TOUCH_UP eventTime=${ev.eventTime}")
+        MotionEvent.ACTION_CANCEL -> log("TOUCH_CANCEL eventTime=${ev.eventTime}")
       }
-      MotionEvent.ACTION_UP -> log("TOUCH_UP eventTime=${ev.eventTime}")
-      MotionEvent.ACTION_CANCEL -> log("TOUCH_CANCEL eventTime=${ev.eventTime}")
     }
     return super.dispatchTouchEvent(ev)
   }
@@ -116,12 +88,10 @@ class ExpoNestedScrollHostView(
   }
 
   override fun onDetachedFromWindow() {
-    stopProxyFling("host-detached", allowHandoff = false)
     NativeNestedScrollRegistry.unregisterHost(this)
     momentumSessionActive = false
-    flingHandoffPending = false
-    touchDownPending = false
     activeTopBar = null
+    activeToolbar = null
     activeSource = null
     directTransactionActive = false
     super.onDetachedFromWindow()
@@ -168,16 +138,18 @@ class ExpoNestedScrollHostView(
 
       val react = view as? ReactScrollView
       val topBar = if (react != null) NativeNestedScrollRegistry.resolveTopBar(react) else null
+      val toolbar = if (react != null) NativeNestedScrollRegistry.resolveToolbar(react) else null
       val prepared = if (react != null && topBar != null) topBar.prepareNestedSource(react) else false
-      if (react != null && topBar != null) {
+      if (react != null && (topBar != null || toolbar != null)) {
         activeTopBar = topBar
+        activeToolbar = toolbar
         activeSource = react
       }
 
       log(
         "SOURCE_TREE ${targetLabel(view)} " +
           "canUp=${view.canScrollVertically(-1)} canDown=${view.canScrollVertically(1)} " +
-          "topBar=${topBar != null} chromePrepared=$prepared",
+          "topBar=${topBar != null} toolbar=${toolbar != null} chromePrepared=$prepared",
       )
     }
   }
@@ -205,16 +177,13 @@ class ExpoNestedScrollHostView(
     nestedParentHelper.onStopNestedScroll(target)
     log(
       "NESTED_STOP contract=platform preCount=$preCount postCount=$postCount " +
-        "proxy=${proxyScroller != null} direct=$directTransactionActive ${targetLabel(target)}",
+        "direct=$directTransactionActive ${targetLabel(target)}",
     )
-    finishTouchIfNoProxy(target)
+    finishTouch(target)
   }
 
   override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) {
     preCount += 1
-    // Real scroll input is the only thing that clears the handoff: it proves the source is being
-    // driven by a finger again rather than re-entering from our own interception.
-    if (dy != 0) flingHandoffPending = false
     val tx = driveTransaction(target, dy, NativeNestedInputType.Touch)
     if (tx != null) {
       // Both the Material and the child phase already ran synchronously inside the transaction, so
@@ -250,32 +219,17 @@ class ExpoNestedScrollHostView(
     )
   }
 
+  /**
+   * Never consumed. The fling belongs to the source, which reports it back as `TYPE_NON_TOUCH`
+   * nested scroll — the same transaction, with the source's own physics behind it.
+   */
   override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
-    val react = target as? ReactScrollView
-    val topBar = activeTopBar ?: NativeNestedScrollRegistry.resolveTopBar(target)
-    val direction = NestedFlingPolicy.directionOf(velocityY)
-    val canDrive = NestedFlingPolicy.shouldDriveFling(
-      scrollFrameCount = preCount,
-      hasDirectTransaction = directTransactionActive,
-      hasChrome = react != null && topBar != null,
-      chromeCanDrive = react != null && topBar != null && topBar.canDriveFling(react, direction),
-      handoffPending = flingHandoffPending,
-      sourceOwnsMomentum = sourceOwnsMomentum(target),
-    )
-
-    flingRequestedThisSession = true
-
     log(
-      "NESTED_PRE_FLING vx=$velocityX vy=$velocityY preCount=$preCount postCount=$postCount " +
-        "proxyIntercept=$canDrive direct=$directTransactionActive " +
-        "handoffPending=$flingHandoffPending ${targetLabel(target)}",
+      "NESTED_PRE_FLING vx=$velocityX vy=$velocityY preCount=$preCount " +
+        "sourceOwnsMomentum=${sourceOwnsMomentum(target)} direct=$directTransactionActive " +
+        targetLabel(target),
     )
-
-    if (!canDrive) return false
-    startProxyFling(react!!, velocityY)
-    // Consume the pre-fling so RN never starts its private OverScroller, which emits no per-frame
-    // nested callbacks and would move the list while chrome stood still.
-    return true
+    return false
   }
 
   override fun onNestedFling(
@@ -330,14 +284,13 @@ class ExpoNestedScrollHostView(
     nestedParentHelper.onStopNestedScroll(target, type)
     log(
       "NESTED_STOP contract=androidx type=${typeLabel(type)} preCount=$preCount postCount=$postCount " +
-        "proxy=${proxyScroller != null} direct=$directTransactionActive " +
-        "momentum=$momentumSessionActive ${targetLabel(target)}",
+        "direct=$directTransactionActive momentum=$momentumSessionActive ${targetLabel(target)}",
     )
     if (type == ViewCompat.TYPE_NON_TOUCH) {
       momentumSessionActive = false
       finishMovement(target, "momentum-stop")
     } else {
-      finishTouchIfNoProxy(target)
+      finishTouch(target)
     }
   }
 
@@ -356,7 +309,11 @@ class ExpoNestedScrollHostView(
     }
     val tx = driveTransaction(target, dy, inputType)
     if (tx != null) {
-      consumed[1] += dy
+      // Claim what the transaction actually used, never the whole delta. Distance nobody could
+      // absorb has to stay unclaimed: on touch it is what lets the source run its own overscroll,
+      // and during momentum it is the only signal that the fling has reached an edge — a source
+      // told its delta was consumed keeps producing distance for the rest of its decay curve.
+      consumed[1] += dy - tx.unconsumedY
       logTransaction("ANDROIDX_${typeLabel(type)}", tx)
     } else {
       log(
@@ -429,22 +386,29 @@ class ExpoNestedScrollHostView(
   ): DrivenTransaction? {
     if (!directTransactionActive || requestedY == 0) return null
     val source = target as? ReactScrollView ?: return null
-    val topBar = activeTopBar ?: return null
+    val topBar = activeTopBar?.takeIf { it.isNestedDirectCapable }
+    val toolbar = activeToolbar
+    if (topBar == null && toolbar == null) return null
 
     transactionCount += 1
 
+    // Pre-scroll: the only phase that can take distance away from the list. A floating toolbar never
+    // does, so this phase belongs to the app bar alone.
+    //
     // Material3 exitUntilCollapsed reports the whole pre-scroll `available` when its state changes,
     // even if heightOffset clamps at the collapse limit. Android can batch hundreds of pixels into
     // one callback (and a janked fling frame can be >1000 px), so split exactly at the Material
     // boundary. This is two genuine nested-scroll segments, not a synthetic remainder: the first
     // reaches the chrome endpoint, the second is then eligible for child consumption.
-    val preRequestY = if (requestedY > 0) {
-      val remainingCollapse = ceil(topBar.remainingCollapseAmountPx().toDouble()).toInt()
-      if (remainingCollapse > 0) min(requestedY, remainingCollapse) else 0
-    } else {
-      requestedY
+    val preRequestY = when {
+      topBar == null -> 0
+      requestedY > 0 -> {
+        val remainingCollapse = ceil(topBar.remainingCollapseAmountPx().toDouble()).toInt()
+        if (remainingCollapse > 0) min(requestedY, remainingCollapse) else 0
+      }
+      else -> requestedY
     }
-    val pre = topBar.nestedPreScroll(preRequestY, inputType)
+    val pre = topBar?.nestedPreScroll(preRequestY, inputType) ?: NativeNestedPreResult(0, 0)
     val beforePrePhysical = source.scrollY
     if (pre.chromeMovementY != 0) source.scrollBy(0, pre.chromeMovementY)
     val prePhysical = source.scrollY - beforePrePhysical
@@ -454,9 +418,8 @@ class ExpoNestedScrollHostView(
     // The physical RN coordinate contains Material's collapse amount because the native scroll-away
     // content translation is fixed at expanded height. On downward motion only the *logical* child
     // range may be consumed before the remainder becomes TopAppBar post-scroll available.
-    val childRequested = if (afterPreY < 0) {
-      val logicalBefore = topBar.logicalChildY(source)
-      max(afterPreY, -logicalBefore)
+    val childRequested = if (afterPreY < 0 && topBar != null) {
+      max(afterPreY, -topBar.logicalChildY(source))
     } else {
       afterPreY
     }
@@ -466,14 +429,18 @@ class ExpoNestedScrollHostView(
     val childConsumed = source.scrollY - beforeChildY
     val postAvailable = afterPreY - childConsumed
 
-    val post = topBar.nestedPostScroll(childConsumed, postAvailable, inputType)
+    // Post-scroll: what the list actually did. Both consumers see the same number, in the phase
+    // Material's own behaviors expect it.
+    val post = topBar?.nestedPostScroll(childConsumed, postAvailable, inputType)
+      ?: NativeNestedPostResult(0, 0)
     val beforePostPhysical = source.scrollY
     if (post.chromeMovementY != 0) source.scrollBy(0, post.chromeMovementY)
     val postPhysical = source.scrollY - beforePostPhysical
+    toolbar?.nestedPostScroll(childConsumed, inputType)
 
     val unconsumed = postAvailable - post.availableConsumedY
-    val logicalAfter = topBar.logicalChildY(source)
-    val collapseAfter = topBar.currentCollapseAmountPx()
+    val logicalAfter = topBar?.logicalChildY(source) ?: source.scrollY
+    val collapseAfter = topBar?.currentCollapseAmountPx() ?: 0f
 
     if (BuildConfig.DEBUG) {
       if (prePhysical != pre.chromeMovementY || postPhysical != post.chromeMovementY) {
@@ -524,206 +491,55 @@ class ExpoNestedScrollHostView(
     )
   }
 
+  /**
+   * Bind the transaction to the source and to whatever chrome is on this screen.
+   *
+   * Called for both the touch session and the momentum session the source opens after it, because
+   * a fling is not a new gesture: rebinding is how the second half of the same movement finds the
+   * same consumers.
+   */
   private fun beginNestedSession(target: View) {
-    // A fresh touch owns the source immediately and must interrupt parent-owned momentum/snap.
-    // Without one, this is the source re-opening a session as a consequence of our own fling
-    // interception: leave the running proxy alone, or it gets torn down before its first frame and
-    // the source retries, spinning a start/cancel loop at frame rate.
-    val freshTouch = touchDownPending
-    touchDownPending = false
-    if (freshTouch) {
-      stopProxyFling("new-touch")
-    } else if (proxyScroller != null) {
-      log("TX_REENTRY proxyKept frames=$proxyFrameCount ${targetLabel(target)}")
-      return
-    }
-
     preCount = 0
     postCount = 0
     transactionCount = 0
-    flingRequestedThisSession = false
 
     val react = target as? ReactScrollView
     val topBar = NativeNestedScrollRegistry.resolveTopBar(target)
+    val toolbar = NativeNestedScrollRegistry.resolveToolbar(target)
     activeSource = react
     activeTopBar = topBar
-    directTransactionActive = react != null && topBar?.beginNestedTransaction(react) == true
+    activeToolbar = toolbar
+
+    val topBarReady = react != null && topBar?.beginNestedTransaction(react) == true
+    val toolbarReady = react != null && toolbar?.beginNestedTransaction(react) == true
+    directTransactionActive = topBarReady || toolbarReady
 
     log(
-      "TX_BIND source=${react?.id} topBar=${topBar != null} freshTouch=$freshTouch " +
+      "TX_BIND source=${react?.id} topBar=$topBarReady toolbar=$toolbarReady " +
         "direct=$directTransactionActive " +
         "surfaceSource=${surfaceId(target)} surfaceHost=${surfaceId(this)}",
     )
   }
 
-  private fun finishTouchIfNoProxy(target: View) {
-    if (proxyScroller != null) return
-
-    // A source that dispatches its own momentum opens the NON_TOUCH session inside `fling()`, which
-    // runs before the touch session is closed. The movement is not over here, it changed owner:
-    // settling now would run Material's terminal snap against a fling still to come.
+  private fun finishTouch(target: View) {
+    // The source opens its momentum session inside `fling()`, which runs before the touch session
+    // is closed. The movement is not over here, it changed owner: settling now would run Material's
+    // terminal snap against a fling still to come.
     if (momentumSessionActive) {
       log("TX_TOUCH_STOP deferred=momentum ${targetLabel(target)}")
       return
     }
-
-    // A release with no fling behind it ends the movement here, and the sampling coordinator would
-    // otherwise only work that out after NON_FLING_SETTLE_GRACE_MS of stillness. Report it so
-    // chrome settles from the frame the finger left instead of a beat later. The velocity is zero
-    // because there is none: that is what no fling means.
-    //
-    // Gated on the source never having asked for a fling. onNestedPreFling always precedes
-    // onStopNestedScroll, so by here the answer is known.
-    finishMovement(target, "touch-stop", reportSettled = !flingRequestedThisSession)
+    finishMovement(target, "touch-stop")
   }
 
   /** Close the chrome transaction for a movement that has genuinely ended. */
-  private fun finishMovement(target: View, reason: String, reportSettled: Boolean = true) {
+  private fun finishMovement(target: View, reason: String) {
     if (!directTransactionActive) return
-    val source = target as? ReactScrollView ?: activeSource ?: return
-    activeTopBar?.endNestedTransaction(source, reason)
-    if (reportSettled) {
-      ReactNativeScrollCoordinator.transportSettled(source, reason)
-    }
+    val source = target as? ReactScrollView ?: activeSource
+    if (source != null) activeTopBar?.endNestedTransaction(source, reason)
+    activeToolbar?.endNestedTransaction()
     directTransactionActive = false
-  }
-
-  // ---------------------------------------------------------------------------
-  // Parent-owned fling: same transaction driver, NON_TOUCH source.
-  // ---------------------------------------------------------------------------
-
-  private fun startProxyFling(target: ReactScrollView, velocityY: Float) {
-    stopProxyFling("replace", allowHandoff = false)
-
-    val scrollState = (target as? HasScrollState)?.reactScrollViewScrollState
-    val decelerationRate = scrollState?.decelerationRate ?: 0.985f
-    val scroller = OverScroller(target.context).also {
-      it.setFriction(1.0f - decelerationRate)
-    }
-
-    val startY = target.scrollY.coerceAtLeast(0)
-    // RN's velocity tracker can report well past the platform ceiling on a violent swipe. The
-    // source's own fling would have been clamped, so clamp too or the proxy runs a physics the
-    // source would never have produced.
-    val maxFlingVelocity = ViewConfiguration.get(context).scaledMaximumFlingVelocity.toFloat()
-    val clampedVelocityY = velocityY.coerceIn(-maxFlingVelocity, maxFlingVelocity)
-    val roundedVelocityY = clampedVelocityY.roundToInt()
-    val viewportHeight = max(0, target.height - target.paddingTop - target.paddingBottom)
-
-    scroller.fling(
-      0,
-      startY,
-      0,
-      roundedVelocityY,
-      0,
-      0,
-      0,
-      Int.MAX_VALUE,
-      0,
-      viewportHeight / 2,
-    )
-
-    val generation = ++proxyGeneration
-    proxyScroller = scroller
-    proxyTarget = target
-    proxyFrameCount = 0
-    proxyLastScrollerY = startY
-    proxyLastVelocityY = roundedVelocityY
-
-    log(
-      "PROXY_FLING_START gen=$generation startY=$startY vy=$roundedVelocityY " +
-        "requestedVy=$velocityY maxVy=$maxFlingVelocity " +
-        "decelerationRate=$decelerationRate friction=${1.0f - decelerationRate} " +
-        "viewport=$viewportHeight finalY=${scroller.finalY} ${targetLabel(target)}",
-    )
-
-    val runnable = object : Runnable {
-      override fun run() {
-        if (generation != proxyGeneration) return
-        val currentScroller = proxyScroller ?: return
-        val currentTarget = proxyTarget ?: return
-
-        val active = currentScroller.computeScrollOffset()
-        val scrollerY = currentScroller.currY
-        val requestedDy = scrollerY - proxyLastScrollerY
-        proxyLastScrollerY = scrollerY
-
-        if (requestedDy != 0) {
-          proxyFrameCount += 1
-          val tx = driveTransaction(currentTarget, requestedDy, NativeNestedInputType.NonTouch)
-          if (tx == null) {
-            finishProxyFling(generation, "transaction-lost")
-            return
-          }
-          logTransaction("NON_TOUCH", tx)
-
-          if (tx.unconsumedY != 0) {
-            finishProxyFling(generation, "edge-unconsumed")
-            return
-          }
-        }
-
-        if (active && !currentScroller.isFinished) {
-          currentTarget.postOnAnimation(this)
-        } else {
-          finishProxyFling(generation, "finished")
-        }
-      }
-    }
-
-    proxyRunnable = runnable
-    target.postOnAnimation(runnable)
-  }
-
-  private fun finishProxyFling(generation: Long, reason: String) {
-    if (generation != proxyGeneration) return
-    val target = proxyTarget
-    val scroller = proxyScroller
-    val currVelocity = scroller?.currVelocity ?: 0f
-    log(
-      "PROXY_FLING_END gen=$generation reason=$reason frames=$proxyFrameCount " +
-        "requestedVy=$proxyLastVelocityY currVelocity=$currVelocity finalSourceY=${target?.scrollY}",
-    )
-
-    // Remove the proxy before launching Material snap so a new touch can cancel only the snap and
-    // never see a stale momentum owner.
-    stopProxyFling(null, allowHandoff = false)
-    if (target != null) {
-      activeTopBar?.endNestedTransaction(target, "proxy-$reason")
-      // The sampling coordinator drives the floating toolbar and cannot see that momentum ended
-      // here; left to its inactivity timeout it settles ~80ms late, which reads as a step in the
-      // toolbar's travel. We own the last frame of this fling, so hand it the exact moment — and
-      // No velocity travels with it: every frame of this fling already reached the consumers as a
-      // scroll delta, so handing them the velocity too would decay a second time over movement
-      // already applied.
-      ReactNativeScrollCoordinator.transportSettled(target, reason)
-    }
-    directTransactionActive = false
-  }
-
-  /**
-   * [allowHandoff] is false for internal teardown (replacing one proxy with another, or finishing a
-   * fling that ran its course). Only an external interruption that killed a proxy before its first
-   * frame should arm the handoff.
-   */
-  private fun stopProxyFling(reason: String?, allowHandoff: Boolean = true) {
-    val target = proxyTarget
-    val runnable = proxyRunnable
-    if (target != null && runnable != null) target.removeCallbacks(runnable)
-    val hadProxy = proxyScroller != null || proxyTarget != null
-    val framesRun = proxyFrameCount
-    proxyScroller?.abortAnimation()
-    proxyGeneration += 1
-    proxyScroller = null
-    proxyTarget = null
-    proxyRunnable = null
-    proxyFrameCount = 0
-    if (NestedFlingPolicy.shouldArmHandoff(hadProxy, framesRun, externalInterruption = allowHandoff)) {
-      flingHandoffPending = true
-    }
-    if (hadProxy && reason != null) {
-      log("PROXY_FLING_CANCEL reason=$reason framesRun=$framesRun handoffPending=$flingHandoffPending")
-    }
+    log("TX_END reason=$reason sourceY=${source?.scrollY}")
   }
 
   // ---------------------------------------------------------------------------

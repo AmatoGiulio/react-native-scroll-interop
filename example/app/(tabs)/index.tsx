@@ -40,7 +40,6 @@ export default function GalleryScreen() {
 
 	return (
 		<View style={styles.root}>
-			<NativeScrollHost style={{ flex: 1 }}>
 
 				<FlashList
 					data={PHOTOS}
@@ -50,7 +49,6 @@ export default function GalleryScreen() {
 					showsVerticalScrollIndicator={false}
 					renderItem={renderItem}
 				/>
-			</NativeScrollHost>
 			<MaterialTopAppBar title="Gallery" variant="large" scrollBehavior="exitUntilCollapsed" />
 		</View>
 	);

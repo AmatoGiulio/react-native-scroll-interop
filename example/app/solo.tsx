@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { MaterialTopAppBar } from 'expo-material-toolbar';
+import { NativeScrollHost, MaterialTopAppBar } from 'expo-material-toolbar';
 import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -33,7 +33,9 @@ export default function SoloScreen() {
 
   return (
     <View style={styles.root}>
-      <FlashList data={PHOTOS} numColumns={COLUMNS} keyExtractor={(i) => i.id} renderItem={renderItem} />
+      <NativeScrollHost style={styles.host}>
+        <FlashList data={PHOTOS} numColumns={COLUMNS} keyExtractor={(i) => i.id} renderItem={renderItem} />
+      </NativeScrollHost>
       <MaterialTopAppBar title="Gallery" variant="large" scrollBehavior="exitUntilCollapsed" />
     </View>
   );
@@ -41,6 +43,7 @@ export default function SoloScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#12141a' },
+  host: { flex: 1 },
   cell: { flex: 1 / COLUMNS, aspectRatio: 1, padding: 1 },
   image: { flex: 1, borderRadius: 2 },
 });

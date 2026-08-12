@@ -19,11 +19,18 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
-/** Material-specific consumer. It knows nothing about ReactScrollViewHelper or FlashList. */
+/**
+ * Material-specific consumer, driven by the nested-scroll transaction the source itself reports.
+ *
+ * A floating toolbar takes nothing away from the list: it slides out of the way of movement that
+ * already happened. So it joins the transaction in its post-scroll phase, which is also the phase
+ * Material's own `FloatingToolbarScrollBehavior` expects, and never withholds a pixel from the
+ * child.
+ */
 internal class FloatingToolbarScrollConsumer(
   private val hostView: ViewGroup,
   private val composeView: ComposeView,
-) : NativeScrollConsumer {
+) {
   private var behavior: FloatingToolbarScrollBehavior? = null
   private var scope: CoroutineScope? = null
   private var settleJob: Job? = null
@@ -33,7 +40,8 @@ internal class FloatingToolbarScrollConsumer(
   private var lastInputDeltaY = 0
   private var activeSource: ViewGroup? = null
 
-  override val isEnabled: Boolean
+  /** Whether this toolbar can take part in a transaction at all. */
+  val isBound: Boolean
     get() = behavior != null && scope != null
 
   fun bind(newBehavior: FloatingToolbarScrollBehavior?, newScope: CoroutineScope?) {
@@ -68,7 +76,8 @@ internal class FloatingToolbarScrollConsumer(
     activeSource = null
   }
 
-  override fun onScrollSessionStart(source: ViewGroup) {
+  fun beginNestedTransaction(source: ViewGroup): Boolean {
+    if (!isBound) return false
     cancelSettle()
     activeSource = source
     debugFrameCounter = 0
@@ -79,19 +88,30 @@ internal class FloatingToolbarScrollConsumer(
     if (BuildConfig.DEBUG) {
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "BEGIN_DRAG view=${source.id} scrollY=${source.scrollY} compose=${composeView.measuredWidth}x${composeView.measuredHeight} offset=$current limit=${behavior?.state?.offsetLimit}",
+        "FLOAT_TX_BEGIN view=${source.id} scrollY=${source.scrollY} compose=${composeView.measuredWidth}x${composeView.measuredHeight} offset=$current limit=${behavior?.state?.offsetLimit}",
       )
     }
+    return true
   }
 
-  override fun onScrollFrame(frame: NativeScrollFrame) {
-    if (frame.deltaY == 0) return
+  /**
+   * The post-scroll phase of one nested transaction.
+   *
+   * [childConsumedY] is what the list actually moved, in Android's sign convention, and
+   * [inputType] carries whether it came from a finger or from the source's own momentum — the same
+   * distinction Compose draws between `UserInput` and `SideEffect`, which Material's behaviors read.
+   */
+  fun nestedPostScroll(childConsumedY: Int, inputType: NativeNestedInputType) {
+    if (childConsumedY == 0) return
     val currentBehavior = behavior ?: return
-    lastInputDeltaY = frame.deltaY
+    lastInputDeltaY = childConsumedY
     currentBehavior.onPostScroll(
-      consumed = Offset(0f, -frame.deltaY.toFloat()),
+      consumed = Offset(0f, -childConsumedY.toFloat()),
       available = Offset.Zero,
-      source = NestedScrollSource.UserInput,
+      source = when (inputType) {
+        NativeNestedInputType.Touch -> NestedScrollSource.UserInput
+        NativeNestedInputType.NonTouch -> NestedScrollSource.SideEffect
+      },
     )
     applyOffset(currentBehavior.state.offset)
     if (BuildConfig.DEBUG) {
@@ -99,13 +119,13 @@ internal class FloatingToolbarScrollConsumer(
       if (debugFrameCounter % 8 == 1) {
         Log.d(
           NATIVE_SCROLL_LOG_TAG,
-          "material dy=${frame.deltaY} scrollY=${frame.scrollY} rawY=${frame.rawScrollY} offset=${currentBehavior.state.offset} limit=${currentBehavior.state.offsetLimit} tx=${composeView.translationX} ty=${composeView.translationY}",
+          "material dy=$childConsumedY type=$inputType offset=${currentBehavior.state.offset} limit=${currentBehavior.state.offsetLimit} tx=${composeView.translationX} ty=${composeView.translationY}",
         )
       }
     }
   }
 
-  override fun onScrollSessionEnd() {
+  fun endNestedTransaction() {
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     cancelSettle()

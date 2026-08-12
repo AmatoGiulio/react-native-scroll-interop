@@ -3,7 +3,7 @@ import React, { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MaterialTopAppBar } from 'expo-material-toolbar';
+import { NativeScrollHost, MaterialTopAppBar } from 'expo-material-toolbar';
 
 /**
  * Faithful copy of the screen that works in the host app, with only the private design-system
@@ -35,15 +35,17 @@ const Ref = () => {
 
   return (
     <View style={{ flex: 1 }}>
-      <FlashList
-        renderItem={renderItem}
-        data={DATA}
-        masonry
-        numColumns={2}
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.contentContainerStyle}
-      />
+      <NativeScrollHost style={{ flex: 1 }}>
+        <FlashList
+          renderItem={renderItem}
+          data={DATA}
+          masonry
+          numColumns={2}
+          style={styles.container}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.contentContainerStyle}
+        />
+      </NativeScrollHost>
       <MaterialTopAppBar
         dynamicColor
         title="Native scroll PoC"
