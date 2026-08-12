@@ -60,7 +60,7 @@ index b0f6203..018b74f 100644
      mFpsListener = fpsListener;
  
      mScroller = getOverScrollerFromParent();
-+    mNestedScrollingChildHelper.setNestedScrollingEnabled(true);
++    mNestedScrollingChildHelper.setNestedScrollingEnabled(super.isNestedScrollingEnabled());
      setOnHierarchyChangeListener(this);
      setScrollBarStyle(SCROLLBARS_OUTSIDE_OVERLAY);
      setClipChildren(false);
