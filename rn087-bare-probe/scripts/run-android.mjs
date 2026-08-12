@@ -7,8 +7,8 @@ import process from 'node:process';
 import {spawn, spawnSync} from 'node:child_process';
 
 const mode = process.argv[2];
-if (mode !== 'off' && mode !== 'on') {
-  console.error('Usage: node scripts/run-android.mjs off|on');
+if (mode !== 'off' && mode !== 'on' && mode !== 'on-shim') {
+  console.error('Usage: node scripts/run-android.mjs off|on|on-shim');
   process.exit(2);
 }
 
@@ -19,7 +19,8 @@ if (!fs.existsSync(gradlew)) {
   process.exit(1);
 }
 
-const enabled = mode === 'on';
+const enabled = mode !== 'off';
+const flingSessionShim = mode === 'on-shim';
 const appId = 'com.rn087nestedscrollprobe';
 const sdkRoots = [
   process.env.ANDROID_SDK_ROOT,
@@ -250,12 +251,32 @@ console.log(`RN 0.87 probe device: ${deviceSerial}`);
 
 run(
   './gradlew',
-  [':app:installDebug', `-PrnNestedScrollAndroid=${enabled}`, '--no-daemon'],
+  [
+    ':app:installDebug',
+    `-PrnNestedScrollAndroid=${enabled}`,
+    `-PrnNestedScrollFlingShim=${flingSessionShim}`,
+    '--no-daemon',
+  ],
   path.join(root, 'android'),
 );
+
+// Keep the process bootstrap in the log buffer: the analyzer uses it to verify the flag.
+adb(['logcat', '-c']);
 adb(['reverse', 'tcp:8081', 'tcp:8081']);
 adb(['shell', 'am', 'force-stop', appId]);
 adb(['shell', 'am', 'start', '-n', `${appId}/.MainActivity`]);
 
-console.log(`RN 0.87 probe launched with useNestedScrollViewAndroid=${enabled}`);
-console.log(`Capture: ${adbBinary} -s ${deviceSerial} logcat -v time -s Rn087NestedScroll:I '*:S'`);
+const logPath =
+  mode === 'off'
+    ? '/tmp/rn087-bare-off.log'
+    : mode === 'on'
+      ? '/tmp/rn087-bare-on.log'
+      : '/tmp/rn087-bare-on-shim.log';
+
+console.log(
+  `RN 0.87 probe launched with useNestedScrollViewAndroid=${enabled} flingSessionShim=${flingSessionShim}`,
+);
+console.log('Do not run `adb logcat -c` after this launch; the bootstrap line is part of the gate.');
+console.log(
+  `Capture: ${adbBinary} -s ${deviceSerial} logcat -v time -s Rn087NestedScroll:I '*:S' | tee ${logPath}`,
+);

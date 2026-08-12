@@ -9,6 +9,7 @@ react {
 def enableProguardInReleaseBuilds = false
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 def nestedScrollExperiment = (project.findProperty('rnNestedScrollAndroid') ?: 'false').toBoolean()
+def nestedScrollFlingShim = (project.findProperty('rnNestedScrollFlingShim') ?: 'false').toBoolean()
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -23,6 +24,7 @@ android {
         versionCode 1
         versionName "1.0"
         buildConfigField "boolean", "RN_NESTED_SCROLL_ANDROID", nestedScrollExperiment.toString()
+        buildConfigField "boolean", "RN_NESTED_SCROLL_FLING_SHIM", nestedScrollFlingShim.toString()
     }
 
     buildFeatures {

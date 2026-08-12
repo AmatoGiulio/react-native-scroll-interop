@@ -115,6 +115,19 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     log(
       "NESTED_FLING vx=$velocityX vy=$velocityY childConsumed=$consumed target=${targetName(target)}",
     )
+
+    if (BuildConfig.RN_NESTED_SCROLL_FLING_SHIM) {
+      val started =
+        ViewCompat.startNestedScroll(
+          target,
+          ViewCompat.SCROLL_AXIS_VERTICAL,
+          ViewCompat.TYPE_NON_TOUCH,
+        )
+      log(
+        "PROBE_FLING_SESSION_SHIM started=$started target=${targetName(target)}",
+      )
+    }
+
     return false
   }
 
