@@ -25,9 +25,6 @@ const touchStops = count(/NESTED_STOP .*type=TOUCH/);
 const nonTouchStops = count(/NESTED_STOP .*type=NON_TOUCH/);
 const sourcePatchFlings = count(/SOURCE_FLING_PATCH/);
 const scrollAwaySuccess = count(/CHROME_SCROLL_AWAY .*target=[1-9][0-9]* success=true/);
-const ledgerFrames = count(/CHROME_LEDGER type=/);
-const ledgerBroken = count(/CHROME_LEDGER type=.*balanced=false/);
-const ledgerOrphans = count(/CHROME_LEDGER_ORPHAN/);
 const settleStarts = count(/CHROME_SETTLE_START/);
 const settleEnds = count(/CHROME_SETTLE_END/);
 
@@ -45,6 +42,70 @@ function movementFrames(type) {
 const touchChromeMovement = movementFrames('TOUCH');
 const nonTouchChromeMovement = movementFrames('NON_TOUCH');
 
+// AndroidX NestedScrollView's fling loop always dispatches pre-scroll, but deliberately skips the
+// post-scroll callback when the parent consumed the whole NON_TOUCH delta in pre. That is a complete
+// frame: requested == chromePre and child/post/remaining are all zero. TOUCH uses a different path
+// and still dispatches post, so only full-consumed NON_TOUCH pre-only frames are accepted here.
+let pendingPre = null;
+let ledgerPostFrames = 0;
+let ledgerBroken = 0;
+let fullPreNonTouchFrames = 0;
+let unexpectedOrphans = 0;
+let touchOrphans = 0;
+let partialNonTouchOrphans = 0;
+let unknownOrphans = 0;
+const unexpectedExamples = [];
+
+for (const line of lines) {
+  const pre = line.match(
+    /CHROME_LEDGER_PRE type=(TOUCH|NON_TOUCH) requested=(-?\d+) chromePre=(-?\d+)/,
+  );
+  if (pre) {
+    pendingPre = {
+      type: pre[1],
+      requested: Number.parseInt(pre[2], 10),
+      chromePre: Number.parseInt(pre[3], 10),
+      line,
+    };
+    continue;
+  }
+
+  if (/CHROME_LEDGER type=/.test(line)) {
+    ledgerPostFrames += 1;
+    if (/balanced=false/.test(line)) ledgerBroken += 1;
+    pendingPre = null;
+    continue;
+  }
+
+  if (!/CHROME_LEDGER_ORPHAN/.test(line)) continue;
+
+  const values = line.match(/requested=(-?\d+) chromePre=(-?\d+)/);
+  const requested = values ? Number.parseInt(values[1], 10) : pendingPre?.requested;
+  const chromePre = values ? Number.parseInt(values[2], 10) : pendingPre?.chromePre;
+  const type = pendingPre?.type ?? 'UNKNOWN';
+  const fullPreConsumed = requested != null && chromePre != null && requested === chromePre;
+
+  if (type === 'NON_TOUCH' && fullPreConsumed) {
+    fullPreNonTouchFrames += 1;
+  } else {
+    unexpectedOrphans += 1;
+    if (type === 'TOUCH') touchOrphans += 1;
+    else if (type === 'NON_TOUCH') partialNonTouchOrphans += 1;
+    else unknownOrphans += 1;
+
+    if (unexpectedExamples.length < 5) {
+      unexpectedExamples.push(
+        `type=${type} requested=${requested ?? '?'} chromePre=${chromePre ?? '?'} ${line.trim()}`,
+      );
+    }
+  }
+  pendingPre = null;
+}
+
+const ledgerCompleteFrames = ledgerPostFrames + fullPreNonTouchFrames;
+const ledgerConserved =
+  ledgerCompleteFrames > 0 && ledgerBroken === 0 && unexpectedOrphans === 0;
+
 const gates = [
   ['bootstrap', bootstrapTrue],
   ['source class', nestedClassLines > 0],
@@ -54,7 +115,7 @@ const gates = [
   ['scroll-away geometry', scrollAwaySuccess > 0],
   ['TOUCH chrome movement', touchChromeMovement > 0],
   ['NON_TOUCH chrome movement', nonTouchChromeMovement > 0],
-  ['ledger conservation', ledgerFrames > 0 && ledgerBroken === 0 && ledgerOrphans === 0],
+  ['ledger conservation', ledgerConserved],
   ['Material settle', settleStarts > 0 && settleEnds > 0],
 ];
 
@@ -74,9 +135,18 @@ console.log(`  movement TOUCH / NON_TOUCH  ${touchChromeMovement} / ${nonTouchCh
 console.log(`  settle start / end          ${settleStarts} / ${settleEnds}`);
 console.log('');
 console.log('Transaction ledger');
-console.log(`  frames                      ${ledgerFrames}`);
-console.log(`  broken                      ${ledgerBroken}`);
-console.log(`  orphan pre                  ${ledgerOrphans}`);
+console.log(`  post-complete frames        ${ledgerPostFrames}`);
+console.log(`  full-pre NON_TOUCH frames   ${fullPreNonTouchFrames}`);
+console.log(`  complete frames             ${ledgerCompleteFrames}`);
+console.log(`  broken complete frames      ${ledgerBroken}`);
+console.log(`  unexpected orphan pre       ${unexpectedOrphans}`);
+console.log(`    TOUCH                     ${touchOrphans}`);
+console.log(`    NON_TOUCH partial         ${partialNonTouchOrphans}`);
+console.log(`    UNKNOWN                   ${unknownOrphans}`);
+if (unexpectedExamples.length > 0) {
+  console.log('  first unexpected orphan examples');
+  for (const example of unexpectedExamples) console.log(`    ${example}`);
+}
 console.log('');
 
 let failed = false;
