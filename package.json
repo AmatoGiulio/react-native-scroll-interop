@@ -3,6 +3,9 @@
   "version": "2.0.0-alpha.25",
   "main": "index.ts",
   "private": true,
+  "scripts": {
+    "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs"
+  },
   "peerDependencies": {
     "expo": "*",
     "react": "*",
