@@ -14,6 +14,14 @@ N chrome consumers
 
 React Native remains the sole owner of gesture recognition, fling velocity, `OverScroller` state and content position. Native ancestors may consume or observe the Android nested-scroll transaction, but must never create a second scroll, call `scrollBy`/`scrollTo` on the source to emulate Material behavior, or reconstruct momentum from sampled `scrollY`.
 
+This invariant now has a repository gate:
+
+```bash
+npm run check:scroll-invariants
+```
+
+The gate scans the production host/consumer transport and fails if it reintroduces a parent-owned scroller, child `scrollBy`/`scrollTo`, a parent-started nested session, or timer-based motion reconstruction.
+
 ## Proven gates
 
 ### Source semantics — PASS
@@ -24,9 +32,35 @@ RN 0.87 with `useNestedScrollViewAndroid=true` selects `ReactNestedScrollView`. 
 
 The bare RN 0.87 probe drives a real Material3 `LargeTopAppBar` / `exitUntilCollapsedScrollBehavior` from the same Parent3 transaction. The validated run accounted for 249 complete frames, zero broken frames and zero unexpected pre-only frames, including full-pre frames that AndroidX legitimately does not post-dispatch after all motion has already been consumed.
 
-### Multi-consumer transaction — IN PROGRESS
+### Multi-consumer transaction — PASS
 
-Add a real Material3 FloatingToolbar consumer to the same transaction. It must observe only non-zero `childConsumedY` in post-scroll, must not alter the Parent3 consumed array, must receive both TOUCH and NON_TOUCH movement, and must leave the TopAppBar ledger at zero broken/unexpected frames.
+A real Material3 FloatingToolbar now observes the same transaction as the consuming TopAppBar. It receives only non-zero `childConsumedY` in post-scroll and never modifies the Parent3 consumed array.
+
+The validated run produced:
+
+```text
+Nested sessions
+starts TOUCH / NON_TOUCH     68 / 34
+stops  TOUCH / NON_TOUCH     68 / 34
+
+Transaction ledger
+post-complete frames        630
+full-pre TOUCH frames        76
+full-pre NON_TOUCH frames     0
+complete frames             706
+broken complete frames        0
+unexpected orphan pre         0
+
+FloatingToolbar
+child movement post T/NT   261 / 314
+observed posts T/NT        261 / 314
+visual movement T/NT       109 / 2
+settle start / end          42 / 42
+```
+
+Every FloatingToolbar input frame matched a real non-zero child-consumed post frame: 261/261 TOUCH and 314/314 NON_TOUCH. Adding the second consumer did not change TopAppBar accounting: 706 complete frames, zero broken and zero unexpected.
+
+This closes the architecture research gate: one RN-owned source transaction can drive multiple native Material consumers with different roles without introducing a second scroll model.
 
 ## Required before calling the RN source patch production-safe
 
@@ -49,23 +83,25 @@ The canonical upstream change must be expressed in the nested-view generator plu
 
 ## Module hardening
 
-The module-side transport is already moving toward the correct compatibility boundary:
+The module-side transport already implements the intended compatibility boundary:
 
 - store supported RN vertical sources as `ViewGroup`, not concrete `ReactScrollView`;
 - accept both `ReactScrollView` and Kotlin-internal `ReactNestedScrollView` by runtime class identity;
 - treat the actual Android nested callback target as transaction authority;
 - use reflection only for the unstable RN scroll-away geometry primitive;
-- keep TopAppBar as a pre/post consumer and FloatingToolbar as a child-consumed post observer.
+- keep TopAppBar as a pre/post consumer and FloatingToolbar as a child-consumed post observer;
+- keep tracing gated behind `BuildConfig.DEBUG`;
+- statically reject the main forms of second-scroll regression with `check:scroll-invariants`.
 
 Still required:
 
-- update production diagnostics so fully pre-consumed TOUCH/NON_TOUCH frames are classified according to AndroidX's `No motion, no dispatch` rule rather than as ledger failures;
+- align the production diagnostic ledger with the validated AndroidX full-pre classification;
 - validate host/source lifecycle under Fabric remounts and view recycling;
 - validate multiple screens and multiple ScrollViews, failing closed when source binding is ambiguous;
 - validate nested navigators/screens and source changes during transitions;
 - validate RTL, font scaling, display density changes and configuration recreation;
-- ensure release builds do not pay per-frame logging/debug costs;
-- ensure no JS/userland bridge work occurs per frame.
+- verify a release build with tracing disabled;
+- verify no JS/userland bridge work occurs per frame under profiler/device tracing.
 
 ## Host and package strategy
 
@@ -96,8 +132,10 @@ Before release, CI/device tests should cover at least:
 6. FloatingToolbar 100% coverage of non-zero child-consumed post frames;
 7. Material settle completion for both consumers;
 8. edge/interruption/snap/paging regression scenarios;
-9. no parent-owned scroller / no child scroll mutation invariant checks where practical;
+9. `npm run check:scroll-invariants`;
 10. release build smoke test with tracing disabled.
+
+Items 1–7 and 9 have concrete implementations in this branch. Item 8 is now the primary RN source-patch blocker; item 10 is the primary packaging/runtime-cost blocker.
 
 ## Public/upstream path
 
@@ -119,4 +157,4 @@ This project is production ready when:
 - lifecycle/navigation/multiple-source scenarios fail safely;
 - debug instrumentation is optional and zero-cost enough in release;
 - compatibility and installation requirements are documented publicly;
-- the invariant remains true in code review: RN owns the only scroll physics.
+- the invariant remains true in code review and CI: RN owns the only scroll physics.
