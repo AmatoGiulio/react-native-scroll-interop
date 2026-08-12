@@ -47,7 +47,7 @@ if (generated.error) throw generated.error;
 if (generated.status !== 0) process.exit(generated.status ?? 1);
 
 let source = fs.readFileSync(sourcePath, 'utf8');
-const marker = 'RN087_NESTED_SCROLL_SOURCE_PATCH_V4';
+const marker = 'RN087_NESTED_SCROLL_SOURCE_PATCH_V5';
 
 function replaceOnce(label, from, to) {
   if (!source.includes(from)) {
@@ -63,7 +63,7 @@ replaceOnce(
   'default fling animator field',
   animatorField,
   animatorField +
-    `  // ${marker}: state used only while RN's own snap ValueAnimator is active.\n` +
+    `  // ${marker}: diagnostic-only state while RN's own snap ValueAnimator is active.\n` +
     '  private var nestedSnapAnimatorRequested = false\n' +
     '  private var nestedSnapAnimatorActive = false\n' +
     '  private var nestedSnapAnimatorLastY = 0\n' +
@@ -100,15 +100,31 @@ const originalFling = `  override fun fling(velocityY: Int) {
 `;
 
 const patchedFling = `  private fun primeNestedAnimatedScroll(sourceVelocityY: Int, reason: String) {
+    val baselineY = scrollY
+    val started =
+        startNestedScroll(ViewCompat.SCROLL_AXIS_VERTICAL, ViewCompat.TYPE_NON_TOUCH)
+
+    // DIAGNOSTIC ONLY. AndroidX keeps the computeScroll delta baseline private. This probe writes
+    // exactly that baseline while leaving RN's OverScroller completely untouched. If this restores
+    // stock behavior, the upstream fix needs a real AndroidX/RN hook rather than reflection.
+    try {
+      val field =
+          androidx.core.widget.NestedScrollView::class.java.getDeclaredField("mLastScrollerY")
+      field.isAccessible = true
+      field.setInt(this, baselineY)
+    } catch (error: ReflectiveOperationException) {
+      stopNestedScroll(ViewCompat.TYPE_NON_TOUCH)
+      throw IllegalStateException(
+          "RN 0.87 source probe could not initialize AndroidX mLastScrollerY",
+          error,
+      )
+    }
+
     android.util.Log.i(
         "Rn087NestedScroll",
-        "SOURCE_NESTED_PRIME reason=$reason sourceVelocityY=$sourceVelocityY primeVelocityY=0",
+        "SOURCE_NESTED_PRIME reason=$reason mode=direct-baseline " +
+            "sourceVelocityY=$sourceVelocityY baselineY=$baselineY started=$started",
     )
-    // AndroidX's fling path is used only as a zero-velocity bookkeeping primitive: it opens
-    // TYPE_NON_TOUCH and initializes mLastScrollerY without publishing RN's real fling velocity to
-    // AndroidX/API-35 frame-content-velocity state. The caller then replaces the same mScroller in
-    // this call stack, before the next frame, with RN 0.87's original animation parameters.
-    super.fling(0)
   }
 
   private fun startNestedSnapAnimator(targetY: Int) {
@@ -140,7 +156,7 @@ const patchedFling = `  private fun primeNestedAnimatedScroll(sourceVelocityY: I
     } else if (scroller != null) {
       android.util.Log.i(
           "Rn087NestedScroll",
-          "SOURCE_FLING_PATCH mode=prime-zero-then-rn velocityY=$correctedVelocityY",
+          "SOURCE_FLING_PATCH mode=direct-baseline-then-rn velocityY=$correctedVelocityY",
       )
       primeNestedAnimatedScroll(correctedVelocityY, "ordinary")
 
@@ -361,5 +377,5 @@ replaceOnce(
 fs.writeFileSync(sourcePath, source);
 
 console.log(
-  'RN 0.87 source patch v4: zero-velocity AndroidX prime + original RN fling/snap physics + nested paging animator',
+  'RN 0.87 source patch v5: diagnostic direct nested baseline + untouched RN fling/snap physics + nested paging animator',
 );
