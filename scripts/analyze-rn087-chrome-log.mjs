@@ -5,9 +5,10 @@ import process from 'node:process';
 
 const logPath = process.argv[2];
 const expectFloating = process.argv.includes('--expect-floating');
+const expectSnap = process.argv.includes('--expect-snap');
 if (!logPath) {
   console.error(
-    'Usage: node scripts/analyze-rn087-chrome-log.mjs <log-path> [--expect-floating]',
+    'Usage: node scripts/analyze-rn087-chrome-log.mjs <log-path> [--expect-floating] [--expect-snap]',
   );
   process.exit(2);
 }
@@ -27,6 +28,8 @@ const nonTouchStarts = count(/NESTED_START .*type=NON_TOUCH/);
 const touchStops = count(/NESTED_STOP .*type=TOUCH/);
 const nonTouchStops = count(/NESTED_STOP .*type=NON_TOUCH/);
 const sourcePatchFlings = count(/SOURCE_FLING_PATCH/);
+const sourcePatchSnapStarts = count(/SOURCE_SNAP_DIRECT_START mode=post-only-target-lock/);
+const sourcePatchRuntime = expectSnap ? sourcePatchSnapStarts > 0 : sourcePatchFlings > 0;
 const scrollAwaySuccess = count(/CHROME_SCROLL_AWAY .*target=[1-9][0-9]* success=true/);
 const settleStarts = count(/CHROME_SETTLE_START/);
 const settleEnds = count(/CHROME_SETTLE_END/);
@@ -80,7 +83,10 @@ const floatingSettleEnds = count(/FLOAT_SETTLE_END/);
 // all child/post deltas are zero; NestedScrollingChildHelper deliberately suppresses the parent
 // callback for an all-zero dispatch ("No motion, no dispatch"). The fling path can also finish at
 // pre-scroll when nothing remains. Therefore both TOUCH and NON_TOUCH full-pre frames are valid.
-// Any pre-only frame with partial consumption remains an error.
+//
+// V6 target-locked snap is deliberately post-only. NestedScrollProbeLayout synthesizes a ledger
+// pre-record with chromePre=0 from childConsumed+unconsumed before recording that post callback, so
+// the exact same conservation equation remains valid for both transaction shapes.
 let pendingPre = null;
 let ledgerPostFrames = 0;
 let ledgerBroken = 0;
@@ -148,7 +154,7 @@ const ledgerConserved =
 const gates = [
   ['bootstrap', bootstrapTrue],
   ['source class', nestedClassLines > 0],
-  ['source patch runtime', sourcePatchFlings > 0],
+  ['source patch runtime', sourcePatchRuntime],
   ['TOUCH session balance', touchStarts > 0 && touchStarts === touchStops],
   ['NON_TOUCH session balance', nonTouchStarts > 0 && nonTouchStarts === nonTouchStops],
   ['scroll-away geometry', scrollAwaySuccess > 0],
@@ -184,6 +190,7 @@ console.log('Source');
 console.log(`  bootstrap true              ${bootstrapTrue}`);
 console.log(`  ReactNestedScrollView lines ${nestedClassLines}`);
 console.log(`  source patch flings         ${sourcePatchFlings}`);
+console.log(`  target-lock snap starts     ${sourcePatchSnapStarts}`);
 console.log('');
 console.log('Nested sessions');
 console.log(`  starts TOUCH / NON_TOUCH    ${touchStarts} / ${nonTouchStarts}`);
