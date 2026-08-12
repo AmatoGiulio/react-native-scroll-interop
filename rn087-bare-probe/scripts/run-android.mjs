@@ -12,10 +12,11 @@ if (
   mode !== 'on' &&
   mode !== 'on-shim' &&
   mode !== 'on-source' &&
-  mode !== 'on-source-chrome'
+  mode !== 'on-source-chrome' &&
+  mode !== 'on-source-multi-chrome'
 ) {
   console.error(
-    'Usage: node scripts/run-android.mjs off|on|on-shim|on-source|on-source-chrome',
+    'Usage: node scripts/run-android.mjs off|on|on-shim|on-source|on-source-chrome|on-source-multi-chrome',
   );
   process.exit(2);
 }
@@ -29,8 +30,10 @@ if (!fs.existsSync(gradlew)) {
 
 const enabled = mode !== 'off';
 const flingSessionShim = mode === 'on-shim';
-const buildReactNativeFromSource = mode === 'on-source' || mode === 'on-source-chrome';
-const chromeProbe = mode === 'on-source-chrome';
+const buildReactNativeFromSource =
+  mode === 'on-source' || mode === 'on-source-chrome' || mode === 'on-source-multi-chrome';
+const chromeProbe = mode === 'on-source-chrome' || mode === 'on-source-multi-chrome';
+const floatingToolbarProbe = mode === 'on-source-multi-chrome';
 const appId = 'com.rn087nestedscrollprobe';
 const sdkRoots = [
   process.env.ANDROID_SDK_ROOT,
@@ -327,6 +330,7 @@ run(
     `-PrnNestedScrollFlingShim=${flingSessionShim}`,
     `-PrnBuildReactNativeFromSource=${buildReactNativeFromSource}`,
     `-PrnChromeProbe=${chromeProbe}`,
+    `-PrnFloatingToolbarProbe=${floatingToolbarProbe}`,
     '--no-daemon',
   ],
   path.join(root, 'android'),
@@ -362,13 +366,14 @@ const logPaths = {
   'on-shim': '/tmp/rn087-bare-on-shim.log',
   'on-source': '/tmp/rn087-bare-on-source.log',
   'on-source-chrome': '/tmp/rn087-bare-on-source-chrome.log',
+  'on-source-multi-chrome': '/tmp/rn087-bare-on-source-multi-chrome.log',
 };
 const logPath = logPaths[mode];
 
 console.log(
   `RN 0.87 probe launched with useNestedScrollViewAndroid=${enabled} ` +
     `flingSessionShim=${flingSessionShim} buildFromSource=${buildReactNativeFromSource} ` +
-    `chromeProbe=${chromeProbe}`,
+    `chromeProbe=${chromeProbe} floatingToolbarProbe=${floatingToolbarProbe}`,
 );
 console.log('Do not run `adb logcat -c` after this launch; the bootstrap line is part of the gate.');
 console.log(

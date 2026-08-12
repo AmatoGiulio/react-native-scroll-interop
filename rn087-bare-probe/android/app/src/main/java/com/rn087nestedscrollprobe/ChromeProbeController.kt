@@ -34,6 +34,10 @@ import kotlin.math.roundToInt
  * source owns all movement; Material3 consumes only Android nested-scroll callbacks; reflection is
  * restricted to RN's unstable scroll-away geometry primitive and never participates per frame in
  * scroll physics.
+ *
+ * When RN_FLOATING_TOOLBAR_PROBE is enabled, a second independent Material3 consumer observes only
+ * child-consumed post-scroll pixels. It never changes the amount returned to the nested parent, so
+ * the TopAppBar transaction ledger must remain identical in meaning with one or two consumers.
  */
 internal class ChromeProbeController(
   private val host: FrameLayout,
@@ -41,6 +45,8 @@ internal class ChromeProbeController(
   private val onGeometryChanged: () -> Unit,
 ) {
   private val composeView = ComposeView(host.context)
+  private val floatingToolbar =
+    if (BuildConfig.RN_FLOATING_TOOLBAR_PROBE) FloatingToolbarProbeConsumer(host, log) else null
 
   private var behavior: TopAppBarScrollBehavior? = null
   private var scope: CoroutineScope? = null
@@ -108,10 +114,11 @@ internal class ChromeProbeController(
     cancelSettle()
     prepareSource(newSource)
     applyChromeTranslation()
+    val floatingReady = floatingToolbar?.beginNestedTransaction(newSource) ?: false
     log(
       "CHROME_BEGIN source=${sourceLabel(newSource)} heightOffset=${currentBehavior.state.heightOffset} " +
         "limit=${currentBehavior.state.heightOffsetLimit} collapse=${currentCollapseAmountPx()} " +
-        "scrollAway=$appliedScrollAwayPaddingPx",
+        "scrollAway=$appliedScrollAwayPaddingPx floating=$floatingReady",
     )
     return true
   }
@@ -157,6 +164,11 @@ internal class ChromeProbeController(
     val movementY = (oldHeightOffset - newHeightOffset).roundToInt()
     val availableConsumedY = clampSignedConsumption(availableY, -returned.y)
     applyChromeTranslation()
+
+    // The FloatingToolbar is a pure observer. It receives only pixels the RN child actually moved
+    // and cannot alter the Parent3 consumed array or the TopAppBar ledger.
+    floatingToolbar?.nestedPostScroll(childConsumedY, type)
+
     log(
       "CHROME_POST type=${typeName(type)} child=$childConsumedY available=$availableY " +
         "consumed=$availableConsumedY movement=$movementY collapse=${currentCollapseAmountPx()}",
@@ -165,6 +177,10 @@ internal class ChromeProbeController(
   }
 
   fun endNestedTransaction(reason: String) {
+    // Each Material consumer settles its own state from the movement it already observed. Neither is
+    // given the RN fling velocity a second time.
+    floatingToolbar?.endNestedTransaction(reason)
+
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     cancelSettle()
@@ -201,6 +217,7 @@ internal class ChromeProbeController(
   }
 
   fun onDetached() {
+    floatingToolbar?.onDetached()
     cancelSettle()
     clearSource()
   }

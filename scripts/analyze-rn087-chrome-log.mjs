@@ -4,8 +4,11 @@ import fs from 'node:fs';
 import process from 'node:process';
 
 const logPath = process.argv[2];
+const expectFloating = process.argv.includes('--expect-floating');
 if (!logPath) {
-  console.error('Usage: node scripts/analyze-rn087-chrome-log.mjs <log-path>');
+  console.error(
+    'Usage: node scripts/analyze-rn087-chrome-log.mjs <log-path> [--expect-floating]',
+  );
   process.exit(2);
 }
 if (!fs.existsSync(logPath)) {
@@ -39,8 +42,38 @@ function movementFrames(type) {
   return frames;
 }
 
+function childMovementPostFrames(type) {
+  let frames = 0;
+  for (const line of lines) {
+    if (!line.includes(`NESTED_POST type=${type}`)) continue;
+    const match = line.match(/childConsumedY=(-?\d+)/);
+    if (match && Number.parseInt(match[1], 10) !== 0) frames += 1;
+  }
+  return frames;
+}
+
+function floatingPostStats(type) {
+  let posts = 0;
+  let movement = 0;
+  for (const line of lines) {
+    if (!line.includes(`FLOAT_POST type=${type}`)) continue;
+    posts += 1;
+    const match = line.match(/movement=(-?\d+)/);
+    if (match && Number.parseInt(match[1], 10) !== 0) movement += 1;
+  }
+  return {posts, movement};
+}
+
 const touchChromeMovement = movementFrames('TOUCH');
 const nonTouchChromeMovement = movementFrames('NON_TOUCH');
+const childTouchPostMovement = childMovementPostFrames('TOUCH');
+const childNonTouchPostMovement = childMovementPostFrames('NON_TOUCH');
+const floatingTouch = floatingPostStats('TOUCH');
+const floatingNonTouch = floatingPostStats('NON_TOUCH');
+const floatingBehaviorBinds = count(/FLOAT_BEHAVIOR bound=true/);
+const floatingGeometry = count(/FLOAT_GEOMETRY .*limit=-[1-9][0-9.]*/);
+const floatingSettleStarts = count(/FLOAT_SETTLE_START/);
+const floatingSettleEnds = count(/FLOAT_SETTLE_END/);
 
 // A pre-only frame is complete when the parent consumed the whole requested delta. AndroidX
 // NestedScrollView's touch path still calls dispatchNestedScroll after pre-scroll, but at that point
@@ -125,6 +158,27 @@ const gates = [
   ['Material settle', settleStarts > 0 && settleEnds > 0],
 ];
 
+if (expectFloating) {
+  gates.push(
+    ['floating behavior', floatingBehaviorBinds > 0],
+    ['floating geometry', floatingGeometry > 0],
+    [
+      'floating TOUCH coverage',
+      childTouchPostMovement > 0 && floatingTouch.posts === childTouchPostMovement,
+    ],
+    [
+      'floating NON_TOUCH coverage',
+      childNonTouchPostMovement > 0 && floatingNonTouch.posts === childNonTouchPostMovement,
+    ],
+    ['floating TOUCH movement', floatingTouch.movement > 0],
+    ['floating NON_TOUCH movement', floatingNonTouch.movement > 0],
+    [
+      'floating settle balance',
+      floatingSettleStarts > 0 && floatingSettleStarts === floatingSettleEnds,
+    ],
+  );
+}
+
 console.log(`RN 0.87 chrome report: ${logPath}\n`);
 console.log('Source');
 console.log(`  bootstrap true              ${bootstrapTrue}`);
@@ -135,7 +189,7 @@ console.log('Nested sessions');
 console.log(`  starts TOUCH / NON_TOUCH    ${touchStarts} / ${nonTouchStarts}`);
 console.log(`  stops  TOUCH / NON_TOUCH    ${touchStops} / ${nonTouchStops}`);
 console.log('');
-console.log('Material3 chrome');
+console.log('Material3 TopAppBar');
 console.log(`  scroll-away success         ${scrollAwaySuccess}`);
 console.log(`  movement TOUCH / NON_TOUCH  ${touchChromeMovement} / ${nonTouchChromeMovement}`);
 console.log(`  settle start / end          ${settleStarts} / ${settleEnds}`);
@@ -154,12 +208,27 @@ if (unexpectedExamples.length > 0) {
   console.log('  first unexpected orphan examples');
   for (const example of unexpectedExamples) console.log(`    ${example}`);
 }
+
+if (expectFloating) {
+  console.log('');
+  console.log('Material3 FloatingToolbar');
+  console.log(`  behavior binds              ${floatingBehaviorBinds}`);
+  console.log(`  geometry samples            ${floatingGeometry}`);
+  console.log(
+    `  child movement post T/NT   ${childTouchPostMovement} / ${childNonTouchPostMovement}`,
+  );
+  console.log(`  observed posts T/NT         ${floatingTouch.posts} / ${floatingNonTouch.posts}`);
+  console.log(
+    `  visual movement T/NT       ${floatingTouch.movement} / ${floatingNonTouch.movement}`,
+  );
+  console.log(`  settle start / end          ${floatingSettleStarts} / ${floatingSettleEnds}`);
+}
 console.log('');
 
 let failed = false;
 for (const [name, passed] of gates) {
   if (!passed) failed = true;
-  console.log(`${name.padEnd(28)} ${passed ? 'PASS' : 'FAIL'}`);
+  console.log(`${name.padEnd(30)} ${passed ? 'PASS' : 'FAIL'}`);
 }
 
 if (failed) process.exitCode = 1;
