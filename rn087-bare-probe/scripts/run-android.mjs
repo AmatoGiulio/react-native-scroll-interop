@@ -161,22 +161,23 @@ function startFirstAvailableEmulator() {
 }
 
 const requestedSerial = process.env.ANDROID_SERIAL ?? null;
-let adbDevices = readAdbDevices();
-let deviceSerial = requestedSerial;
+const adbDevices = readAdbDevices();
+let deviceSerial = null;
 
 if (requestedSerial) {
   const requested = adbDevices.find(device => device.serial === requestedSerial);
-  if (!requested || requested.state !== 'device') {
-    if (requested?.serial?.startsWith('emulator-')) {
-      deviceSerial = waitForReadyDevice(requestedSerial);
-    }
-    if (!deviceSerial) {
-      console.error(
-        `ANDROID_SERIAL=${requestedSerial} is not an available connected device.\n` +
-          `adb devices:\n${adbDevices.map(device => `  ${device.serial}\t${device.state}`).join('\n') || '  none'}`,
-      );
-      process.exit(1);
-    }
+  if (requested?.state === 'device') {
+    deviceSerial = requestedSerial;
+  } else if (requested?.serial?.startsWith('emulator-')) {
+    deviceSerial = waitForReadyDevice(requestedSerial);
+  }
+
+  if (!deviceSerial) {
+    console.error(
+      `ANDROID_SERIAL=${requestedSerial} is not an available connected device.\n` +
+        `adb devices:\n${adbDevices.map(device => `  ${device.serial}\t${device.state}`).join('\n') || '  none'}`,
+    );
+    process.exit(1);
   }
 } else {
   const readyDevices = adbDevices.filter(device => device.state === 'device');
