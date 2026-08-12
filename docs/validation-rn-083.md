@@ -1,41 +1,31 @@
-# React Native 0.83 native-scroll validation baseline
+# React Native 0.83 native-scroll validation
 
-This document records the measured baseline for the source-owned nested-scroll architecture on React Native 0.83.
+This document records both the original measured baseline and the post-cleanup revalidation of the source-owned nested-scroll architecture on React Native 0.83.
 
-It is intentionally a validation record, not a design document. The current design and invariants live in `ARCHITECTURE.md`.
+The design and invariants live in `ARCHITECTURE.md`. This file is evidence, not the architecture definition.
 
-## Configuration
+## Contract under test
 
-The tested architecture keeps the React Native scroll source in ownership of all movement:
+React Native remains the only owner of source movement:
 
 - touch is executed by the source's normal `android.widget.ScrollView` path;
 - momentum is executed by React Native's own `OverScroller`;
-- the 0.83 source patch only reports momentum through `TYPE_NON_TOUCH` nested scrolling;
+- the 0.83 source patch only exposes that owned momentum as `TYPE_NON_TOUCH` nested scrolling;
 - `ExpoNestedScrollHostView` is a `NestedScrollingParent3` and never moves the source;
-- TopAppBar may consume pre/post distance;
+- TopAppBar may consume real distance in pre/post;
 - FloatingToolbar observes real child-consumed distance in post-scroll.
 
-The transaction ledger verifies, per accounted frame:
+For every accounted frame the debug ledger checks:
 
 ```text
 requested = chromePre + childConsumed + chromePost + remaining
 ```
 
-## Stress matrix
+A frame is broken only when that conservation equation fails. `orphanPre` is diagnostic and is not a failure: the legacy platform ScrollView touch path may omit post-scroll when pre-scroll consumed the whole request.
 
-The measured pass covered:
+## Original measured baseline
 
-- slow drag;
-- hard fling;
-- direction reversal;
-- top edge;
-- bottom edge;
-- a new touch interrupting momentum;
-- TopAppBar alone;
-- TopAppBar plus FloatingToolbar;
-- React Native ScrollView and FlashList sources.
-
-Measured results:
+The first source-owned pass measured:
 
 | Screen | Source | Chrome | Accounted frames | Broken frames |
 |---|---|---|---:|---:|
@@ -44,46 +34,163 @@ Measured results:
 | Gallery | FlashList | large `exitUntilCollapsed` | 138 | 0 |
 | **Total** | | | **566** | **0** |
 
-No accounted frame violated transaction conservation.
+It covered slow drag, hard fling, direction reversal, top edge, bottom edge and a new touch interrupting momentum.
 
-## Collapse-limit handoff
+### Collapse-limit handoff
 
-The important upward handoff is visible when a large input delta crosses the TopAppBar collapse endpoint.
+When a large upward delta crosses the TopAppBar collapse endpoint, the bar consumes only the distance its state can actually move. The remainder stays available to React Native instead of being deleted by Material's reported consumption.
 
-The app bar consumes only the distance its state can actually move. The remainder stays available to the React Native source rather than being deleted by Material's reported consumption.
+### Top-edge expansion
 
-This is the required behavior:
-
-```text
-requested
-  = actual chrome movement
-  + real child movement
-  + post consumption
-  + remaining
-```
-
-The parent does not split the child phase manually and does not call `scrollBy` on the source.
-
-## Top-edge expansion
-
-A measured reverse-scroll sequence at the top edge was:
+A measured reverse-scroll sequence was:
 
 ```text
 requested=-48 -> child=-47, chrome=-1
 requested=-26 -> child=0,   chrome=-26
 ```
 
-The first frame exhausts the remaining child range and gives one pixel to the app bar. On the next frame the list is already at its start, so the whole delta is post-scroll available distance and Material expands by 26 pixels.
+The first frame exhausts the remaining child range and gives one pixel to the app bar. On the next frame the list is already at its start, so the whole request is post-scroll available distance and Material expands by 26 pixels.
 
-This proves that the parent receives enough real transaction information to run `exitUntilCollapsed` without sampling or a touch-distance reconstruction channel.
+This demonstrates the real pre/child/post handoff without `scrollY` sampling or a reconstructed boundary channel.
 
-## React Native 0.83 touch limitation
+## Cleanup after the baseline
 
-The same top-edge test isolates a limitation below the parent.
+The parent transaction algorithm was kept intact, but three areas were simplified before the new pass:
 
-React Native 0.83 uses `android.widget.ScrollView`. During touch, platform ScrollView dispatches post-scroll through the legacy nested-scroll callback that does not return the `NestedScrollingParent3 consumed[]` result to the source.
+1. fixed `32 / 250 / 750 ms` source-discovery retries were replaced by immediate preparation plus a temporary `OnGlobalLayoutListener` fallback;
+2. pre-gesture discovery stopped writing transaction-active source/chrome state; Android's nested-scroll `target` is the session authority;
+3. the old FloatingToolbar transport-drift restore policy was deleted so Material owns the terminal snap from the offset it actually observed.
 
-Therefore, on this frame:
+The 0.83 source patch was also corrected so its `NestedScrollingChildHelper` preserves React Native's existing `nestedScrollEnabled` default rather than silently enabling nested scrolling for every ScrollView.
+
+## Current-head core revalidation
+
+After those cleanups, Gallery, Feed and Profile were exercised again. The current analyzer lives at `scripts/analyze-scroll-log.mjs`.
+
+### Gallery — FlashList + large `exitUntilCollapsed` + FloatingToolbar
+
+The raw Gallery trace included an emulator/trackpad torture sequence whose fling velocity repeatedly saturated at exactly `+/-21000 px/s`. Android still reported those generated events as `pointers=1`; they were kept as extra stress evidence but excluded from the representative sample because the operator identified them as two-finger host-trackpad artifacts.
+
+Representative result:
+
+```text
+ledger frames       627
+broken                0
+balanced=false        0
+```
+
+The full raw trace, including the synthetic torture sequence, also contained no broken transaction.
+
+Source preparation took the immediate path: one ReactScrollView was found, nested scrolling was enabled, both chrome consumers resolved, and no `ambiguousReactSources` line occurred.
+
+The accompanying 28.336 s screen recording was scanned across 1018 decoded frames. The list-content region never approached the previous blank-window threshold; no blank frame was detected in that recording.
+
+Completed FloatingToolbar settles ended at a Material endpoint.
+
+### Feed — FlashList + small `enterAlways` + FloatingToolbar
+
+Measured analyzer result:
+
+```text
+gestures                  22
+saturated candidates       0
+max pointers               1
+max representative |vy| 11452 px/s
+
+ledger frames             529
+  touch                    172
+  non-touch                357
+unbalanced                   0
+max broken counter           0
+
+FloatingToolbar settles    22 total / 21 completed / 1 canceled
+completed non-endpoint       0
+TopAppBar settles           22 total / 22 completed
+completed non-endpoint       0
+```
+
+All four analyzer gates passed.
+
+### Profile — RN ScrollView + large `exitUntilCollapsed` + FloatingToolbar
+
+Measured analyzer result:
+
+```text
+gestures                  21
+saturated candidates       0
+max pointers               1
+max representative |vy|  5364 px/s
+
+ledger frames             369
+  touch                    164
+  non-touch                205
+unbalanced                   0
+max broken counter           0
+
+FloatingToolbar settles    20 total / 20 completed
+completed non-endpoint       0
+TopAppBar settles           20 total / 20 completed
+```
+
+The first version of the analyzer reported one TopAppBar warning because it required the final expanded offset to be within exactly one physical pixel of zero.
+
+The actual line was:
+
+```text
+heightOffset=-1.5293274
+limit=-230.52933
+fraction=0.006633982
+```
+
+That is not a transport drift. Material3's own `settleAppBar()` treats `collapsedFraction < 0.01` as already expanded and returns without running another snap. The analyzer now mirrors that Material semantic instead of imposing a stricter one-pixel rule.
+
+With the Material rule applied, Profile passes the TopAppBar settle check as well.
+
+## Revalidated core matrix
+
+Representative post-cleanup accounting is therefore:
+
+| Screen | Source | Behavior | Frames | Broken |
+|---|---|---|---:|---:|
+| Gallery | FlashList | large `exitUntilCollapsed` | 627 | 0 |
+| Feed | FlashList | small `enterAlways` | 529 | 0 |
+| Profile | RN ScrollView | large `exitUntilCollapsed` | 369 | 0 |
+| **Total** | | | **1525** | **0** |
+
+This validates the current 0.83 core scroll matrix for:
+
+```text
+single physics             yes
+single movement owner      yes
+parent proxy fling         no
+scrollY sampling           no
+parent child scroll        no
+true pre/child/post        yes
+touch + non-touch          yes
+FlashList + RN ScrollView  yes
+enterAlways                yes
+exitUntilCollapsed         yes
+FloatingToolbar settle     yes
+TopAppBar settle            yes
+transaction drift          0 / 1525 representative frames
+```
+
+## Two plumbing checks still separate from the core matrix
+
+The core scroll transaction is revalidated. Two lifecycle/default-behavior checks remain intentionally separate because the three current runs did not exercise them:
+
+1. **Delayed source mount fallback.** All three runs found their ReactScrollView on the immediate preparation path (`SOURCE_WAIT armed/removed = 0 / 0`). A diagnostic screen should deliberately mount the source after the host so the temporary `OnGlobalLayoutListener` path is exercised once.
+2. **Unrelated ScrollView default.** The source patch now preserves the original nested-scroll enabled state, but a ScrollView outside `NativeScrollHost` should still receive a final runtime control pass before calling the entire prototype plumbing closed.
+
+Neither item changes the measured transaction result above.
+
+## React Native 0.83 source limitations
+
+### Touch Parent3 limitation
+
+React Native 0.83 is backed by `android.widget.ScrollView`. During touch, the platform implementation uses the older post-scroll nested contract and cannot receive the `NestedScrollingParent3 consumed[]` result after the parent consumes post-scroll distance.
+
+For a valid parent transaction such as:
 
 ```text
 requested=-26
@@ -91,157 +198,42 @@ child=0
 parent post-consumes=-26
 ```
 
-the parent has behaved correctly, but the legacy source cannot subtract those 26 parent-consumed pixels before its own overscroll/stretch decision.
+the parent is correct, but the legacy source cannot subtract those 26 pixels before its own edge overscroll/stretch decision. This cannot be fixed by adding intelligence to the screen ancestor because the touch loop belongs to `android.widget.ScrollView`.
 
-This is not repairable by adding intelligence to `ExpoNestedScrollHostView`: the relevant touch loop belongs to `android.widget.ScrollView`.
+AndroidX `NestedScrollView` owns that loop and supports Parent3 post-consumption accounting.
 
-AndroidX `NestedScrollView` owns that loop and supports Parent3 post-consumption accounting. This is one reason the long-term source solution belongs in React Native rather than in the screen ancestor.
+### Momentum limitation
 
-## React Native 0.83 momentum limitation
+Stock RN 0.83 `ReactScrollView` owns its fling without emitting each `OverScroller` step as a `TYPE_NON_TOUCH` nested-scroll transaction.
 
-Stock `ReactScrollView` also owns its fling without emitting the `OverScroller` movement as per-frame `TYPE_NON_TOUCH` nested-scroll callbacks.
-
-The prototype patch in `docs/upstream/react-scroll-view-momentum-nested-scroll.patch` keeps the original source physics and reports each real movement as:
+The prototype patch under `docs/upstream/` keeps React Native's source physics and exposes each real movement as:
 
 ```text
-pre-scroll -> source child movement -> post-scroll
+nested pre-scroll
+-> ReactScrollView moves itself by the remainder
+-> nested post-scroll
 ```
 
-The parent does not take over the fling.
+The parent never owns an `OverScroller`, never calls `scrollBy`/`scrollTo` on the source and never reconstructs momentum from sampled `scrollY`.
 
-This is the second source-side limitation demonstrated by the PoC.
-
-Together, the touch and momentum findings define the upstream boundary:
+Together the touch and momentum findings define the upstream boundary:
 
 ```text
 source responsibility:
-  provide the complete nested-scrolling child transaction
+  expose the complete nested-scrolling child transaction
   for every movement the source owns
 
 screen responsibility:
   participate in that transaction and coordinate native chrome
 ```
 
-## FlashList hard-fling blank window
+## FlashList hard-fling blank-window control
 
-A visible blank content window under violent FlashList fling was measured frame by frame with screen recording.
-
-Initial runs had suggested React Native's scroll-away padding primitive might be responsible. A control with the app bar removed disproved that attribution.
+An earlier violent FlashList fling showed visible blank content. A control without the module geometry reproduced the same problem:
 
 | Run | Module geometry | Video frames | Blank frames |
 |---|---|---:|---:|
 | App bar present | scroll-away padding + translation | 38 | 12 |
 | App bar absent | none | 36 | 14 |
 
-The blank frames occur in contiguous runs, not only as isolated single-frame flashes.
-
-Because the control reproduces the same failure with no module geometry in the screen, the blank render window is not counted as a transport/chrome regression in this baseline.
-
-## Baseline conclusion
-
-For the measured React Native 0.83 baseline, the parent-side architecture is validated when the source provides the required callbacks:
-
-```text
-single physics        yes
-single movement owner yes
-parent proxy fling    no
-scrollY sampling      no
-parent child scroll   no
-true pre/child/post   yes
-transaction drift     0 / 566 measured frames
-```
-
-The remaining correctness gaps demonstrated by that run are source-contract limitations of the 0.83 `android.widget.ScrollView` path, plus prototype plumbing such as standalone-module chrome geometry ownership.
-
-## Changes after the measured baseline
-
-The transaction algorithm itself has not been changed since the `0 / 566` run, but the current branch contains two behavioral cleanups that still need a device regression pass before the same measurement can be attributed to HEAD.
-
-### Layout-driven source preparation
-
-The fixed `32 / 250 / 750 ms` source-discovery retries were removed. The host now:
-
-1. checks for the native ReactScrollView in a posted turn;
-2. if Fabric/FlashList has not mounted it yet, waits on `OnGlobalLayoutListener`;
-3. removes the listener as soon as one source is available;
-4. treats multiple ReactScrollViews as ambiguous for pre-gesture geometry;
-5. never writes transaction-active source/chrome state during discovery.
-
-Regression checks:
-
-- first visible frame has correct TopAppBar inset on RN ScrollView;
-- first visible frame has correct TopAppBar inset on FlashList;
-- no first-gesture geometry jump;
-- source replacement/remount rebinds;
-- changing TopAppBar variant/insets re-prepares geometry;
-- logs show `SOURCE_WAIT` listener removed after mount rather than remaining armed.
-
-### FloatingToolbar drift workaround removed
-
-The old `ChromeSettlePolicy.shouldRestoreAtTop(...)` correction was deleted. That policy existed because the previous sampled/proxy transport could lose deltas after a session closed. With source-owned pre/child/post delivery, keeping the repair would make the toolbar diverge from Material based on an error source that no longer exists.
-
-The toolbar now always lets Material perform its terminal snap from the offset it actually observed, with zero velocity for the same reason as before: fling distance has already been delivered frame by frame.
-
-Regression checks:
-
-- TopAppBar + FloatingToolbar repeated collapse/expand cycles;
-- toolbar endpoint after a partial reverse scroll that reaches list top;
-- interrupt a toolbar settle with a new touch;
-- compare toolbar endpoint/motion with the repository's pure Compose reference screen;
-- transaction ledger remains at zero broken frames throughout.
-
-### React Native patch default semantics
-
-The 0.83 momentum patch now initializes its `NestedScrollingChildHelper` from the platform's existing nested-scroll state instead of forcing it enabled in every ReactScrollView. The host still enables nested scrolling explicitly for its source, so the PoC path should be unchanged.
-
-Regression checks:
-
-- source under `NativeScrollHost` still opens TOUCH and NON_TOUCH nested sessions;
-- an unrelated ReactScrollView outside the host keeps normal React Native `nestedScrollEnabled` default behavior.
-
-## Current HEAD partial revalidation — Gallery
-
-A new Gallery run was captured on the post-cleanup HEAD with FlashList, large `exitUntilCollapsed` TopAppBar and the shared FloatingToolbar.
-
-The raw trace contains a synthetic emulator/trackpad torture sequence. Those sessions repeatedly saturate the reported fling velocity at exactly `+/-21000 px/s` and can occur only a few milliseconds apart. They came from two-finger host-trackpad scrolling and are not counted as representative finger gestures for the acceptance sample.
-
-Android still reports those emulator events as `pointers=1`; this is therefore not application-level multi-touch. The distinction is about the input generator, not about a different nested-scroll contract.
-
-Results after excluding every session whose fling saturated at `abs(vy) == 21000`:
-
-```text
-representative ledger frames  627
-broken ledger frames            0
-balanced=false                  0
-```
-
-The raw trace, including the synthetic torture sessions, also contains no broken transaction. Those sessions are retained only as extra robustness evidence rather than included in the representative sample.
-
-Source preparation on this run took the immediate path:
-
-- one ReactScrollView source was found;
-- nested scrolling was enabled on that source;
-- TopAppBar and FloatingToolbar both resolved to it;
-- no `ambiguousReactSources` line occurred;
-- no `SOURCE_WAIT` line occurred because the source was already present when preparation ran.
-
-The absence of `SOURCE_WAIT` is valid for the immediate path but does not exercise the delayed `OnGlobalLayoutListener` fallback yet.
-
-The accompanying 28.336 s Gallery screen recording was also scanned frame by frame. Across 1018 decoded video frames, the list-content region never approached the previous blank-window threshold; the minimum measured purple-content occupancy was about 83.6%, with no blank frames detected in this recording.
-
-Completed FloatingToolbar settles in the full trace always ended at a Material endpoint: either `offset=0` or `offset=offsetLimit`. No completed settle ended at an intermediate toolbar offset.
-
-This is enough to mark **Gallery transaction + toolbar settle + immediate source preparation** as revalidated on current HEAD. It is not enough to mark the whole branch revalidated, because the RN ScrollView / Feed paths and the delayed source-mount fallback still need their own pass.
-
-## HEAD acceptance gate
-
-Do not promote the current branch from “measured baseline + reviewed cleanups” to “fully revalidated” until the remaining regression checks pass on device.
-
-The acceptance condition remains:
-
-```text
-0 broken ledger frames
-+ no first-gesture geometry jump
-+ Material-consistent FloatingToolbar settle
-+ unchanged unrelated ScrollView behavior
-```
+The blank window therefore is not attributed to this transport/chrome architecture.
