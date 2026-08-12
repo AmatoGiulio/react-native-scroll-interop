@@ -119,6 +119,43 @@ ON source-patch runtime gate: PASS
 
 This is the decisive source result: RN remains the owner of the fling, the parent owns no physics, and the AndroidX source emits the real frame-by-frame NON_TOUCH transaction itself.
 
+### E — source patch + Material3 TopAppBar end to end
+
+The next bare-probe gate attached a real Material3 `LargeTopAppBar` with `exitUntilCollapsedScrollBehavior` to the same Android `NestedScrollingParent3` transaction, while using RN 0.87's unstable scroll-away padding primitive for geometry. The parent still owned no scroller and never moved the React child directly.
+
+Observed result:
+
+```text
+Source
+bootstrap true              true
+ReactNestedScrollView lines 515
+source patch flings         7
+
+Nested sessions
+starts TOUCH / NON_TOUCH    12 / 7
+stops  TOUCH / NON_TOUCH    12 / 7
+
+Material3 chrome
+scroll-away success         1
+movement TOUCH / NON_TOUCH  143 / 14
+settle start / end          10 / 10
+```
+
+The transaction ledger initially reported 183 post-complete frames, zero broken frames and 66 pre-only frames. Those pre-only frames were then classified against AndroidX's actual dispatch contract:
+
+```text
+post-complete frames        183
+full-pre TOUCH frames       62
+full-pre NON_TOUCH frames   4
+complete frames             249
+broken complete frames      0
+unexpected orphan pre       0
+```
+
+A fully pre-consumed frame legitimately has no parent post callback. On the touch path, `NestedScrollView.scrollBy(...)` still calls `dispatchNestedScroll(...)`, but after full pre-consumption every child/post delta is zero; `NestedScrollingChildHelper` deliberately suppresses that all-zero dispatch ("No motion, no dispatch"). The fling path can likewise finish a frame entirely in pre-scroll.
+
+Therefore the end-to-end TopAppBar gate is closed: the same RN-owned TOUCH/NON_TOUCH transaction drives Material3 pre/post consumption, scroll-away geometry and terminal settle, with every observable frame conserving distance and no second scroll physics.
+
 ## Isolated defect
 
 `ReactNestedScrollView.kt` is generated from `ReactScrollView.kt`. In RN 0.87.0 the generated class inherits AndroidX `NestedScrollView`, but its copied `fling()` override still takes the legacy path:
