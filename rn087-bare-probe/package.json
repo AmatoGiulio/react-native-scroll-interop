@@ -9,10 +9,12 @@
     "android:on": "node scripts/run-android.mjs on",
     "android:on-shim": "node scripts/run-android.mjs on-shim",
     "android:on-source": "node scripts/run-android.mjs on-source",
+    "android:on-source-chrome": "node scripts/run-android.mjs on-source-chrome",
     "analyze:off": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-off.log --expect off",
     "analyze:on": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on.log --expect on",
     "analyze:on-shim": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on-shim.log --expect on",
-    "analyze:on-source": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on-source.log --expect on-source"
+    "analyze:on-source": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on-source.log --expect on-source",
+    "analyze:on-source-chrome": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-chrome.log"
   },
   "dependencies": {
     "react": "19.2.3",
