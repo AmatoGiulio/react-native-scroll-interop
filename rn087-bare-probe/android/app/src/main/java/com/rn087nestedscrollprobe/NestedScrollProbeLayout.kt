@@ -313,7 +313,19 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     chromePostY: Int,
     type: Int,
   ) {
+    if (!ledgerPending && chromeController != null) {
+      val requestedY = childConsumedY + dyUnconsumed
+      if (requestedY != 0) {
+        ledgerRequestedY = requestedY
+        ledgerChromePreY = 0
+        ledgerPending = true
+        log(
+          "CHROME_LEDGER_PRE type=${typeName(type)} requested=$requestedY chromePre=0 synthetic=post-only",
+        )
+      }
+    }
     if (!ledgerPending) return
+
     ledgerFrames += 1
     val remaining = dyUnconsumed - chromePostY
     val sum = ledgerChromePreY + childConsumedY + chromePostY + remaining
