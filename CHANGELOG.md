@@ -23,6 +23,17 @@ That rules out FlashList on its own and rules out the settle synchronization. A 
 
 This is the unstable React Native primitive the architecture already isolates inside the RN source adapter, so replacing it does not reach the Material consumers. Not yet fixed.
 
+**Correction (measured later).** The attribution above is wrong. It was reached by flinging by hand and judging the result by eye, and the `none` run of that table had no scroll-away padding only because `none` left the consumer unbound — the bug fixed in "Give a pinned app bar its inset". Re-measured by recording the screen and counting the content in every frame of the video, on the same screen, with violent alternating flings:
+
+| run | our geometry | frames | blank frames |
+|---|---|---|---|
+| app bar present | scroll-away padding + content translation | 38 | **12** |
+| app bar removed from the screen | none | 36 | **14** |
+
+The blank window happens as often without any of this module in the tree, and the blank stretches are contiguous — sixteen consecutive frames in one recording, not a one-frame flicker. So it is neither `setScrollAwayTopPaddingEnabledUnstable` nor the content translation that replaced it: under a hard fling FlashList's render window and the drawn content come apart on their own. What the earlier runs measured was the sensitivity of the eye, not the presence of the bug.
+
+Still open, and no longer ours to fix here. The reproduction is scriptable: record the screen while flinging, then count dark pixels per frame.
+
 - Verified on Pixel 8 (API 36, edge-to-edge, density 2.625): expanded host height 300px for `small` (132 inset + 64dp), 426px for `medium` (+112dp), 531px for `large` (+152dp); repeated collapse/expand cycles return to `heightOffset=0` / `scrollY=0` with no drift; no bottom blank strip; FloatingToolbar and `clients=2` fan-out unchanged.
 
 ## 2.0.0-alpha.24
