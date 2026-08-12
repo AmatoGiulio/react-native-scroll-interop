@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
+import androidx.core.view.NestedScrollingChild2
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
@@ -26,6 +27,7 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     }
 
   private var momentumSessionActive = false
+  private var momentumExpected = false
   private var waitingForSourceLayout = false
 
   private var ledgerRequestedY = 0
@@ -57,6 +59,7 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     stopWaitingForSourceLayout()
     flushPendingLedger("detach")
     momentumSessionActive = false
+    momentumExpected = false
     chromeController?.onDetached()
     super.onDetachedFromWindow()
   }
@@ -71,17 +74,28 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     Log.i("Rn087NestedScroll", message)
   }
 
+  private fun sourceOwnsMomentum(target: View): Boolean = target is NestedScrollingChild2
+
   override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
     val source = asReactVerticalSource(target)
     val accepted = axes and ViewCompat.SCROLL_AXIS_VERTICAL != 0 && source != null
-    if (accepted && type == ViewCompat.TYPE_NON_TOUCH) momentumSessionActive = true
+    if (accepted) {
+      if (type == ViewCompat.TYPE_NON_TOUCH) {
+        momentumSessionActive = true
+        momentumExpected = false
+      } else {
+        // A new finger gesture supersedes any expectation that did not become NON_TOUCH.
+        momentumExpected = false
+      }
+    }
     if (accepted && source != null) {
       flushPendingLedger("session-rebind")
       chromeController?.beginNestedTransaction(source)
     }
     log(
       "NESTED_START contract=androidx type=${typeName(type)} axes=$axes accepted=$accepted " +
-        "chrome=${chromeController != null} target=${targetName(target)}",
+        "chrome=${chromeController != null} momentum=$momentumSessionActive " +
+        "expected=$momentumExpected target=${targetName(target)}",
     )
     return accepted
   }
@@ -93,17 +107,21 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   override fun onStopNestedScroll(target: View, type: Int) {
     log(
       "NESTED_STOP contract=androidx type=${typeName(type)} momentum=$momentumSessionActive " +
-        "sourceY=${target.scrollY} ledgerFrames=$ledgerFrames broken=$ledgerBroken " +
-        "orphan=$ledgerOrphans target=${targetName(target)}",
+        "expected=$momentumExpected sourceY=${target.scrollY} ledgerFrames=$ledgerFrames " +
+        "broken=$ledgerBroken orphan=$ledgerOrphans target=${targetName(target)}",
     )
     parentHelper.onStopNestedScroll(target, type)
 
     if (type == ViewCompat.TYPE_NON_TOUCH) {
       momentumSessionActive = false
+      momentumExpected = false
       flushPendingLedger("momentum-stop")
       chromeController?.endNestedTransaction("momentum-stop")
-    } else if (momentumSessionActive) {
-      log("CHROME_TOUCH_STOP deferred=momentum target=${targetName(target)}")
+    } else if (momentumSessionActive || momentumExpected) {
+      log(
+        "CHROME_TOUCH_STOP deferred=momentum momentum=$momentumSessionActive " +
+          "expected=$momentumExpected target=${targetName(target)}",
+      )
     } else {
       flushPendingLedger("touch-stop")
       chromeController?.endNestedTransaction("touch-stop")
@@ -159,8 +177,11 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     )
   }
 
-  override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean =
-    onStartNestedScroll(child, target, axes, ViewCompat.TYPE_TOUCH)
+  override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean {
+    val accepted = onStartNestedScroll(child, target, axes, ViewCompat.TYPE_TOUCH)
+    if (accepted) momentumExpected = false
+    return accepted
+  }
 
   override fun onNestedScrollAccepted(child: View, target: View, axes: Int) {
     parentHelper.onNestedScrollAccepted(child, target, axes)
@@ -204,8 +225,12 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     velocityY: Float,
     consumed: Boolean,
   ): Boolean {
+    val expectsMomentum = consumed && sourceOwnsMomentum(target) && asReactVerticalSource(target) != null
+    if (expectsMomentum) momentumExpected = true
     log(
-      "NESTED_FLING vx=$velocityX vy=$velocityY childConsumed=$consumed target=${targetName(target)}",
+      "NESTED_FLING vx=$velocityX vy=$velocityY childConsumed=$consumed " +
+        "sourceOwnsMomentum=${sourceOwnsMomentum(target)} expected=$momentumExpected " +
+        "target=${targetName(target)}",
     )
 
     if (BuildConfig.RN_NESTED_SCROLL_FLING_SHIM) {
