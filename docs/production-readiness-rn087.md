@@ -26,7 +26,7 @@ The gate scans the production host/consumer transport and fails if it reintroduc
 
 ### Source semantics — PASS
 
-RN 0.87 with `useNestedScrollViewAndroid=true` selects `ReactNestedScrollView`. Stock 0.87 loses the NON_TOUCH fling transaction because the generated override bypasses `NestedScrollView.fling()`. Building ReactAndroid from source and delegating the ordinary fling path to AndroidX restores balanced TOUCH/NON_TOUCH sessions and frame-by-frame momentum dispatch without a parent shim.
+RN 0.87 with `useNestedScrollViewAndroid=true` selects `ReactNestedScrollView`. Stock 0.87 loses the NON_TOUCH fling transaction because the generated override bypasses AndroidX's animated nested-scroll setup. Building ReactAndroid from source and priming AndroidX's TYPE_NON_TOUCH bookkeeping before reinstating RN's original `OverScroller` parameters restores frame-by-frame momentum dispatch without a parent shim.
 
 ### TopAppBar end to end — PASS
 
@@ -62,9 +62,44 @@ Every FloatingToolbar input frame matched a real non-zero child-consumed post fr
 
 This closes the architecture research gate: one RN-owned source transaction can drive multiple native Material consumers with different roles without introducing a second scroll model.
 
+## Behavior-regression gates
+
+### Direct snap — transaction PASS, behavioral equivalence NOT YET PASS
+
+The first RN 0.87 direct-snap run with the V3 source probe produced balanced nested sessions and complete NON_TOUCH frame dispatch:
+
+```text
+starts TOUCH / NON_TOUCH    16 / 28
+stops  TOUCH / NON_TOUCH    16 / 28
+pre    TOUCH / NON_TOUCH   180 / 156
+post   TOUCH / NON_TOUCH   180 / 156
+direct-scroller requests    28
+direct nested primes        28
+```
+
+The structural analyzer passed, but the device test reported visibly jerky / unusual snap motion. Therefore this run is **not** evidence that snap behavior is production-safe. Visual behavior is part of the regression contract.
+
+The current direct analyzer also proves request-to-prime wiring, not yet exact final-position equivalence. Do not summarize this result as "snap PASS".
+
+A three-way A/B gate now compares the same `pagingEnabled + snapToInterval` JS configuration under:
+
+```text
+legacy   ReactScrollView, feature flag OFF, no source patch
+stock    ReactNestedScrollView, feature flag ON, prebuilt RN 0.87, no source patch
+patched  ReactNestedScrollView, feature flag ON, ReactAndroid from source + V3 patch
+```
+
+The next decision depends on that comparison:
+
+- if legacy, stock and patched all feel the same, the observed snapping is RN's existing behavior and the patch must merely preserve it;
+- if stock differs from legacy, the generated RN 0.87 nested source itself has a snap behavior regression;
+- if patched differs from stock, the V3 patch is responsible and must be changed before proceeding.
+
+Paging-animator validation remains blocked until this A/B result is understood.
+
 ## Required before calling the RN source patch production-safe
 
-The current proof patch changes the ordinary nested ScrollView fling to enter AndroidX's own `NestedScrollView.fling()` path. Before upstreaming or shipping it as a maintained patch, explicitly validate:
+Explicitly validate:
 
 - top and bottom edge behavior, including overfling/edge effects;
 - interrupting a running fling with a new touch;
@@ -95,7 +130,6 @@ The module-side transport already implements the intended compatibility boundary
 
 Still required:
 
-- align the production diagnostic ledger with the validated AndroidX full-pre classification;
 - validate host/source lifecycle under Fabric remounts and view recycling;
 - validate multiple screens and multiple ScrollViews, failing closed when source binding is ambiguous;
 - validate nested navigators/screens and source changes during transitions;
@@ -131,11 +165,11 @@ Before release, CI/device tests should cover at least:
 5. complete transaction conservation ledger;
 6. FloatingToolbar 100% coverage of non-zero child-consumed post frames;
 7. Material settle completion for both consumers;
-8. edge/interruption/snap/paging regression scenarios;
+8. edge/interruption/snap/paging regression scenarios, including behavioral A/B against stock RN;
 9. `npm run check:scroll-invariants`;
 10. release build smoke test with tracing disabled.
 
-Items 1–7 and 9 have concrete implementations in this branch. Item 8 is now the primary RN source-patch blocker; item 10 is the primary packaging/runtime-cost blocker.
+Items 1–7 and 9 have concrete validated implementations in this branch. Item 8 is now the primary RN source-patch blocker; item 10 is the primary packaging/runtime-cost blocker.
 
 ## Public/upstream path
 
