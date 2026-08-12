@@ -12,8 +12,9 @@ const SECTIONS = [
 /**
  * Profile: a plain React Native `ScrollView`, not a list library.
  *
- * The coordinator is supposed to work against RN's own scroller, so at least one screen must
- * avoid FlashList entirely. If this screen behaves differently from the other two, the transport
+ * This is deliberately the large + exitUntilCollapsed case. Feed covers enterAlways on FlashList;
+ * Profile exercises the complementary top-edge post-scroll path on React Native's own ScrollView.
+ * If this screen behaves differently from Gallery under the same large-bar behavior, the transport
  * has grown an accidental dependency on how FlashList happens to scroll.
  */
 export default function ProfileScreen() {
@@ -33,7 +34,7 @@ export default function ProfileScreen() {
           ))}
         </ScrollView>
       </NativeScrollHost>
-      <MaterialTopAppBar title="Profile" variant="large" scrollBehavior="enterAlways" />
+      <MaterialTopAppBar title="Profile" variant="large" scrollBehavior="exitUntilCollapsed" />
     </View>
   );
 }
