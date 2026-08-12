@@ -45,6 +45,7 @@ const stats = {
   posts: {TOUCH: 0, NON_TOUCH: 0},
   direct: [],
   directPrimes: 0,
+  nonTouchStopY: [],
   pagingRequests: [],
   animatorStarts: [],
   animatorEnds: [],
@@ -67,8 +68,14 @@ for (const line of lines) {
   const start = line.match(/NESTED_START .*type=(TOUCH|NON_TOUCH)/);
   if (start) stats.starts[start[1]] += 1;
 
-  const stop = line.match(/NESTED_STOP .*type=(TOUCH|NON_TOUCH)/);
-  if (stop) stats.stops[stop[1]] += 1;
+  const stopWithY = line.match(/NESTED_STOP .*type=(TOUCH|NON_TOUCH).*sourceY=(-?\d+)/);
+  if (stopWithY) {
+    stats.stops[stopWithY[1]] += 1;
+    if (stopWithY[1] === 'NON_TOUCH') stats.nonTouchStopY.push(Number(stopWithY[2]));
+  } else {
+    const stop = line.match(/NESTED_STOP .*type=(TOUCH|NON_TOUCH)/);
+    if (stop) stats.stops[stop[1]] += 1;
+  }
 
   const pre = line.match(/NESTED_PRE type=(TOUCH|NON_TOUCH)/);
   if (pre) stats.pres[pre[1]] += 1;
@@ -124,12 +131,23 @@ let targetPass = false;
 let targetSummary = '';
 
 if (expected === 'direct') {
-  pathPass = stats.direct.length > 0 && stats.directPrimes === stats.direct.length;
-  // The direct path preserves RN's original target contract in source: targetOffset is still passed
-  // as both minY and maxY to the same reflected mScroller. Runtime proves that every such request
-  // is preceded by AndroidX nested bookkeeping and then emits NON_TOUCH frames.
-  targetPass = stats.direct.length > 0 && stats.direct.every(item => item.targetY >= 0);
-  targetSummary = `direct target requests ${stats.direct.length}; matching primes ${stats.directPrimes}`;
+  const pairCount = Math.min(stats.direct.length, stats.nonTouchStopY.length);
+  const mismatches = [];
+  for (let index = 0; index < pairCount; index += 1) {
+    const requested = stats.direct[index].targetY;
+    const actual = stats.nonTouchStopY[index];
+    if (requested !== actual) mismatches.push(`${index + 1}:${requested}->${actual}`);
+  }
+
+  pathPass =
+    stats.direct.length > 0 &&
+    stats.directPrimes === stats.direct.length &&
+    stats.nonTouchStopY.length === stats.direct.length;
+  targetPass = pathPass && mismatches.length === 0;
+  targetSummary =
+    `direct target/stop matches ${pairCount - mismatches.length}/${stats.direct.length}; ` +
+    `primes ${stats.directPrimes}/${stats.direct.length}` +
+    (mismatches.length ? `; mismatches=${mismatches.slice(0, 5).join(',')}` : '');
 } else {
   const endedNormally = stats.animatorEnds.filter(item => item.reason === 'end');
   const exact = endedNormally.filter(item => item.targetY === item.actualY);
@@ -161,6 +179,7 @@ console.log('');
 console.log('Snap source');
 console.log(`  direct-scroller requests    ${stats.direct.length}`);
 console.log(`  direct nested primes        ${stats.directPrimes}`);
+console.log(`  NON_TOUCH stop positions    ${stats.nonTouchStopY.length}`);
 console.log(`  paging-animator requests    ${stats.pagingRequests.length}`);
 console.log(`  animator starts / ends      ${stats.animatorStarts.length} / ${stats.animatorEnds.length}`);
 console.log(`  ${targetSummary}`);
@@ -170,7 +189,7 @@ console.log(`source class                 ${sourcePass ? 'PASS' : 'FAIL'}`);
 console.log(`NON_TOUCH session balance    ${nonTouchBalance ? 'PASS' : 'FAIL'}`);
 console.log(`NON_TOUCH frame dispatch     ${nonTouchFrames ? 'PASS' : 'FAIL'}`);
 console.log(`${expected === 'direct' ? 'direct snap path' : 'paging animator path'}          ${pathPass ? 'PASS' : 'FAIL'}`);
-console.log(`${expected === 'direct' ? 'RN snap target wiring' : 'snap final target'}       ${targetPass ? 'PASS' : 'FAIL'}`);
+console.log(`snap final target            ${targetPass ? 'PASS' : 'FAIL'}`);
 
 process.exitCode =
   bootstrapPass && sourcePass && nonTouchBalance && nonTouchFrames && pathPass && targetPass ? 0 : 1;

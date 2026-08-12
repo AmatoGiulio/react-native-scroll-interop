@@ -93,7 +93,8 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   override fun onStopNestedScroll(target: View, type: Int) {
     log(
       "NESTED_STOP contract=androidx type=${typeName(type)} momentum=$momentumSessionActive " +
-        "ledgerFrames=$ledgerFrames broken=$ledgerBroken orphan=$ledgerOrphans target=${targetName(target)}",
+        "sourceY=${target.scrollY} ledgerFrames=$ledgerFrames broken=$ledgerBroken " +
+        "orphan=$ledgerOrphans target=${targetName(target)}",
     )
     parentHelper.onStopNestedScroll(target, type)
 

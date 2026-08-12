@@ -47,7 +47,7 @@ if (generated.error) throw generated.error;
 if (generated.status !== 0) process.exit(generated.status ?? 1);
 
 let source = fs.readFileSync(sourcePath, 'utf8');
-const marker = 'RN087_NESTED_SCROLL_SOURCE_PATCH_V3';
+const marker = 'RN087_NESTED_SCROLL_SOURCE_PATCH_V4';
 
 function replaceOnce(label, from, to) {
   if (!source.includes(from)) {
@@ -99,14 +99,16 @@ const originalFling = `  override fun fling(velocityY: Int) {
   }
 `;
 
-const patchedFling = `  private fun primeNestedAnimatedScroll(velocityY: Int, reason: String) {
+const patchedFling = `  private fun primeNestedAnimatedScroll(sourceVelocityY: Int, reason: String) {
     android.util.Log.i(
         "Rn087NestedScroll",
-        "SOURCE_NESTED_PRIME reason=$reason velocityY=$velocityY",
+        "SOURCE_NESTED_PRIME reason=$reason sourceVelocityY=$sourceVelocityY primeVelocityY=0",
     )
-    // AndroidX starts TYPE_NON_TOUCH and initializes mLastScrollerY. The caller immediately
-    // overwrites the same mScroller before the next frame with RN's original animation parameters.
-    super.fling(velocityY)
+    // AndroidX's fling path is used only as a zero-velocity bookkeeping primitive: it opens
+    // TYPE_NON_TOUCH and initializes mLastScrollerY without publishing RN's real fling velocity to
+    // AndroidX/API-35 frame-content-velocity state. The caller then replaces the same mScroller in
+    // this call stack, before the next frame, with RN 0.87's original animation parameters.
+    super.fling(0)
   }
 
   private fun startNestedSnapAnimator(targetY: Int) {
@@ -138,7 +140,7 @@ const patchedFling = `  private fun primeNestedAnimatedScroll(velocityY: Int, re
     } else if (scroller != null) {
       android.util.Log.i(
           "Rn087NestedScroll",
-          "SOURCE_FLING_PATCH mode=prime-then-rn velocityY=$correctedVelocityY",
+          "SOURCE_FLING_PATCH mode=prime-zero-then-rn velocityY=$correctedVelocityY",
       )
       primeNestedAnimatedScroll(correctedVelocityY, "ordinary")
 
@@ -359,5 +361,5 @@ replaceOnce(
 fs.writeFileSync(sourcePath, source);
 
 console.log(
-  'RN 0.87 source patch v3: ordinary fling + direct snap + RN paging animator emit source-owned NON_TOUCH',
+  'RN 0.87 source patch v4: zero-velocity AndroidX prime + original RN fling/snap physics + nested paging animator',
 );
