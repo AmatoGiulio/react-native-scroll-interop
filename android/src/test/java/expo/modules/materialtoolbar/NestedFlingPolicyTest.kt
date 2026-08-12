@@ -18,12 +18,14 @@ class NestedFlingPolicyTest {
     hasChrome: Boolean = true,
     chromeCanDrive: Boolean = true,
     handoffPending: Boolean = false,
+    sourceOwnsMomentum: Boolean = false,
   ) = NestedFlingPolicy.shouldDriveFling(
     scrollFrameCount = scrollFrameCount,
     hasDirectTransaction = hasDirectTransaction,
     hasChrome = hasChrome,
     chromeCanDrive = chromeCanDrive,
     handoffPending = handoffPending,
+    sourceOwnsMomentum = sourceOwnsMomentum,
   )
 
   @Test
@@ -72,9 +74,16 @@ class NestedFlingPolicyTest {
   }
 
   @Test
+  fun `yields the fling to a source that reports its own momentum`() {
+    // The point of the whole exercise: when the scroll view dispatches its fling as TYPE_NON_TOUCH,
+    // the parent already has the real transaction. Reproducing the physics next to it would be a
+    // second, slightly different scroll view driving the same pixels.
+    assertFalse(drive(scrollFrameCount = 37, sourceOwnsMomentum = true))
+  }
+
+  @Test
   fun `drives nothing when parent-owned momentum is switched off`() {
-    // The switch exists for the day useNestedScrollViewAndroid ships: NestedScrollView dispatches
-    // during fling itself, and reproducing the source's physics is strictly worse than using it.
+    // The switch exists so the fallback can be measured against the real thing rather than trusted.
     NestedFlingPolicy.parentOwnedMomentumEnabled = false
     try {
       assertFalse(drive(scrollFrameCount = 37))

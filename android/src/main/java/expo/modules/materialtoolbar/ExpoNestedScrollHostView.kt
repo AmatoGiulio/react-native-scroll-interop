@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.OverScroller
+import androidx.core.view.NestedScrollingChild2
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
@@ -69,6 +70,10 @@ class ExpoNestedScrollHostView(
   private var proxyLastVelocityY = 0
   private var proxyRunnable: Runnable? = null
 
+  // True between the source's own TYPE_NON_TOUCH start and stop — momentum the source is reporting
+  // itself, rather than momentum this parent had to reproduce.
+  private var momentumSessionActive = false
+
   // Armed by a real ACTION_DOWN reaching this ancestor, consumed by the nested session it opens.
   // A session that starts without one is the source re-entering after we intercepted its fling, not
   // a new gesture, and must not be allowed to take the source away from a running proxy.
@@ -113,6 +118,7 @@ class ExpoNestedScrollHostView(
   override fun onDetachedFromWindow() {
     stopProxyFling("host-detached", allowHandoff = false)
     NativeNestedScrollRegistry.unregisterHost(this)
+    momentumSessionActive = false
     flingHandoffPending = false
     touchDownPending = false
     activeTopBar = null
@@ -254,6 +260,7 @@ class ExpoNestedScrollHostView(
       hasChrome = react != null && topBar != null,
       chromeCanDrive = react != null && topBar != null && topBar.canDriveFling(react, direction),
       handoffPending = flingHandoffPending,
+      sourceOwnsMomentum = sourceOwnsMomentum(target),
     )
 
     flingRequestedThisSession = true
@@ -290,8 +297,19 @@ class ExpoNestedScrollHostView(
   // NestedScrollingParent2 / Parent3 typed contract. Kept complete for sources that use AndroidX.
   // ---------------------------------------------------------------------------
 
+  /**
+   * Whether the source reports its own momentum instead of leaving the parent to infer it.
+   *
+   * Asked of the source rather than of a version or a flag: `NestedScrollingChild2` is precisely
+   * the contract that carries TYPE_NON_TOUCH, so a `ReactScrollView` that dispatches its fling and
+   * a `NestedScrollView`-backed one both answer yes, and a plain `android.widget.ScrollView`
+   * answers no.
+   */
+  private fun sourceOwnsMomentum(target: View): Boolean = target is NestedScrollingChild2
+
   override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
     val accepted = axes and ViewCompat.SCROLL_AXIS_VERTICAL != 0
+    if (accepted && type == ViewCompat.TYPE_NON_TOUCH) momentumSessionActive = true
     if (accepted) beginNestedSession(target)
     log(
       "NESTED_START contract=androidx type=${typeLabel(type)} axes=${axesLabel(axes)} " +
@@ -312,9 +330,15 @@ class ExpoNestedScrollHostView(
     nestedParentHelper.onStopNestedScroll(target, type)
     log(
       "NESTED_STOP contract=androidx type=${typeLabel(type)} preCount=$preCount postCount=$postCount " +
-        "proxy=${proxyScroller != null} direct=$directTransactionActive ${targetLabel(target)}",
+        "proxy=${proxyScroller != null} direct=$directTransactionActive " +
+        "momentum=$momentumSessionActive ${targetLabel(target)}",
     )
-    finishTouchIfNoProxy(target)
+    if (type == ViewCompat.TYPE_NON_TOUCH) {
+      momentumSessionActive = false
+      finishMovement(target, "momentum-stop")
+    } else {
+      finishTouchIfNoProxy(target)
+    }
   }
 
   override fun onNestedPreScroll(
@@ -533,23 +557,34 @@ class ExpoNestedScrollHostView(
   }
 
   private fun finishTouchIfNoProxy(target: View) {
-    if (!directTransactionActive || proxyScroller != null) return
-    val source = target as? ReactScrollView ?: activeSource ?: return
-    activeTopBar?.endNestedTransaction(source, "touch-stop")
+    if (proxyScroller != null) return
 
-    // A release with no fling behind it ends the movement here, and the sampling coordinator would
-    // otherwise only work that out after NON_FLING_SETTLE_GRACE_MS of stillness. Report it, exactly
-    // as the proxy does when its fling finishes, so chrome settles from the frame the finger left
-    // instead of a beat later. The velocity is zero because there is none: that is what no fling
-    // means.
-    //
-    // Gated on the source never having asked for a fling. onNestedPreFling always precedes
-    // onStopNestedScroll, so by here the answer is known — and reporting the end while a fling is
-    // about to start would settle chrome into a movement still to come.
-    if (!flingRequestedThisSession) {
-      ReactNativeScrollCoordinator.transportSettled(source, "touch-stop")
+    // A source that dispatches its own momentum opens the NON_TOUCH session inside `fling()`, which
+    // runs before the touch session is closed. The movement is not over here, it changed owner:
+    // settling now would run Material's terminal snap against a fling still to come.
+    if (momentumSessionActive) {
+      log("TX_TOUCH_STOP deferred=momentum ${targetLabel(target)}")
+      return
     }
 
+    // A release with no fling behind it ends the movement here, and the sampling coordinator would
+    // otherwise only work that out after NON_FLING_SETTLE_GRACE_MS of stillness. Report it so
+    // chrome settles from the frame the finger left instead of a beat later. The velocity is zero
+    // because there is none: that is what no fling means.
+    //
+    // Gated on the source never having asked for a fling. onNestedPreFling always precedes
+    // onStopNestedScroll, so by here the answer is known.
+    finishMovement(target, "touch-stop", reportSettled = !flingRequestedThisSession)
+  }
+
+  /** Close the chrome transaction for a movement that has genuinely ended. */
+  private fun finishMovement(target: View, reason: String, reportSettled: Boolean = true) {
+    if (!directTransactionActive) return
+    val source = target as? ReactScrollView ?: activeSource ?: return
+    activeTopBar?.endNestedTransaction(source, reason)
+    if (reportSettled) {
+      ReactNativeScrollCoordinator.transportSettled(source, reason)
+    }
     directTransactionActive = false
   }
 

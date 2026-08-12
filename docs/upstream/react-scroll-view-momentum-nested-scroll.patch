@@ -1,0 +1,254 @@
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java
+index b0f6203..1503a18 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java
+@@ -32,6 +32,8 @@ import android.widget.OverScroller;
+ import android.widget.ScrollView;
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
++import androidx.core.view.NestedScrollingChild3;
++import androidx.core.view.NestedScrollingChildHelper;
+ import androidx.core.view.ViewCompat;
+ import androidx.core.view.ViewCompat.FocusDirection;
+ import com.facebook.common.logging.FLog;
+@@ -86,6 +88,7 @@ public class ReactScrollView extends ScrollView
+         HasFlingAnimator,
+         HasScrollEventThrottle,
+         HasSmoothScroll,
++        NestedScrollingChild3,
+         VirtualViewContainer {
+ 
+   private static @Nullable Field sScrollerField;
+@@ -133,6 +136,30 @@ public class ReactScrollView extends ScrollView
+   private int mFadingEdgeLengthStart;
+   private int mFadingEdgeLengthEnd;
+ 
++  /**
++   * Momentum-phase nested scrolling.
++   *
++   * <p>{@link ScrollView} dispatches nested scroll only while a finger is down. The fling is moved
++   * by {@link #computeScroll()}, which dispatches nothing, so a nested-scrolling ancestor sees the
++   * gesture stop at the release and never hears about the thousands of pixels that follow. Chrome
++   * driven through nested scrolling — a {@code CoordinatorLayout} behavior, a Compose
++   * {@code NestedScrollConnection} — therefore sits still through every momentum scroll.
++   *
++   * <p>These fields add the missing half. The scroller keeps owning the physics; every frame it
++   * produces is offered to the parent as a real {@code TYPE_NON_TOUCH} transaction — pre-scroll,
++   * the child's own movement, post-scroll — which is the contract {@code NestedScrollView} already
++   * implements and this view does not.
++   *
++   * <p>Inert unless an ancestor accepts {@code TYPE_NON_TOUCH}: when it does not,
++   * {@link #computeScroll()} is the platform's, untouched.
++   */
++  private final NestedScrollingChildHelper mNestedMomentumHelper =
++      new NestedScrollingChildHelper(this);
++
++  private final int[] mNestedMomentumConsumed = new int[2];
++  private boolean mNestedMomentumActive;
++  private int mLastNestedMomentumY;
++
+   public ReactScrollView(Context context) {
+     this(context, null);
+   }
+@@ -142,6 +169,7 @@ public class ReactScrollView extends ScrollView
+     mFpsListener = fpsListener;
+ 
+     mScroller = getOverScrollerFromParent();
++    mNestedMomentumHelper.setNestedScrollingEnabled(true);
+     setOnHierarchyChangeListener(this);
+     setScrollBarStyle(SCROLLBARS_OUTSIDE_OVERLAY);
+     setClipChildren(false);
+@@ -308,6 +336,7 @@ public class ReactScrollView extends ScrollView
+     if (mScroller != null && !mScroller.isFinished()) {
+       mScroller.abortAnimation();
+     }
++    stopNestedMomentumScroll();
+   }
+ 
+   public void setSnapInterval(int snapInterval) {
+@@ -796,12 +825,175 @@ public class ReactScrollView extends ScrollView
+       ViewCompat.postInvalidateOnAnimation(this);
+ 
+       // END FB SCROLLVIEW CHANGE
++
++      startNestedMomentumScroll();
+     } else {
+       super.fling(correctedVelocityY);
+     }
+     handlePostTouchScrolling(0, correctedVelocityY);
+   }
+ 
++  /**
++   * Open a {@code TYPE_NON_TOUCH} nested scroll for the fling that is about to run.
++   *
++   * <p>Only meaningful when this view drives its own {@link OverScroller}; the {@code super.fling}
++   * and snapping paths are moved by animators that step the view through {@code scrollTo}.
++   */
++  private void startNestedMomentumScroll() {
++    stopNestedMomentumScroll();
++    if (mScroller == null || !isNestedScrollingEnabled()) {
++      return;
++    }
++    mLastNestedMomentumY = mScroller.getCurrY();
++    mNestedMomentumActive =
++        startNestedScroll(ViewCompat.SCROLL_AXIS_VERTICAL, ViewCompat.TYPE_NON_TOUCH);
++  }
++
++  private void stopNestedMomentumScroll() {
++    if (!mNestedMomentumActive) {
++      return;
++    }
++    mNestedMomentumActive = false;
++    stopNestedScroll(ViewCompat.TYPE_NON_TOUCH);
++  }
++
++  /**
++   * The momentum half of nested scrolling: one transaction per frame, around the movement the
++   * scroller was going to perform anyway.
++   *
++   * <p>The parent is offered the frame's delta first, the child applies what is left through the
++   * same {@link #overScrollBy} the platform uses — so {@code onOverScrolled}, scroll events, state
++   * updates and spring-back all behave as before — and the parent is then told what the child
++   * actually took.
++   *
++   * <p>The frame delta is measured against the scroller's own last position rather than against
++   * {@code getScrollY()}. That is what makes parent consumption real: distance the parent keeps is
++   * gone for good, instead of being re-offered on the next frame as a growing debt the child
++   * eventually pays in one jump.
++   */
++  @Override
++  public void computeScroll() {
++    if (!mNestedMomentumActive || mScroller == null) {
++      super.computeScroll();
++      return;
++    }
++
++    if (!mScroller.computeScrollOffset()) {
++      stopNestedMomentumScroll();
++      super.computeScroll();
++      return;
++    }
++
++    final int scrollerY = mScroller.getCurrY();
++    int unconsumed = scrollerY - mLastNestedMomentumY;
++    mLastNestedMomentumY = scrollerY;
++
++    mNestedMomentumConsumed[0] = 0;
++    mNestedMomentumConsumed[1] = 0;
++    if (dispatchNestedPreScroll(
++        0, unconsumed, mNestedMomentumConsumed, null, ViewCompat.TYPE_NON_TOUCH)) {
++      unconsumed -= mNestedMomentumConsumed[1];
++    }
++
++    final int oldY = getScrollY();
++    if (unconsumed != 0) {
++      final int scrollWindowHeight = getHeight() - getPaddingBottom() - getPaddingTop();
++      overScrollBy(
++          0,
++          unconsumed,
++          getScrollX(),
++          oldY,
++          0,
++          getMaxScrollY(),
++          0,
++          scrollWindowHeight / 2,
++          false);
++    }
++    final int childConsumed = getScrollY() - oldY;
++
++    mNestedMomentumConsumed[0] = 0;
++    mNestedMomentumConsumed[1] = 0;
++    dispatchNestedScroll(
++        0,
++        childConsumed,
++        0,
++        unconsumed - childConsumed,
++        null,
++        ViewCompat.TYPE_NON_TOUCH,
++        mNestedMomentumConsumed);
++
++    if (!awakenScrollBars()) {
++      ViewCompat.postInvalidateOnAnimation(this);
++    }
++  }
++
++  // NestedScrollingChild2 / NestedScrollingChild3. The untouched TYPE_TOUCH half is the platform's
++  // own implementation on View, which ScrollView already drives from onTouchEvent; only the
++  // momentum half is ours. Routing TYPE_TOUCH to a second child helper here would dispatch every
++  // drag frame twice.
++
++  @Override
++  public boolean startNestedScroll(int axes, int type) {
++    return type == ViewCompat.TYPE_TOUCH
++        ? super.startNestedScroll(axes)
++        : mNestedMomentumHelper.startNestedScroll(axes, type);
++  }
++
++  @Override
++  public void stopNestedScroll(int type) {
++    if (type == ViewCompat.TYPE_TOUCH) {
++      super.stopNestedScroll();
++    } else {
++      mNestedMomentumHelper.stopNestedScroll(type);
++    }
++  }
++
++  @Override
++  public boolean hasNestedScrollingParent(int type) {
++    return type == ViewCompat.TYPE_TOUCH
++        ? super.hasNestedScrollingParent()
++        : mNestedMomentumHelper.hasNestedScrollingParent(type);
++  }
++
++  @Override
++  public boolean dispatchNestedPreScroll(
++      int dx, int dy, @Nullable int[] consumed, @Nullable int[] offsetInWindow, int type) {
++    return type == ViewCompat.TYPE_TOUCH
++        ? super.dispatchNestedPreScroll(dx, dy, consumed, offsetInWindow)
++        : mNestedMomentumHelper.dispatchNestedPreScroll(dx, dy, consumed, offsetInWindow, type);
++  }
++
++  @Override
++  public boolean dispatchNestedScroll(
++      int dxConsumed,
++      int dyConsumed,
++      int dxUnconsumed,
++      int dyUnconsumed,
++      @Nullable int[] offsetInWindow,
++      int type) {
++    return type == ViewCompat.TYPE_TOUCH
++        ? super.dispatchNestedScroll(dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed, offsetInWindow)
++        : mNestedMomentumHelper.dispatchNestedScroll(
++            dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed, offsetInWindow, type);
++  }
++
++  @Override
++  public void dispatchNestedScroll(
++      int dxConsumed,
++      int dyConsumed,
++      int dxUnconsumed,
++      int dyUnconsumed,
++      @Nullable int[] offsetInWindow,
++      int type,
++      @NonNull int[] consumed) {
++    if (type == ViewCompat.TYPE_TOUCH) {
++      super.dispatchNestedScroll(dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed, offsetInWindow);
++    } else {
++      mNestedMomentumHelper.dispatchNestedScroll(
++          dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed, offsetInWindow, type, consumed);
++    }
++  }
++
+   private int correctFlingVelocityY(int velocityY) {
+     if (Build.VERSION.SDK_INT != Build.VERSION_CODES.P) {
+       return velocityY;
+@@ -953,6 +1145,9 @@ public class ReactScrollView extends ScrollView
+       mPostTouchRunnable = null;
+       getFlingAnimator().cancel();
+     }
++    // A new finger owns the view: the momentum transaction is over, and the TYPE_TOUCH one that
++    // super.onTouchEvent is about to open takes its place.
++    stopNestedMomentumScroll();
+   }
+ 
+   private int predictFinalScrollPosition(int velocityY) {

@@ -26,17 +26,15 @@ internal object NestedFlingPolicy {
   const val MIN_SCROLL_SAMPLES = 2L
 
   /**
-   * Whether the parent takes flings over at all.
+   * Whether the parent may take flings over at all.
    *
-   * This exists because the need for it is temporary. `ReactScrollView` extends
-   * `android.widget.ScrollView`, which emits no per-frame nested-scroll callbacks during a fling,
-   * so chrome would sit still through every momentum scroll unless the parent drives it. React
-   * Native has merged the fix upstream — `useNestedScrollViewAndroid` makes `ReactScrollView`
-   * extend `NestedScrollView`, which does dispatch during fling as TYPE_NON_TOUCH — and where that
-   * flag is on, this whole mechanism is redundant and should be off: the source's own physics is
-   * always a better answer than reproducing it.
+   * This is a fallback for sources that cannot report their own momentum, not a design. Reproducing
+   * a scroll view's physics in its parent is guessing at something the source knows exactly; the
+   * only reason to do it is that `android.widget.ScrollView` moves its fling from `computeScroll`,
+   * which dispatches nothing, leaving the parent with no transaction to observe.
    *
-   * Turning it off is also how the claim above gets verified rather than asserted.
+   * A source that dispatches its own momentum makes this redundant — see [sourceOwnsMomentum] —
+   * and the switch stays so the difference can be measured rather than asserted.
    */
   var parentOwnedMomentumEnabled = true
 
@@ -47,6 +45,9 @@ internal object NestedFlingPolicy {
    * @param chromeCanDrive whether that chrome has travel left in this direction.
    * @param handoffPending set after a proxy was cancelled before running a single frame; until real
    *   scroll input clears it, the fling belongs to the source.
+   * @param sourceOwnsMomentum whether the source dispatches its own momentum as TYPE_NON_TOUCH
+   *   nested scroll. When it does, the parent has the real transaction to work with and taking the
+   *   fling over could only make it less faithful.
    */
   fun shouldDriveFling(
     scrollFrameCount: Long,
@@ -54,8 +55,10 @@ internal object NestedFlingPolicy {
     hasChrome: Boolean,
     chromeCanDrive: Boolean,
     handoffPending: Boolean,
+    sourceOwnsMomentum: Boolean,
   ): Boolean =
     parentOwnedMomentumEnabled &&
+      !sourceOwnsMomentum &&
       hasChrome &&
       hasDirectTransaction &&
       !handoffPending &&
