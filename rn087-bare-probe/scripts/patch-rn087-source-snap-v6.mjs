@@ -72,6 +72,18 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
       finishNestedDirectSnap("superseded")
     }
 
+    // RN's post-touch runnable intentionally calls flingAndSnap(0) after paging becomes stable.
+    // When that pass selects the position the child already occupies, it is a semantic no-op: do
+    // not manufacture a second NON_TOUCH transaction (and therefore a second Material settle).
+    if (targetY == scrollY && sourceVelocityY == 0) {
+      android.util.Log.i(
+          "Rn087NestedScroll",
+          "SOURCE_SNAP_DIRECT_SKIP reason=no-op targetY=$targetY sourceVelocityY=$sourceVelocityY " +
+              "sourceY=$scrollY",
+      )
+      return
+    }
+
     nestedDirectSnapLastScrollerY = scrollY
     nestedDirectSnapTargetY = targetY
     nestedDirectSnapSessionStarted =
@@ -90,7 +102,9 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
     if (!nestedDirectSnapActive) return
     val targetY = nestedDirectSnapTargetY
     val sourceY = scrollY
-    val scrollerY = scroller?.currY ?: sourceY
+    val currentScroller = scroller
+    val scrollerY = currentScroller?.currY ?: sourceY
+    val scrollerFinished = currentScroller?.isFinished ?: true
     val sessionStarted = nestedDirectSnapSessionStarted
 
     nestedDirectSnapActive = false
@@ -98,7 +112,7 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
     android.util.Log.i(
         "Rn087NestedScroll",
         "SOURCE_SNAP_DIRECT_END reason=$reason targetY=$targetY sourceY=$sourceY " +
-            "scrollerY=$scrollerY",
+            "scrollerY=$scrollerY scrollerFinished=$scrollerFinished",
     )
     if (sessionStarted) {
       stopNestedScroll(ViewCompat.TYPE_NON_TOUCH)
@@ -154,14 +168,7 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
       }
 
       residualY = remainingY - nestedDirectSnapPostConsumed[1]
-      if (residualY != 0) {
-        // Match the important AndroidX edge rule: once neither child nor parent can consume the
-        // remaining animated distance, do not let the scroller continue living beyond the edge.
-        // abortAnimation() snaps the OverScroller bookkeeping back to its RN-selected final target;
-        // the child is already clamped at the edge, so no synthetic reverse scroll is dispatched.
-        currentScroller.abortAnimation()
-        edgeAbort = true
-      }
+      edgeAbort = residualY != 0
 
       android.util.Log.i(
           "Rn087NestedScroll",
@@ -172,10 +179,21 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
       )
     }
 
+    // The RN snap contract is the child content offset, not OverScroller's temporary overfling
+    // coordinate. At an edge, minY=maxY=target and RN deliberately gives the scroller overY, so
+    // currY may continue beyond the target after the child is already clamped there. Once the child
+    // reaches targetY, the visible snap is complete. Stop the internal scroller and close this one
+    // NON_TOUCH transaction instead of waiting for RN's later flingAndSnap(0) pass to supersede it.
+    if (scrollY == nestedDirectSnapTargetY) {
+      currentScroller.forceFinished(true)
+      finishNestedDirectSnap(if (edgeAbort) "target-reached-edge" else "target-reached")
+      return
+    }
+
     if (!currentScroller.isFinished) {
       postInvalidateOnAnimation()
     } else {
-      finishNestedDirectSnap(if (edgeAbort) "edge-abort" else "finished")
+      finishNestedDirectSnap("finished")
     }
   }
 
@@ -188,5 +206,5 @@ replaceOnce(
 
 fs.writeFileSync(sourcePath, source);
 console.log(
-  'RN 0.87 source patch V6: direct snap keeps RN target/OverScroller and emits post-only NON_TOUCH',
+  'RN 0.87 source patch V6: direct snap ends when the RN child reaches its absolute target',
 );
