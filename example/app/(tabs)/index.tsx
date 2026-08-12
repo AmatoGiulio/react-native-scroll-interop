@@ -5,7 +5,6 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PHOTOS, type Photo } from '../../src/photos';
-import { ZoomIn } from 'react-native-reanimated';
 
 const COLUMNS = 3;
 
