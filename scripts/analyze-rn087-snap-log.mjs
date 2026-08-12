@@ -115,6 +115,8 @@ for (const line of lines) {
       requestVelocityY: lastDirectRequest?.velocityY ?? null,
       requestedNetY: 0,
       childNetY: 0,
+      edgeAborts: 0,
+      residualNetY: 0,
       frames: 0,
       frameBroken: 0,
       ended: false,
@@ -129,7 +131,7 @@ for (const line of lines) {
   }
 
   const directFrame = line.match(
-    /SOURCE_SNAP_FRAME mode=post-only-target-lock requestedY=(-?\d+) childConsumedY=(-?\d+) remainingY=(-?\d+) parentPostConsumedY=(-?\d+) scrollerY=(-?\d+) sourceY=(-?\d+)/,
+    /SOURCE_SNAP_FRAME mode=post-only-target-lock requestedY=(-?\d+) childConsumedY=(-?\d+) remainingY=(-?\d+) parentPostConsumedY=(-?\d+)(?: residualY=(-?\d+) edgeAbort=(true|false))? scrollerY=(-?\d+) sourceY=(-?\d+)/,
   );
   if (directFrame) {
     stats.directFrames += 1;
@@ -139,8 +141,13 @@ for (const line of lines) {
       const requestedY = Number(directFrame[1]);
       const childConsumedY = Number(directFrame[2]);
       const remainingY = Number(directFrame[3]);
+      const parentPostConsumedY = Number(directFrame[4]);
+      const residualY = directFrame[5] == null ? remainingY - parentPostConsumedY : Number(directFrame[5]);
+      const edgeAbort = directFrame[6] === 'true';
       activeDirectSegment.requestedNetY += requestedY;
       activeDirectSegment.childNetY += childConsumedY;
+      activeDirectSegment.residualNetY += residualY;
+      if (edgeAbort) activeDirectSegment.edgeAborts += 1;
       activeDirectSegment.frames += 1;
       if (requestedY !== childConsumedY + remainingY) {
         activeDirectSegment.frameBroken += 1;
@@ -214,8 +221,11 @@ if (expected === 'direct' || expected === 'direct-chrome') {
   const requestMismatches = clean.filter(
     item => item.requestTargetY == null || item.requestTargetY !== item.targetY,
   );
-  const deltaMismatches = clean.filter(
-    item => item.requestedNetY !== item.targetY - item.baselineY,
+  const childDeltaMismatches = clean.filter(
+    item => item.childNetY !== item.targetY - item.baselineY,
+  );
+  const strictScrollerDeltaMismatches = clean.filter(
+    item => item.edgeAborts === 0 && item.requestedNetY !== item.targetY - item.baselineY,
   );
   const finalMismatches = clean.filter(
     item =>
@@ -224,7 +234,11 @@ if (expected === 'direct' || expected === 'direct-chrome') {
       item.scrollerY !== item.targetY,
   );
   const unfinished = stats.directSegments.filter(item => !item.ended).length;
-  const mismatchSet = new Set([...deltaMismatches, ...finalMismatches]);
+  const mismatchSet = new Set([
+    ...childDeltaMismatches,
+    ...strictScrollerDeltaMismatches,
+    ...finalMismatches,
+  ]);
   const mismatches = clean.filter(item => mismatchSet.has(item));
   const reasonCounts = new Map();
   for (const item of clean) {
@@ -234,6 +248,7 @@ if (expected === 'direct' || expected === 'direct-chrome') {
   const childOnlyMisses = finalMismatches.filter(
     item => item.scrollerY === item.targetY && item.sourceY !== item.targetY,
   );
+  const edgeAbortSegments = clean.filter(item => item.edgeAborts > 0);
 
   directDiagnostics = {
     clean,
@@ -241,6 +256,7 @@ if (expected === 'direct' || expected === 'direct-chrome') {
     reasonCounts,
     scrollerMisses,
     childOnlyMisses,
+    edgeAbortSegments,
   };
 
   // V6 deliberately bypasses pre-consumption for a target-locked direct snap. Any NON_TOUCH pre
@@ -263,13 +279,20 @@ if (expected === 'direct' || expected === 'direct-chrome') {
     nonTouchBalance &&
     prePolicyPass;
 
-  targetPass = pathPass && deltaMismatches.length === 0 && finalMismatches.length === 0;
+  targetPass =
+    pathPass &&
+    childDeltaMismatches.length === 0 &&
+    strictScrollerDeltaMismatches.length === 0 &&
+    finalMismatches.length === 0;
   targetSummary =
-    `target-lock delta matches ${clean.length - deltaMismatches.length}/${clean.length}; ` +
-    `final matches ${clean.length - finalMismatches.length}/${clean.length}; ` +
-    `requests ${stats.directRequests.length}; starts ${stats.directSegments.length}` +
-    (deltaMismatches.length || finalMismatches.length
-      ? `; deltaMismatch=${deltaMismatches.length} finalMismatch=${finalMismatches.length}`
+    `child target delta ${clean.length - childDeltaMismatches.length}/${clean.length}; ` +
+    `strict scroller delta ${clean.length - strictScrollerDeltaMismatches.length}/${clean.length}; ` +
+    `final ${clean.length - finalMismatches.length}/${clean.length}; ` +
+    `edgeAbortSegments=${edgeAbortSegments.length}; requests=${stats.directRequests.length}` +
+    (childDeltaMismatches.length || strictScrollerDeltaMismatches.length || finalMismatches.length
+      ? `; childMismatch=${childDeltaMismatches.length} ` +
+        `scrollerDeltaMismatch=${strictScrollerDeltaMismatches.length} ` +
+        `finalMismatch=${finalMismatches.length}`
       : '');
 } else {
   const endedNormally = stats.animatorEnds.filter(item => item.reason === 'end');
@@ -317,6 +340,7 @@ if (directDiagnostics != null) {
     .map(([reason, count]) => `${reason}=${count}`)
     .join(' ');
   console.log(`  end reasons                 ${reasons || 'none'}`);
+  console.log(`  edge-abort segments         ${directDiagnostics.edgeAbortSegments.length}`);
   console.log(
     `  final miss split           scroller=${directDiagnostics.scrollerMisses.length} childOnly=${directDiagnostics.childOnlyMisses.length}`,
   );
@@ -333,6 +357,7 @@ if (directDiagnostics != null) {
         `    #${item.index} reason=${item.reason} v=${item.sourceVelocityY} ` +
           `base=${item.baselineY} target=${item.targetY} expectedDelta=${expectedDelta} ` +
           `requestedDelta=${item.requestedNetY} childDelta=${item.childNetY} ` +
+          `edgeAborts=${item.edgeAborts} residualNet=${item.residualNetY} ` +
           `sourceY=${item.sourceY} scrollerY=${item.scrollerY} frames=${item.frames}${nextSummary}`,
       );
     }
