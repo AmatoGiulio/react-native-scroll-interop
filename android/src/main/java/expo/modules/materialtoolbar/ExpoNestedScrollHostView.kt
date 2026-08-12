@@ -62,6 +62,20 @@ class ExpoNestedScrollHostView(
   // The untyped platform callbacks have no consumed[] to report into; this stands in for it.
   private val throwawayConsumed = IntArray(2)
 
+  // Temporary transaction ledger. For one frame the four quantities must add up to what was asked,
+  // and none of them may be reconstructed from the frame before:
+  //
+  //     requested = chromePre + childConsumed + chromePost + remaining
+  //
+  // It also counts pre-scrolls that never got their post: android.widget.ScrollView and
+  // NestedScrollView do not treat that phase the same way, and touch still goes through the former.
+  private var ledgerRequestedY = 0
+  private var ledgerChromePreY = 0
+  private var ledgerPending = false
+  private var ledgerFrames = 0L
+  private var ledgerBrokenFrames = 0L
+  private var ledgerOrphanPres = 0L
+
   init {
     clipChildren = false
     clipToPadding = false
@@ -298,6 +312,18 @@ class ExpoNestedScrollHostView(
     // React Native scrolls the remainder itself with its own code.
     val pre = topBar.nestedPreScroll(dy, type.toInputType())
     consumed[1] += pre.reportedConsumedY
+
+    if (ledgerPending) {
+      ledgerOrphanPres += 1
+      log(
+        "TX_LEDGER orphanPre n=$ledgerOrphanPres requested=$ledgerRequestedY " +
+          "chromePre=$ledgerChromePreY type=${typeLabel(type)}",
+      )
+    }
+    ledgerRequestedY = dy
+    ledgerChromePreY = pre.reportedConsumedY
+    ledgerPending = true
+
     log(
       "TX_PRE type=${typeLabel(type)} n=$preCount dy=$dy chrome=${pre.reportedConsumedY} " +
         "collapse=${topBar.currentCollapseAmountPx()} sourceY=${(target as? ViewGroup)?.scrollY}",
@@ -345,9 +371,25 @@ class ExpoNestedScrollHostView(
     if (post != null) consumed[1] += post.availableConsumedY
     activeToolbar?.nestedPostScroll(dyConsumed, inputType)
 
+    val chromePost = post?.availableConsumedY ?: 0
+    if (ledgerPending) {
+      ledgerFrames += 1
+      val remaining = dyUnconsumed - chromePost
+      val sum = ledgerChromePreY + dyConsumed + chromePost + remaining
+      val balanced = sum == ledgerRequestedY
+      if (!balanced) ledgerBrokenFrames += 1
+      log(
+        "TX_LEDGER type=${typeLabel(type)} n=$ledgerFrames requested=$ledgerRequestedY " +
+          "chromePre=$ledgerChromePreY child=$dyConsumed chromePost=$chromePost " +
+          "remaining=$remaining sum=$sum balanced=$balanced broken=$ledgerBrokenFrames " +
+          "orphanPre=$ledgerOrphanPres",
+      )
+      ledgerPending = false
+    }
+
     log(
       "TX_POST type=${typeLabel(type)} n=$postCount child=$dyConsumed unconsumed=$dyUnconsumed " +
-        "chrome=${post?.availableConsumedY ?: 0} collapse=${activeTopBar?.currentCollapseAmountPx()} " +
+        "chrome=$chromePost collapse=${activeTopBar?.currentCollapseAmountPx()} " +
         "sourceY=${(target as? ViewGroup)?.scrollY}",
     )
   }
