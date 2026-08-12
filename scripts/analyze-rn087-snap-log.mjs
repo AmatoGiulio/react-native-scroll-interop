@@ -12,8 +12,10 @@ for (let index = 0; index < args.length; index += 1) {
   const arg = args[index];
   if (arg === '--expect') {
     expected = args[++index] ?? null;
-    if (expected !== 'direct' && expected !== 'paging') {
-      console.error('Usage: analyze-rn087-snap-log.mjs <log> --expect direct|paging');
+    if (expected !== 'direct' && expected !== 'direct-chrome' && expected !== 'paging') {
+      console.error(
+        'Usage: analyze-rn087-snap-log.mjs <log> --expect direct|direct-chrome|paging',
+      );
       process.exit(2);
     }
   } else if (arg.startsWith('-')) {
@@ -28,7 +30,7 @@ for (let index = 0; index < args.length; index += 1) {
 }
 
 if (logPath == null || expected == null || !fs.existsSync(logPath)) {
-  console.error('Usage: analyze-rn087-snap-log.mjs <log> --expect direct|paging');
+  console.error('Usage: analyze-rn087-snap-log.mjs <log> --expect direct|direct-chrome|paging');
   process.exit(2);
 }
 
@@ -46,6 +48,7 @@ const stats = {
   direct: [],
   directPrimes: 0,
   directSessions: [],
+  directSegments: [],
   directStopsWithoutTarget: 0,
   directStopsWithoutSourceY: 0,
   pagingRequests: [],
@@ -56,6 +59,7 @@ const stats = {
 let nonTouchSessionActive = false;
 let pendingDirectTarget = null;
 let activeDirectTarget = null;
+let activeDirectSegment = null;
 
 function addSource(name) {
   if (!name) return;
@@ -81,8 +85,6 @@ for (const line of lines) {
     else pendingDirectTarget = request.targetY;
   }
 
-  if (line.includes('SOURCE_NESTED_PRIME reason=snap-direct')) stats.directPrimes += 1;
-
   const start = line.match(/NESTED_START .*type=(TOUCH|NON_TOUCH)/);
   if (start) {
     stats.starts[start[1]] += 1;
@@ -92,6 +94,40 @@ for (const line of lines) {
       pendingDirectTarget = null;
     }
   }
+
+  const prime = line.match(
+    /SOURCE_NESTED_PRIME reason=snap-direct mode=direct-baseline .*baselineY=(-?\d+) started=(true|false)/,
+  );
+  if (prime) {
+    stats.directPrimes += 1;
+    if (activeDirectSegment != null && !activeDirectSegment.stopped) {
+      activeDirectSegment.superseded = true;
+    }
+    activeDirectSegment = {
+      targetY: activeDirectTarget,
+      baselineY: Number(prime[1]),
+      requestedY: 0,
+      started: prime[2] === 'true',
+      stopped: false,
+      superseded: false,
+      sourceY: null,
+    };
+    stats.directSegments.push(activeDirectSegment);
+  }
+
+  const pre = line.match(/NESTED_PRE type=(TOUCH|NON_TOUCH).*\bdy=(-?\d+)/);
+  if (pre) {
+    stats.pres[pre[1]] += 1;
+    if (pre[1] === 'NON_TOUCH' && activeDirectSegment != null) {
+      activeDirectSegment.requestedY += Number(pre[2]);
+    }
+  } else {
+    const preTypeOnly = line.match(/NESTED_PRE type=(TOUCH|NON_TOUCH)/);
+    if (preTypeOnly) stats.pres[preTypeOnly[1]] += 1;
+  }
+
+  const post = line.match(/NESTED_POST type=(TOUCH|NON_TOUCH)/);
+  if (post) stats.posts[post[1]] += 1;
 
   const stopType = line.match(/NESTED_STOP .*type=(TOUCH|NON_TOUCH)/);
   if (stopType) {
@@ -108,16 +144,15 @@ for (const line of lines) {
           sourceY: Number(sourceYMatch[1]),
         });
       }
+      if (activeDirectSegment != null) {
+        activeDirectSegment.stopped = true;
+        activeDirectSegment.sourceY = sourceYMatch ? Number(sourceYMatch[1]) : null;
+      }
       nonTouchSessionActive = false;
       activeDirectTarget = null;
+      activeDirectSegment = null;
     }
   }
-
-  const pre = line.match(/NESTED_PRE type=(TOUCH|NON_TOUCH)/);
-  if (pre) stats.pres[pre[1]] += 1;
-
-  const post = line.match(/NESTED_POST type=(TOUCH|NON_TOUCH)/);
-  if (post) stats.posts[post[1]] += 1;
 
   const paging = line.match(
     /SOURCE_SNAP_PATCH mode=paging-animator targetY=(-?\d+) velocityY=(-?\d+)/,
@@ -182,6 +217,35 @@ if (expected === 'direct') {
           .map((item, index) => `${index + 1}:${item.targetY}->${item.sourceY}`)
           .join(',')}`
       : '');
+} else if (expected === 'direct-chrome') {
+  const cleanSegments = stats.directSegments.filter(
+    item => item.started && item.stopped && !item.superseded && item.targetY != null,
+  );
+  const superseded = stats.directSegments.filter(item => item.superseded).length;
+  const malformed = stats.directSegments.filter(item => item.targetY == null || !item.started).length;
+  const mismatches = cleanSegments.filter(
+    item => item.requestedY !== item.targetY - item.baselineY,
+  );
+
+  pathPass =
+    stats.direct.length > 0 &&
+    stats.directPrimes === stats.direct.length &&
+    nonTouchBalance &&
+    cleanSegments.length > 0 &&
+    malformed === 0;
+  targetPass = pathPass && mismatches.length === 0;
+  targetSummary =
+    `scroller delta matches ${cleanSegments.length - mismatches.length}/${cleanSegments.length}; ` +
+    `requests ${stats.direct.length}; primes ${stats.directPrimes}; superseded ${superseded}` +
+    (mismatches.length
+      ? `; mismatches=${mismatches
+          .slice(0, 5)
+          .map(
+            (item, index) =>
+              `${index + 1}:expected=${item.targetY - item.baselineY}->requested=${item.requestedY}`,
+          )
+          .join(',')}`
+      : '');
 } else {
   const endedNormally = stats.animatorEnds.filter(item => item.reason === 'end');
   const exact = endedNormally.filter(item => item.targetY === item.actualY);
@@ -214,6 +278,7 @@ console.log('Snap source');
 console.log(`  direct-scroller requests    ${stats.direct.length}`);
 console.log(`  direct nested primes        ${stats.directPrimes}`);
 console.log(`  direct completed sessions   ${stats.directSessions.length}`);
+console.log(`  direct delta segments       ${stats.directSegments.length}`);
 console.log(`  stops without target        ${stats.directStopsWithoutTarget}`);
 console.log(`  stops without sourceY       ${stats.directStopsWithoutSourceY}`);
 console.log(`  paging-animator requests    ${stats.pagingRequests.length}`);
@@ -224,8 +289,10 @@ console.log(`bootstrap                    ${bootstrapPass ? 'PASS' : 'FAIL'}`);
 console.log(`source class                 ${sourcePass ? 'PASS' : 'FAIL'}`);
 console.log(`NON_TOUCH session balance    ${nonTouchBalance ? 'PASS' : 'FAIL'}`);
 console.log(`NON_TOUCH frame dispatch     ${nonTouchFrames ? 'PASS' : 'FAIL'}`);
-console.log(`${expected === 'direct' ? 'direct snap path' : 'paging animator path'}          ${pathPass ? 'PASS' : 'FAIL'}`);
-console.log(`snap final target            ${targetPass ? 'PASS' : 'FAIL'}`);
+const pathLabel =
+  expected === 'paging' ? 'paging animator path' : expected === 'direct-chrome' ? 'direct chrome path' : 'direct snap path';
+console.log(`${pathLabel.padEnd(29)}${pathPass ? 'PASS' : 'FAIL'}`);
+console.log(`snap target accounting       ${targetPass ? 'PASS' : 'FAIL'}`);
 
 process.exitCode =
   bootstrapPass && sourcePass && nonTouchBalance && nonTouchFrames && pathPass && targetPass ? 0 : 1;
