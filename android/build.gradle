@@ -54,7 +54,7 @@ dependencies {
   implementation 'io.coil-kt.coil3:coil-compose:3.3.0'
   implementation 'io.coil-kt.coil3:coil-network-okhttp:3.3.0'
 
-  // The rules that gate parent-owned momentum are pure logic and are tested as such, on the JVM,
-  // with no device or Robolectric shadow involved.
+  // Keep JUnit available for transport invariants that can be expressed as pure logic, without a
+  // device or Robolectric shadow.
   testImplementation 'junit:junit:4.13.2'
 }
