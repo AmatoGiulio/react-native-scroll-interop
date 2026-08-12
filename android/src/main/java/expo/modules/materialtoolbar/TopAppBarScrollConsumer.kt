@@ -5,9 +5,9 @@ package expo.modules.materialtoolbar
 import android.util.Log
 import android.view.ViewGroup
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.unit.Velocity
 import com.facebook.react.views.scroll.ReactScrollView
 import kotlinx.coroutines.CoroutineScope
@@ -46,7 +46,6 @@ internal class TopAppBarScrollConsumer {
   private var mode: TopAppBarInteropMode? = null
   private var settleJob: Job? = null
   private var settleGeneration = 0L
-  private var lastInputDeltaY = 0
 
   private var expandedChromeHeightPx = 0
   private var scrollAwaySource: ReactScrollView? = null
@@ -64,10 +63,6 @@ internal class TopAppBarScrollConsumer {
   /** Material can actually be driven: there is a behavior and a scope to settle it on. */
   private val isBound: Boolean
     get() = behavior != null && scope != null && mode != null
-
-  /** True while the settle coroutine is still aligning the source's scroll-away padding. */
-  val isSettlingChrome: Boolean
-    get() = settleJob?.isActive == true
 
   /**
    * Whether a transaction can drive this app bar.
@@ -93,7 +88,6 @@ internal class TopAppBarScrollConsumer {
     if (!isNestedDirectCapable) return false
     val reactScrollView = source as? ReactScrollView ?: return false
     cancelSettle()
-    lastInputDeltaY = 0
     ensureScrollAwaySource(reactScrollView)
     if (BuildConfig.DEBUG) {
       val state = behavior?.state
@@ -110,7 +104,6 @@ internal class TopAppBarScrollConsumer {
   fun nestedPreScroll(deltaY: Int, inputType: NativeNestedInputType): NativeNestedPreResult {
     val currentBehavior = behavior ?: return NativeNestedPreResult(0, 0)
     if (!isNestedDirectCapable || deltaY == 0) return NativeNestedPreResult(0, 0)
-    lastInputDeltaY = deltaY
 
     val state = currentBehavior.state
     val oldHeightOffset = state.heightOffset
@@ -159,11 +152,6 @@ internal class TopAppBarScrollConsumer {
   fun currentCollapseAmountPx(): Float =
     behavior?.state?.heightOffset?.let { (-it).coerceAtLeast(0f) } ?: 0f
 
-  fun remainingCollapseAmountPx(): Float {
-    val state = behavior?.state ?: return 0f
-    val range = (-state.heightOffsetLimit).coerceAtLeast(0f)
-    return (range - currentCollapseAmountPx()).coerceAtLeast(0f)
-  }
   /**
    * Finish the transaction with Material3's own snap engine.
    *
@@ -301,6 +289,7 @@ internal class TopAppBarScrollConsumer {
     }
     applyScrollAwayPadding()
   }
+
   private fun NativeNestedInputType.toComposeNestedSource(): NestedScrollSource = when (this) {
     NativeNestedInputType.Touch -> NestedScrollSource.UserInput
     NativeNestedInputType.NonTouch -> NestedScrollSource.SideEffect
@@ -387,14 +376,10 @@ internal class TopAppBarScrollConsumer {
   }
 
   private fun cancelSettle() {
-    // Invalidate first so a canceled coroutine cannot perform a stale final reconciliation after
-    // a newer drag/settle generation has already taken ownership.
+    // Invalidate first so a canceled coroutine cannot perform stale final geometry work after a
+    // newer drag/settle generation has already taken ownership.
     settleGeneration += 1
     settleJob?.cancel()
     settleJob = null
-  }
-
-  private companion object {
-    const val ENDPOINT_EPSILON_PX = 0.75f
   }
 }
