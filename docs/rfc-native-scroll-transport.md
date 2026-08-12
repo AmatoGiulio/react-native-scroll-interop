@@ -1,192 +1,289 @@
-# RFC — Letting native chrome follow a React Native scroll on Android
+# RFC — Let native screen chrome participate in React Native scroll transactions on Android
 
-**Status:** draft for discussion
-**Target:** `react-native-screens` (Android)
-**Author:** Giulio Amato
+**Status:** draft for discussion  
+**Target:** `react-native-screens` (Android)  
+**Author:** Giulio Amato  
 **Reference implementation:** `expo-material-toolbar` (this repository)
 
 ## Summary
 
-React Native is one primitive away from being able to drive Compose Material 3 chrome — collapsing
-top app bars, floating toolbars — from an ordinary list, with no `onScroll`, no ref, and no work on
-the JS thread. That primitive is a nested-scrolling ancestor inside the RN view tree, and
-`react-native-screens` already has the view that should be it.
+Android already has the protocol needed for native screen chrome to follow a React Native scroll: nested scrolling.
 
-This proposal builds directly on work that started in this repository's target project:
-[#44099](https://github.com/facebook/react-native/pull/44099), *"Fix ScrollView interactions with
-Android's CoordinatorLayout"*, opened by a react-native-screens maintainer, and its successor
-[#55239](https://github.com/facebook/react-native/pull/55239), merged January 2026, which lets
-`ReactScrollView` extend `NestedScrollView` behind `useNestedScrollViewAndroid`. We are not
-proposing an alternative to that direction. We are reporting what we found on the other side of it,
-having built and shipped the missing piece to see whether it holds up.
+The missing screen-level piece is an ancestor that receives the source's real nested-scroll transaction and lets native chrome participate in it. In a standalone module that ancestor has to be an explicit wrapper. In `react-native-screens`, the screen layer already owns the right place in the native hierarchy.
 
-## Why this matters now
+The proposal is deliberately small:
 
-The Views-based Material Components library — the world of `AppBarLayout` and `CoordinatorLayout`
-that screens uses today — [states it plainly](https://github.com/material-components/material-components-android):
+- React Native remains the owner of touch, fling, physics and child movement.
+- The screen becomes a `NestedScrollingParent3` participant/dispatcher.
+- Native chrome consumes or observes the source's synchronous pre/post scroll callbacks.
+- There is no JS `onScroll`, no list ref, no sampled `scrollY`, no proxy fling and no second scroller.
 
-> "This means that the Views-based Material Components for Android library (MDC-Android) is now in
-> maintenance mode." … "There are no more planned feature releases for Views, so all projects using
-> the Views library should begin or continue migrating to Compose."
+The reference implementation currently drives real Compose Material3 `TopAppBarScrollBehavior` and `FloatingToolbarScrollBehavior`, but Material3 is only a consumer proving the transport. The transport itself is plain Android nested scrolling and should not add a Compose dependency to screens.
 
-Everything Material 3 Expressive added — large and medium top app bars with the current motion, the
-floating toolbar, `exitUntilCollapsed` and `exitAlways` scroll behaviors — exists only in Compose.
-For React Native on Android this is not a styling gap; those components are unreachable, because a
-Compose scroll behavior *is* a `NestedScrollConnection` and nothing in the RN view tree speaks to
-it.
+## Why the screen layer is the right owner
 
-Worth stating plainly, since it is the practical shape of the gap: in screens 4.23 there is no
-scroll flag on the app bar at all — no `SCROLL_FLAG_*`, no `hideOnScroll`. `AppBarLayout` and
-`ScrollingViewBehavior` position the content; they do not collapse with it. On Android, the header
-does not react to scrolling.
+A scroll-reactive header is screen chrome. The screen already knows:
 
-## The proposal, in two layers
+- which native content belongs to it;
+- which header/toolbar belongs to it;
+- when that content is attached and visible;
+- the native scope in which source and chrome must be paired.
 
-They are separable on purpose. The first is small and permanent. The second is larger, and has an
-expiry date already visible in React Native's own roadmap.
+An app-level module cannot know those things without tree scanning or heuristics. Our standalone implementation therefore has to discover descendants and resolve consumers by native/Fabric scope. That works as a PoC, but it is plumbing the screen layer can avoid entirely.
 
-### Layer 1 — the ancestor (what we are actually asking for)
+The desired native shape is:
 
-A `ViewGroup` implementing `NestedScrollingParent3`, sitting above the scroll source in the RN view
-tree, receives `onStartNestedScroll` / `onNestedPreScroll` / `onNestedScroll` / `onNestedPreFling`
-from a `ReactScrollView` natively. No patch to React Native, no JS involvement.
+```text
+Screen / screen content wrapper
+  NestedScrollingParent3
+        |
+        +-- registered scroll source
+        +-- registered screen chrome consumer(s)
+```
 
-In our module that ancestor is a component the app wraps around its list — which is a limitation of
-being a standalone module, not of the approach. **In screens it does not have to be.**
-`ScreenContentWrapper` is already a `ReactViewGroup` wrapping every screen's children, and already
-an ancestor of whatever list the screen renders. Making it a nested-scrolling parent puts the
-transport everywhere, with no new public API and no change to app code. That is the difference
-between a library feature and something that works out of the box, and screens is the only place
-where it can be the latter.
+No public React API is necessarily required for the transport itself.
 
-Alongside it, a registration contract, deliberately free of Material:
+## The transaction
+
+For one vertical input delta:
+
+```text
+React Native source requests dy
+        |
+        v
+screen onNestedPreScroll
+  chrome may consume part of dy
+        |
+        v
+React Native source scrolls the remainder itself
+        |
+        v
+screen onNestedScroll
+  receives actual dyConsumed + dyUnconsumed
+  chrome may consume post-scroll available distance
+        |
+        v
+only the true remainder reaches source edge behavior
+```
+
+The accounting invariant is:
+
+```text
+requested = preConsumed + childConsumed + postConsumed + remaining
+```
+
+This matters more than any particular component implementation. If the parent executes child movement itself, samples a previous position, or carries debt from the previous frame, there are two drivers or two timelines and the result stops behaving like native nested scrolling.
+
+The reference implementation now checks this equation on every traced frame.
+
+## What the reference implementation proved
+
+The current 0.83 PoC was stressed across slow drag, hard fling, direction reversal, top edge, bottom edge and touch interruption of momentum:
+
+| Screen | Source | Chrome | Accounted frames | Broken |
+|---|---|---|---:|---:|
+| Feed | FlashList | small `enterAlways` | 177 | 0 |
+| Profile | RN ScrollView | large `exitUntilCollapsed` | 251 | 0 |
+| Gallery | FlashList | large `exitUntilCollapsed` | 138 | 0 |
+
+Total: 566 accounted frames, zero transaction violations.
+
+A measured top-edge sequence also shows the handoff expected from a real nested-scroll chain:
+
+```text
+requested=-48 -> child=-47, chrome=-1
+requested=-26 -> child=0,   chrome=-26
+```
+
+The first frame reaches the list's start edge. The second frame is entirely available to the expanding app bar.
+
+## The important source-side boundary
+
+The parent can only be correct if the source implements the Android nested-scrolling child contract for the movement it owns.
+
+React Native 0.83 uses `android.widget.ScrollView`. Two source-side limitations are observable.
+
+### 1. Momentum visibility
+
+`android.widget.ScrollView` performs its fling from its own `OverScroller` / `computeScroll()` path without emitting the movement as per-frame `TYPE_NON_TOUCH` nested-scroll transactions to the ancestor.
+
+The correct fix is not for the screen to reproduce the fling. The correct fix is for the source to report the fling it is already performing.
+
+The reference patch under `docs/upstream/` does exactly that: it keeps React Native's own `OverScroller` and wraps each real momentum movement in pre/child/post nested scrolling.
+
+This is source responsibility. A screen layer should never estimate velocity and run a proxy `OverScroller` for the child.
+
+### 2. Parent3 post-consumption during touch
+
+The legacy `android.widget.ScrollView` touch loop dispatches post-scroll through the older contract that does not return the `NestedScrollingParent3 consumed[]` result to the source.
+
+At the top edge, a parent can correctly consume post-scroll distance to expand chrome, but the platform ScrollView cannot subtract that parent consumption before deciding what remains for its own overscroll/stretch behavior.
+
+Again, the parent cannot repair this without replacing the child's touch loop. A source backed by AndroidX `NestedScrollView` owns that loop and can account for Parent3 post-consumption correctly.
+
+These findings are useful because they define the boundary cleanly:
+
+> The screen should participate in the transaction. The source should provide the transaction for all movement it owns.
+
+## Relationship to React Native's existing work
+
+This proposal builds on the same direction already explored in React Native by:
+
+- facebook/react-native#44099
+- facebook/react-native#55239
+
+The latter introduced the `useNestedScrollViewAndroid` path, where the vertical React Native scroll view can be backed by AndroidX `NestedScrollView`.
+
+That work and this proposal are complementary:
+
+```text
+React Native / source
+  complete nested-scrolling child behavior
+             |
+             v
+react-native-screens / screen
+  nested-scrolling ancestor + chrome registration
+```
+
+We are not proposing an alternative source physics implementation in screens.
+
+## Consumer contract
+
+The screen-side contract should be free of Material and should preserve Android's phases rather than flattening them into sampled frames.
+
+One possible shape is:
 
 ```kotlin
 interface ScreenScrollConsumer {
-    fun onScrollSessionStart(source: ViewGroup)
-    fun onScrollFrame(frame: ScreenScrollFrame)
-    fun onScrollSessionEnd()
+    fun onScrollSessionStart(source: View)
+
+    fun onNestedPreScroll(
+        source: View,
+        dy: Int,
+        type: Int,
+    ): Int
+
+    fun onNestedPostScroll(
+        source: View,
+        dyConsumed: Int,
+        dyUnconsumed: Int,
+        type: Int,
+    ): Int
+
+    fun onScrollSessionEnd(source: View)
 }
-
-data class ScreenScrollFrame(val deltaY: Int, val scrollY: Int, val rawScrollY: Int)
 ```
 
-Consumers register against the screen rather than against a scroll view, because the screen already
-knows which content is its own — an ambiguity no app-level API can resolve from outside. Resolution
-should be fail-closed: in our implementation exactly one eligible consumer per Fabric surface may
-participate, and ambiguity resolves to nothing rather than to a heuristic. "Pick the largest visible
-ScrollView" is how this kind of code starts producing bug reports nobody can reproduce.
+The exact API is not the point. The important properties are:
 
-### Layer 2 — momentum ownership (temporary, and we expect to delete it)
+1. pre and post remain synchronous phases of the same transaction;
+2. the parent only reports what it consumes;
+3. the child performs its own movement;
+4. post receives what the child actually consumed;
+5. the contract supports `TYPE_TOUCH` and `TYPE_NON_TOUCH`;
+6. consumer lookup is screen-scoped and fail-closed.
 
-`ReactScrollView` extends `android.widget.ScrollView`, which emits no per-frame nested-scroll
-callbacks during a fling. Chrome therefore sits still through every momentum scroll unless the
-parent takes the fling over and drives it frame by frame.
+A consumer that only observes movement, such as the reference FloatingToolbar, can return zero consumption.
 
-We measured exactly what this costs, by switching our own implementation off:
+## Material3 as a proof consumer
 
-```
-last touch frame     sourceY=1154    chrome collapse=231
-after the fling      scrollY=7131    ← the list
-                     sourceY=1154    ← what the transport still believed
-```
+### TopAppBar
 
-Six thousand pixels of scrolling that chrome never heard about. With momentum ownership on, the same
-gesture drives 93 frames and the transport ends at `sourceY=7255` against the list's `scrollY=7255`
-— exact.
+A Compose Material3 TopAppBar maps naturally onto nested scrolling:
 
-**This is also the layer `useNestedScrollViewAndroid` removes.** `NestedScrollView` dispatches
-during fling as `TYPE_NON_TOUCH`, so where that flag is on, reproducing the source's physics in the
-parent is strictly worse than using the source's own. Our implementation already treats this as
-temporary: the mechanism sits behind a switch documented to be turned off when the flag ships.
+- `onPreScroll` may consume distance before the list moves;
+- `onPostScroll` sees the list's real consumed/unconsumed result;
+- terminal Material snap runs after the movement actually ends.
 
-We would not propose Layer 2 for adoption. We are reporting it because it is required today on every
-React Native version currently in users' hands, and because the failure modes we hit are not
-obvious. Anyone implementing it will meet them.
+The current adapter limits pre-consumption to the amount the chrome state really moved at its clamp. This avoids deleting input when Material reports the whole available delta while its `heightOffset` has already reached an endpoint.
 
-## What Layer 2 cost us, so it costs you less
+### FloatingToolbar
 
-- **Intercepting the fling makes the source re-open a nested session**, which naively reads as a new
-  gesture. Cancelling the proxy there makes the source retry, and the two spin a start/cancel loop
-  at frame rate: in our first implementation, 305 proxy flings created against 7 completed, with the
-  UI frozen for over a second and the accumulated delta then landing in a single 1000px frame. The
-  guard that fixed it is principled rather than ad hoc — *a velocity needs at least two scroll
-  samples to exist* — and the same rule covers synthetic input, where a mouse wheel or trackpad
-  notch arrives as a complete one-frame DOWN/UP gesture carrying a saturated velocity.
-- **`onMomentumScrollBegin`/`End` must still reach JS.** Ours do, verified at 20 ms and 84 ms around
-  a 148-frame fling. A transport that breaks that contract is not a drop-in.
-- **Clamp to `scaledMaximumFlingVelocity`**, because the source's own fling would have been clamped.
+The FloatingToolbar reacts to the source's real `dyConsumed` in post-scroll and consumes zero list distance.
 
-## What Layer 1 alone still requires
+When the TopAppBar consumes an entire frame in pre-scroll, `dyConsumed == 0` for the list. The toolbar therefore sees zero, which matches the phase semantics of a native Compose nested-scroll chain rather than a reconstructed content-delta stream.
 
-Two findings that no React Native flag addresses, and that we would expect any implementation to
-meet.
+## Geometry is separate from transaction transport
 
-**One transaction per frame.** Material's pre-scroll phase decides how much of the delta the chrome
-takes, and the child must scroll by the remainder. Run across two frames, chrome trails the content
-by one — small, and exactly the kind of mismatch that reads as "not native". Both phases must run
-synchronously inside `onNestedPreScroll`. Ours does, and the handover at the collapse limit is
-pixel-exact: `dy=10` splitting six to the chrome and four to the list on the frame the app bar
-reaches its limit.
+The standalone module still has to solve one unrelated problem: a full-screen overlay TopAppBar needs its React Native content visually positioned below the expanded chrome.
 
-**Consumers that integrate deltas need every frame, or an absolute reference.** A Material scroll
-behavior accumulates an offset; it never derives one from position. Any frame the transport fails to
-deliver is a permanent error, not a moment of lag. We lost frames when the session ended while
-chrome was still animating the source — 63 px in one trace, 29 in another — and the drift compounds
-until Material picks its snap endpoint from a wrong number, hiding the toolbar while the app bar
-sits expanded. Observed fractions sat at 0.46–0.47, a hair from the 0.5 boundary. A transport
-should keep the session alive while a consumer reports it is still moving the source.
+The current PoC uses React Native's scroll-away padding primitive plus a native content translation driven by Material collapse state. Crucially, that translation does not change `scrollY` and does not execute source movement.
 
-## What we are not proposing
+That geometry bridge is not what we are asking screens to adopt. A screen-owned implementation has a better option: own the content/chrome container geometry itself.
 
-- **Not a Compose dependency for screens.** The transport is plain Android nested scrolling. A
-  consumer may be Compose; the transport neither knows nor links against it.
-- **Not a replacement for `AppBarLayout`.** The existing `CoordinatorLayout` path keeps working. This
-  adds a channel for consumers a `CoordinatorLayout` cannot host.
-- **Not a JS API.** No new props, no refs, no `onScroll`. If it needs app code, it is the wrong
-  shape.
+Transport and geometry should remain separate concerns.
+
+## What we explicitly reject
+
+The reference implementation tried several approaches before converging on the nested transaction. These should not be part of the upstream design:
+
+- JS `onScroll` as the native chrome transport;
+- display-frame sampling of `scrollY`;
+- reconstructing deltas from positions;
+- a parent-owned fling or proxy `OverScroller`;
+- the parent calling `scrollBy` / `scrollTo` to execute child movement;
+- encoding chrome collapse into the source's `scrollY`;
+- heuristically choosing a scroll source from unrelated visible views.
+
+They all create either a second physics, a second driver, or a second timeline.
+
+## FlashList stress result
+
+A transient blank FlashList render window was initially suspected to be caused by the scroll-away geometry. Frame-by-frame control recordings disproved that attribution:
+
+| Run | Our geometry | Frames | Blank frames |
+|---|---|---:|---:|
+| App bar present | padding + translation | 38 | 12 |
+| App bar removed | none | 36 | 14 |
+
+The blank window also occurs without this module in the screen. It is therefore not evidence against the nested-scroll transaction or a reason to alter the screen transport.
+
+## What we are asking from react-native-screens
+
+We are not asking screens to implement Material3 behavior.
+
+We are asking whether the screen layer can expose/host the native Android nested-scroll relationship already implied by its ownership of screen content and chrome:
+
+1. make the appropriate screen/content wrapper a `NestedScrollingParent3` ancestor;
+2. register scroll-reactive native chrome against that screen;
+3. forward the real pre/post transaction without driving the child;
+4. support both touch and non-touch transactions when the source provides them;
+5. keep the transport independent of Compose/Material.
+
+That would make consumers such as Compose Material3 chrome possible without app-level wrappers, refs or JS scroll callbacks.
 
 ## Open questions
 
-1. **Is `ScreenContentWrapper` the right host**, or should the transport sit on `Screen` itself? The
-   consumer is usually chrome owned by the fragment, so registration through the screen keeps the
-   coupling honest — but this is your architecture, not ours.
-2. **Which coordinate should consumers receive?** A Compose `TopAppBarScrollBehavior` collapses by
-   changing its own height and never scrolls the list. A scroll-away padding approach really does
-   scroll it. Both are legitimate and they are visibly different systems: a consumer that integrates
-   deltas sees a full app-bar height of movement in one and none in the other. Whichever a transport
-   picks is observable, so it should be chosen rather than inherited.
-3. **How long does Layer 2 need to exist?** That depends on when `useNestedScrollViewAndroid` becomes
-   the default rather than opt-in — which you will know better than we do.
-4. **iOS.** This is Android-only. The equivalent problem exists with `UIScrollView` and
-   `UINavigationBar`, and the answer is not symmetric.
+1. Should the nested parent live on `ScreenContentWrapper`, `Screen`, or another existing screen-owned ViewGroup?
+2. What is the best existing screens concept for identifying the active source — `ScrollViewMarker`, screen content ownership, or a smaller internal registration contract?
+3. Should multiple consumers participate in ordered phases, or should screens expose one screen-scroll coordinator that fans out internally?
+4. How should legacy `android.widget.ScrollView` limitations be surfaced while React Native's `NestedScrollView` path is not universal?
+5. What is the corresponding iOS architecture? This RFC is intentionally Android-only.
 
-## A note on fidelity
+## Reference implementation boundary
 
-Where the module and Material disagree, we changed the module. The one visible artefact worth
-naming: the floating toolbar's travel has a step in it, and it is Material's — `settleFloatingToolbar`
-runs a decay and then a snap whose `AnimationState` is built with `initialVelocity = 0f`, so velocity
-passes through zero between the phases. This repository ships a pure Compose reference screen
-(`LazyColumn` + `LargeTopAppBar(exitUntilCollapsed)` + `HorizontalFloatingToolbar(exitAlways)`, no
-React Native) that reproduces it. We kept the step. A transport whose output differs from the
-component it exposes invites the question of what else it changed quietly.
+The useful files in this repository are now deliberately split by responsibility:
 
-## Reference implementation
+- `ExpoNestedScrollHostView.kt` — prototype `NestedScrollingParent3` screen ancestor and transaction ledger;
+- `NativeNestedScrollInterop.kt` — screen-scoped source/chrome registry and small transaction result types;
+- `TopAppBarScrollConsumer.kt` — Material3 TopAppBar consumer plus standalone-module geometry bridge;
+- `FloatingToolbarScrollConsumer.kt` — Material3 post-scroll consumer;
+- `docs/upstream/react-scroll-view-momentum-nested-scroll.patch` — source-side React Native 0.83 momentum visibility experiment.
 
-`expo-material-toolbar`, in this repository. The transport is kept separate from the Material
-consumers — `NativeScrollInterop.kt` knows nothing about `TopAppBarScrollConsumer` or
-`FloatingToolbarScrollConsumer` — so the part being proposed here can be read on its own. The rules
-gating momentum ownership and the settle invariants live in `NestedFlingPolicy` and
-`ChromeSettlePolicy`, free of Android types and covered by JVM tests named after the regressions
-they prevent.
+The old sampled transport and parent-owned fling implementation have been removed.
 
-## Prior art
+## Bottom line
 
-- [#44099](https://github.com/facebook/react-native/pull/44099) and
-  [#55239](https://github.com/facebook/react-native/pull/55239) — the same problem approached from
-  inside React Native, which is where the fling half of it belongs.
-- `AppBarLayout` + `CoordinatorLayout`, which screens uses today: the same idea, restricted to
-  View-based chrome and to consumers a `CoordinatorLayout` can host, on a library in maintenance
-  mode.
-- `BottomSheetBehavior<Screen>` in screens: a Material behavior already hosted by the screen layer
-  and driven by a gesture on RN content. This proposal is the same coupling, for scrolling.
+The architecture is intentionally unremarkable Android:
+
+```text
+React Native scrolls
+        |
+Android nested scrolling reports that movement
+        |
+Screen receives the transaction
+        |
+Native chrome participates
+```
+
+The source owns scrolling. The screen owns coordination. The chrome owns its behavior.
