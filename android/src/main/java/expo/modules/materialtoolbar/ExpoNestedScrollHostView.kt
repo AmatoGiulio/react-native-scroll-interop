@@ -20,16 +20,17 @@ import expo.modules.kotlin.views.ExpoView
  * Android chrome that reacts to scrolling is driven through nested scrolling. A [ReactScrollView]
  * emits those callbacks to its native ancestors, and nothing in the RN view tree listens — which is
  * why Compose Material3 behaviors, which are themselves NestedScrollConnections, cannot be reached
- * from React Native at all. Being that ancestor is the entire trick; no patch to React Native, no
- * JS involvement, no ref handed anywhere.
+ * from React Native at all. Being that ancestor is the entire parent-side trick: no JS involvement,
+ * no ref handed anywhere, and no second scroll driver. React Native 0.83 still needs the source-side
+ * momentum patch under `docs/upstream/` so its own fling is reported as `TYPE_NON_TOUCH`.
  *
  * There is exactly one transaction and exactly one physics.
  *
  * **The source owns the movement.** Touch comes through `ScrollView.onTouchEvent`, momentum through
- * the source's own `TYPE_NON_TOUCH` dispatch (see `docs/upstream/`). This parent runs no scroller
- * and never moves the list: it takes its share in pre-scroll, React Native scrolls the remainder
- * with its own code, and post-scroll reports what actually happened. `scrollY` therefore only ever
- * means "where React Native scrolled to".
+ * the source's own `TYPE_NON_TOUCH` dispatch. This parent runs no scroller and never moves the list:
+ * it takes its share in pre-scroll, React Native scrolls the remainder with its own code, and
+ * post-scroll reports what actually happened. `scrollY` therefore only ever means "where React
+ * Native scrolled to".
  *
  * **Every consumer joins the same transaction**, each in its own phase: an app bar that can withhold
  * distance in pre, a floating toolbar that only watches the list in post.
@@ -48,27 +49,27 @@ class ExpoNestedScrollHostView(
   private var eventSequence = 0L
   private var preCount = 0L
   private var postCount = 0L
-  private var transactionCount = 0L
 
   private var activeTopBar: TopAppBarScrollConsumer? = null
   private var activeToolbar: FloatingToolbarScrollConsumer? = null
   private var activeSource: ReactScrollView? = null
-  private var directTransactionActive = false
+  private var nestedTransactionActive = false
 
   // True between the source's own TYPE_NON_TOUCH start and stop. The movement is not over when the
   // finger leaves; it changes owner, and chrome must not settle in between.
   private var momentumSessionActive = false
 
-  // The untyped platform callbacks have no consumed[] to report into; this stands in for it.
+  // The untyped/Parent2 callbacks have no consumed[] result to report into. Always clear this before
+  // delegating so a previous callback can never leak its post-consumption into diagnostics.
   private val throwawayConsumed = IntArray(2)
 
-  // Temporary transaction ledger. For one frame the four quantities must add up to what was asked,
-  // and none of them may be reconstructed from the frame before:
+  // Debug transaction ledger. For one frame the four quantities must add up to what was asked, and
+  // none of them may be reconstructed from the frame before:
   //
   //     requested = chromePre + childConsumed + chromePost + remaining
   //
-  // It also counts pre-scrolls that never got their post: android.widget.ScrollView and
-  // NestedScrollView do not treat that phase the same way, and touch still goes through the former.
+  // It also counts pre-scrolls that never got their post. Those are expected on the legacy
+  // android.widget.ScrollView touch contract when pre-scroll consumed everything.
   private var ledgerRequestedY = 0
   private var ledgerChromePreY = 0
   private var ledgerPending = false
@@ -101,11 +102,12 @@ class ExpoNestedScrollHostView(
 
   override fun onDetachedFromWindow() {
     NativeNestedScrollRegistry.unregisterHost(this)
+    flushPendingLedger("detach")
     momentumSessionActive = false
     activeTopBar = null
     activeToolbar = null
     activeSource = null
-    directTransactionActive = false
+    nestedTransactionActive = false
     super.onDetachedFromWindow()
   }
 
@@ -175,7 +177,7 @@ class ExpoNestedScrollHostView(
     if (accepted) beginNestedSession(target)
     log(
       "NESTED_START contract=platform axes=${axesLabel(axes)} accepted=$accepted " +
-        "direct=$directTransactionActive ${targetLabel(target)}",
+        "active=$nestedTransactionActive ${targetLabel(target)}",
     )
     return accepted
   }
@@ -189,7 +191,7 @@ class ExpoNestedScrollHostView(
     nestedParentHelper.onStopNestedScroll(target)
     log(
       "NESTED_STOP contract=platform preCount=$preCount postCount=$postCount " +
-        "direct=$directTransactionActive ${targetLabel(target)}",
+        "active=$nestedTransactionActive ${targetLabel(target)}",
     )
     finishTouch(target)
   }
@@ -204,6 +206,7 @@ class ExpoNestedScrollHostView(
     dxUnconsumed: Int,
     dyUnconsumed: Int,
   ) {
+    throwawayConsumed.fill(0)
     onNestedScroll(
       target,
       dxConsumed,
@@ -222,7 +225,7 @@ class ExpoNestedScrollHostView(
   override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
     log(
       "NESTED_PRE_FLING vx=$velocityX vy=$velocityY preCount=$preCount " +
-        "sourceOwnsMomentum=${sourceOwnsMomentum(target)} direct=$directTransactionActive " +
+        "sourceOwnsMomentum=${sourceOwnsMomentum(target)} active=$nestedTransactionActive " +
         targetLabel(target),
     )
     return false
@@ -236,7 +239,7 @@ class ExpoNestedScrollHostView(
   ): Boolean {
     log(
       "NESTED_FLING vx=$velocityX vy=$velocityY childConsumed=$consumed " +
-        "preCount=$preCount postCount=$postCount direct=$directTransactionActive ${targetLabel(target)}",
+        "preCount=$preCount postCount=$postCount active=$nestedTransactionActive ${targetLabel(target)}",
     )
     return false
   }
@@ -263,7 +266,7 @@ class ExpoNestedScrollHostView(
     if (accepted) beginNestedSession(target)
     log(
       "NESTED_START contract=androidx type=${typeLabel(type)} axes=${axesLabel(axes)} " +
-        "accepted=$accepted direct=$directTransactionActive ${targetLabel(target)}",
+        "accepted=$accepted active=$nestedTransactionActive ${targetLabel(target)}",
     )
     return accepted
   }
@@ -280,7 +283,7 @@ class ExpoNestedScrollHostView(
     nestedParentHelper.onStopNestedScroll(target, type)
     log(
       "NESTED_STOP contract=androidx type=${typeLabel(type)} preCount=$preCount postCount=$postCount " +
-        "direct=$directTransactionActive momentum=$momentumSessionActive ${targetLabel(target)}",
+        "active=$nestedTransactionActive momentum=$momentumSessionActive ${targetLabel(target)}",
     )
     if (type == ViewCompat.TYPE_NON_TOUCH) {
       momentumSessionActive = false
@@ -298,7 +301,7 @@ class ExpoNestedScrollHostView(
     type: Int,
   ) {
     preCount += 1
-    val topBar = activeTopBar?.takeIf { directTransactionActive && it.isNestedDirectCapable }
+    val topBar = activeTopBar?.takeIf { nestedTransactionActive && it.isNestedDirectCapable }
     if (topBar == null || dy == 0) {
       log(
         "NESTED_PRE type=${typeLabel(type)} n=$preCount dy=$dy consumedY=${consumed[1]} " +
@@ -312,17 +315,7 @@ class ExpoNestedScrollHostView(
     // React Native scrolls the remainder itself with its own code.
     val pre = topBar.nestedPreScroll(dy, type.toInputType())
     consumed[1] += pre.reportedConsumedY
-
-    if (ledgerPending) {
-      ledgerOrphanPres += 1
-      log(
-        "TX_LEDGER orphanPre n=$ledgerOrphanPres requested=$ledgerRequestedY " +
-          "chromePre=$ledgerChromePreY type=${typeLabel(type)}",
-      )
-    }
-    ledgerRequestedY = dy
-    ledgerChromePreY = pre.reportedConsumedY
-    ledgerPending = true
+    recordLedgerPre(dy, pre.reportedConsumedY, type)
 
     log(
       "TX_PRE type=${typeLabel(type)} n=$preCount dy=$dy chrome=${pre.reportedConsumedY} " +
@@ -338,6 +331,7 @@ class ExpoNestedScrollHostView(
     dyUnconsumed: Int,
     type: Int,
   ) {
+    throwawayConsumed.fill(0)
     onNestedScroll(
       target,
       dxConsumed,
@@ -359,7 +353,7 @@ class ExpoNestedScrollHostView(
     consumed: IntArray,
   ) {
     postCount += 1
-    if (!directTransactionActive) return
+    if (!nestedTransactionActive) return
 
     // Post-scroll: what the list really did, reported by the list itself. The app bar may still
     // take some of what nobody consumed — that is how it expands when the content reaches the top —
@@ -372,20 +366,7 @@ class ExpoNestedScrollHostView(
     activeToolbar?.nestedPostScroll(dyConsumed, inputType)
 
     val chromePost = post?.availableConsumedY ?: 0
-    if (ledgerPending) {
-      ledgerFrames += 1
-      val remaining = dyUnconsumed - chromePost
-      val sum = ledgerChromePreY + dyConsumed + chromePost + remaining
-      val balanced = sum == ledgerRequestedY
-      if (!balanced) ledgerBrokenFrames += 1
-      log(
-        "TX_LEDGER type=${typeLabel(type)} n=$ledgerFrames requested=$ledgerRequestedY " +
-          "chromePre=$ledgerChromePreY child=$dyConsumed chromePost=$chromePost " +
-          "remaining=$remaining sum=$sum balanced=$balanced broken=$ledgerBrokenFrames " +
-          "orphanPre=$ledgerOrphanPres",
-      )
-      ledgerPending = false
-    }
+    recordLedgerPost(dyConsumed, dyUnconsumed, chromePost, type)
 
     log(
       "TX_POST type=${typeLabel(type)} n=$postCount child=$dyConsumed unconsumed=$dyUnconsumed " +
@@ -399,7 +380,7 @@ class ExpoNestedScrollHostView(
     else NativeNestedInputType.Touch
 
   // ---------------------------------------------------------------------------
-  // One transaction driver for both touch and momentum.
+  // Session binding / lifecycle. The source remains the only movement driver.
   // ---------------------------------------------------------------------------
 
   /**
@@ -410,9 +391,9 @@ class ExpoNestedScrollHostView(
    * same consumers.
    */
   private fun beginNestedSession(target: View) {
+    flushPendingLedger("session-rebind")
     preCount = 0
     postCount = 0
-    transactionCount = 0
 
     val react = target as? ReactScrollView
     val topBar = NativeNestedScrollRegistry.resolveTopBar(target)
@@ -423,11 +404,11 @@ class ExpoNestedScrollHostView(
 
     val topBarReady = react != null && topBar?.beginNestedTransaction(react) == true
     val toolbarReady = react != null && toolbar?.beginNestedTransaction(react) == true
-    directTransactionActive = topBarReady || toolbarReady
+    nestedTransactionActive = topBarReady || toolbarReady
 
     log(
       "TX_BIND source=${react?.id} topBar=$topBarReady toolbar=$toolbarReady " +
-        "direct=$directTransactionActive " +
+        "active=$nestedTransactionActive " +
         "surfaceSource=${surfaceId(target)} surfaceHost=${surfaceId(this)}",
     )
   }
@@ -445,12 +426,72 @@ class ExpoNestedScrollHostView(
 
   /** Close the chrome transaction for a movement that has genuinely ended. */
   private fun finishMovement(target: View, reason: String) {
-    if (!directTransactionActive) return
+    flushPendingLedger(reason)
+    if (!nestedTransactionActive) return
     val source = target as? ReactScrollView ?: activeSource
     if (source != null) activeTopBar?.endNestedTransaction(source, reason)
     activeToolbar?.endNestedTransaction()
-    directTransactionActive = false
-    log("TX_END reason=$reason sourceY=${source?.scrollY}")
+    nestedTransactionActive = false
+    log(
+      "TX_END reason=$reason sourceY=${source?.scrollY} ledgerFrames=$ledgerFrames " +
+        "broken=$ledgerBrokenFrames orphanPre=$ledgerOrphanPres",
+    )
+  }
+
+  // ---------------------------------------------------------------------------
+  // Transaction diagnostics.
+  // ---------------------------------------------------------------------------
+
+  private fun recordLedgerPre(requestedY: Int, chromePreY: Int, type: Int) {
+    if (!NativeScrollTracing.enabled) {
+      ledgerPending = false
+      return
+    }
+    flushPendingLedger("next-pre")
+    ledgerRequestedY = requestedY
+    ledgerChromePreY = chromePreY
+    ledgerPending = true
+    log(
+      "TX_LEDGER_PRE type=${typeLabel(type)} requested=$requestedY chromePre=$chromePreY",
+    )
+  }
+
+  private fun recordLedgerPost(
+    childConsumedY: Int,
+    dyUnconsumed: Int,
+    chromePostY: Int,
+    type: Int,
+  ) {
+    if (!NativeScrollTracing.enabled || !ledgerPending) return
+
+    ledgerFrames += 1
+    val remaining = dyUnconsumed - chromePostY
+    val sum = ledgerChromePreY + childConsumedY + chromePostY + remaining
+    val balanced = sum == ledgerRequestedY
+    if (!balanced) ledgerBrokenFrames += 1
+
+    log(
+      "TX_LEDGER type=${typeLabel(type)} n=$ledgerFrames requested=$ledgerRequestedY " +
+        "chromePre=$ledgerChromePreY child=$childConsumedY chromePost=$chromePostY " +
+        "remaining=$remaining sum=$sum balanced=$balanced broken=$ledgerBrokenFrames " +
+        "orphanPre=$ledgerOrphanPres",
+    )
+    ledgerPending = false
+  }
+
+  private fun flushPendingLedger(reason: String) {
+    if (!ledgerPending) return
+    if (!NativeScrollTracing.enabled) {
+      ledgerPending = false
+      return
+    }
+
+    ledgerOrphanPres += 1
+    log(
+      "TX_LEDGER orphanPre n=$ledgerOrphanPres reason=$reason requested=$ledgerRequestedY " +
+        "chromePre=$ledgerChromePreY",
+    )
+    ledgerPending = false
   }
 
   // ---------------------------------------------------------------------------
