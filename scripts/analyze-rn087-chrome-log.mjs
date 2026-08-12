@@ -34,6 +34,43 @@ const scrollAwaySuccess = count(/CHROME_SCROLL_AWAY .*target=[1-9][0-9]* success
 const settleStarts = count(/CHROME_SETTLE_START/);
 const settleEnds = count(/CHROME_SETTLE_END/);
 
+const settleByGen = new Map();
+for (const line of lines) {
+  const start = line.match(/CHROME_SETTLE_START gen=(\d+) reason=([^ ]+)/);
+  if (start) {
+    settleByGen.set(Number(start[1]), {
+      gen: Number(start[1]),
+      reason: start[2],
+      completed: null,
+    });
+    continue;
+  }
+
+  const end = line.match(/CHROME_SETTLE_END gen=(\d+) completed=(true|false)/);
+  if (end) {
+    const gen = Number(end[1]);
+    const entry = settleByGen.get(gen) ?? {gen, reason: 'unknown', completed: null};
+    entry.completed = end[2] === 'true';
+    settleByGen.set(gen, entry);
+  }
+}
+
+const settleReasonCounts = new Map();
+let settleCompleted = 0;
+let settleCancelled = 0;
+let settleMissingEnd = 0;
+let touchStopCancelled = 0;
+let momentumStopCancelled = 0;
+for (const entry of settleByGen.values()) {
+  settleReasonCounts.set(entry.reason, (settleReasonCounts.get(entry.reason) ?? 0) + 1);
+  if (entry.completed === true) settleCompleted += 1;
+  else if (entry.completed === false) {
+    settleCancelled += 1;
+    if (entry.reason === 'touch-stop') touchStopCancelled += 1;
+    if (entry.reason === 'momentum-stop') momentumStopCancelled += 1;
+  } else settleMissingEnd += 1;
+}
+
 function movementFrames(type) {
   let frames = 0;
   for (const line of lines) {
@@ -200,6 +237,17 @@ console.log('Material3 TopAppBar');
 console.log(`  scroll-away success         ${scrollAwaySuccess}`);
 console.log(`  movement TOUCH / NON_TOUCH  ${touchChromeMovement} / ${nonTouchChromeMovement}`);
 console.log(`  settle start / end          ${settleStarts} / ${settleEnds}`);
+console.log(
+  `  settle completed/cancelled ${settleCompleted} / ${settleCancelled}` +
+    (settleMissingEnd ? ` missing=${settleMissingEnd}` : ''),
+);
+const reasonSummary = [...settleReasonCounts.entries()]
+  .map(([reason, value]) => `${reason}=${value}`)
+  .join(' ');
+console.log(`  settle reasons              ${reasonSummary || 'none'}`);
+console.log(
+  `  cancelled touch/momentum   ${touchStopCancelled} / ${momentumStopCancelled}`,
+);
 console.log('');
 console.log('Transaction ledger');
 console.log(`  post-complete frames        ${ledgerPostFrames}`);
