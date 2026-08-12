@@ -1,6 +1,6 @@
 # React Native 0.83 native-scroll validation
 
-This document records both the original measured baseline and the post-cleanup revalidation of the source-owned nested-scroll architecture on React Native 0.83.
+This document records both the original measured baseline and the final post-cleanup validation of the source-owned nested-scroll architecture on React Native 0.83.
 
 The design and invariants live in `ARCHITECTURE.md`. This file is evidence, not the architecture definition.
 
@@ -63,7 +63,7 @@ The parent transaction algorithm was kept intact, but three areas were simplifie
 
 The 0.83 source patch was also corrected so its `NestedScrollingChildHelper` preserves React Native's existing `nestedScrollEnabled` default rather than silently enabling nested scrolling for every ScrollView.
 
-## Current-head core revalidation
+## Final core revalidation
 
 After those cleanups, Gallery, Feed and Profile were exercised again. The current analyzer lives at `scripts/analyze-scroll-log.mjs`.
 
@@ -142,7 +142,7 @@ limit=-230.52933
 fraction=0.006633982
 ```
 
-That is not a transport drift. Material3's own `settleAppBar()` treats `collapsedFraction < 0.01` as already expanded and returns without running another snap. The analyzer now mirrors that Material semantic instead of imposing a stricter one-pixel rule.
+That is not a transport drift. Material3's own settle semantics treat a collapsed fraction below one percent as already expanded. The analyzer now mirrors that Material semantic instead of imposing a stricter one-pixel rule.
 
 With the Material rule applied, Profile passes the TopAppBar settle check as well.
 
@@ -175,14 +175,66 @@ TopAppBar settle            yes
 transaction drift          0 / 1525 representative frames
 ```
 
-## Two plumbing checks still separate from the core matrix
+## Plumbing closure
 
-The core scroll transaction is revalidated. Two lifecycle/default-behavior checks remain intentionally separate because the three current runs did not exercise them:
+Two lifecycle/default-behavior checks were then exercised separately from the core matrix.
 
-1. **Delayed source mount fallback.** All three runs found their ReactScrollView on the immediate preparation path (`SOURCE_WAIT armed/removed = 0 / 0`). A diagnostic screen should deliberately mount the source after the host so the temporary `OnGlobalLayoutListener` path is exercised once.
-2. **Unrelated ScrollView default.** The source patch now preserves the original nested-scroll enabled state, but a ScrollView outside `NativeScrollHost` should still receive a final runtime control pass before calling the entire prototype plumbing closed.
+### Delayed source-mount fallback
 
-Neither item changes the measured transaction result above.
+The diagnostic route mounts `NativeScrollHost` and a large `exitUntilCollapsed` TopAppBar immediately, but withholds its RN ScrollView for 900 ms. This deliberately forces the temporary global-layout-listener path.
+
+Measured analyzer result:
+
+```text
+gestures                   12
+saturated candidates        0
+max pointers                1
+max representative |vy| 15650 px/s
+
+ledger frames              216
+  touch                     78
+  non-touch                138
+unbalanced                    0
+max broken counter            0
+
+SOURCE_WAIT armed/removed  1 / 1
+listener balance             0
+ambiguous React sources      0
+
+TopAppBar settles           12 total / 12 completed
+completed non-endpoint       0
+```
+
+All analyzer gates passed. The route intentionally contains no FloatingToolbar, so `FloatingToolbar 0 total` is expected rather than missing coverage.
+
+### Unrelated RN ScrollView control
+
+The separate `plain-scroll-control` route intentionally contains:
+
+```text
+RN ScrollView
+no NativeScrollHost
+no Material scroll-aware chrome
+```
+
+Its drag, fling, reverse, interruption and edge behavior remained normal. The visible title block is deliberately static and is not a scroll-aware Material header. This runtime control, together with the source patch's preserved initial nested-scrolling state, closes the regression check that ordinary ReactScrollViews outside the host are not made dependent on the PoC coordinator.
+
+## React Native 0.83 prototype conclusion
+
+The 0.83 proof is now closed as a validated prototype:
+
+```text
+core representative ledger    1525 / 1525 balanced
+core broken frames             0
+forced delayed-mount ledger     216 / 216 balanced
+delayed listener lifecycle      1 arm / 1 remove
+ambiguous source failures        0
+unrelated ScrollView regression  no
+```
+
+The result validates the parent/screen architecture and the source-owned momentum proof. It does **not** turn the RN 0.83 `android.widget.ScrollView` implementation into the desired long-term source contract; the structural touch limitation below remains real.
+
+The next source experiment belongs on React Native 0.87, where the existing AndroidX `ReactNestedScrollView` path can be tested before proposing any duplicate momentum implementation.
 
 ## React Native 0.83 source limitations
 
