@@ -201,6 +201,62 @@ function startFirstAvailableEmulator() {
   return serial;
 }
 
+function readDataFreeBytes(serial) {
+  const output = adbCapture(['-s', serial, 'shell', 'df', '-k', '/data'], true).trim();
+  if (!output) return null;
+  const lines = output.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const fields = lines.at(-1)?.split(/\s+/) ?? [];
+  const availableKb = Number.parseInt(fields[3] ?? '', 10);
+  return Number.isFinite(availableKb) ? availableKb * 1024 : null;
+}
+
+function formatMiB(bytes) {
+  return `${Math.round(bytes / (1024 * 1024))} MiB`;
+}
+
+function prepareInstallStorage(serial, apkPath) {
+  const apkBytes = fs.statSync(apkPath).size;
+  const desiredFreeBytes = Math.max(1024 * 1024 * 1024, apkBytes * 3);
+  const minimumFreeBytes = Math.max(512 * 1024 * 1024, apkBytes * 2);
+
+  const existing = adbCapture(['-s', serial, 'shell', 'pm', 'path', appId], true).trim();
+  if (existing) {
+    console.log('RN 0.87 probe: uninstalling the previous probe package before reinstall');
+    const uninstall = adbCapture(['-s', serial, 'uninstall', appId], true).trim();
+    if (uninstall) console.log(`RN 0.87 probe uninstall: ${uninstall}`);
+  }
+
+  let freeBytes = readDataFreeBytes(serial);
+  if (freeBytes != null) {
+    console.log(
+      `RN 0.87 probe storage: APK=${formatMiB(apkBytes)} /data free=${formatMiB(freeBytes)}`,
+    );
+  }
+
+  if (freeBytes != null && freeBytes < desiredFreeBytes) {
+    console.log(
+      `RN 0.87 probe: trimming emulator caches toward ${formatMiB(desiredFreeBytes)} free`,
+    );
+    adbCapture(
+      ['-s', serial, 'shell', 'pm', 'trim-caches', String(desiredFreeBytes)],
+      true,
+    );
+    freeBytes = readDataFreeBytes(serial);
+    if (freeBytes != null) {
+      console.log(`RN 0.87 probe storage after trim: /data free=${formatMiB(freeBytes)}`);
+    }
+  }
+
+  if (freeBytes != null && freeBytes < minimumFreeBytes) {
+    console.error(
+      `RN 0.87 probe: emulator /data is still too full to install safely.\n` +
+        `APK: ${formatMiB(apkBytes)}; free: ${formatMiB(freeBytes)}; minimum target: ${formatMiB(minimumFreeBytes)}.\n` +
+        'Use Android Studio Device Manager -> Wipe Data for this probe AVD, then rerun the same command.',
+    );
+    process.exit(1);
+  }
+}
+
 console.log(`RN 0.87 probe adb binary: ${adbBinary}`);
 run(adbBinary, ['start-server']);
 
@@ -257,7 +313,7 @@ if (buildReactNativeFromSource) {
 run(
   './gradlew',
   [
-    ':app:installDebug',
+    ':app:assembleDebug',
     `-PrnNestedScrollAndroid=${enabled}`,
     `-PrnNestedScrollFlingShim=${flingSessionShim}`,
     `-PrnBuildReactNativeFromSource=${buildReactNativeFromSource}`,
@@ -265,6 +321,24 @@ run(
   ],
   path.join(root, 'android'),
 );
+
+const apkPath = path.join(
+  root,
+  'android',
+  'app',
+  'build',
+  'outputs',
+  'apk',
+  'debug',
+  'app-debug.apk',
+);
+if (!fs.existsSync(apkPath)) {
+  console.error(`RN 0.87 probe: assembled APK not found at ${apkPath}`);
+  process.exit(1);
+}
+
+prepareInstallStorage(deviceSerial, apkPath);
+adb(['install', '-r', '-d', apkPath]);
 
 // Keep the process bootstrap in the log buffer: the analyzer uses it to verify the flag.
 adb(['logcat', '-c']);
