@@ -256,9 +256,25 @@ if (expected === 'direct' || expected === 'direct-chrome') {
   const childDeltaMismatches = clean.filter(
     item => item.childNetY !== item.targetY - item.baselineY,
   );
-  const strictScrollerDeltaMismatches = clean.filter(
-    item => item.edgeAborts === 0 && item.requestedNetY !== item.targetY - item.baselineY,
+
+  // At an RN snap edge the OverScroller is allowed to expose an internal overfling coordinate
+  // beyond the absolute content target. V6 terminates that tail once the child has reached targetY.
+  // In that case the observable contract is child-at-target + finished scroller, not currY==target.
+  const finishedOvershootSegments = clean.filter(
+    item =>
+      item.reason?.startsWith('target-reached') === true &&
+      item.scrollerFinished === true &&
+      item.sourceY === item.targetY &&
+      item.scrollerY !== item.targetY,
   );
+  const finishedOvershootSet = new Set(finishedOvershootSegments);
+  const strictScrollerDeltaApplicable = clean.filter(
+    item => item.edgeAborts === 0 && !finishedOvershootSet.has(item),
+  );
+  const strictScrollerDeltaMismatches = strictScrollerDeltaApplicable.filter(
+    item => item.requestedNetY !== item.targetY - item.baselineY,
+  );
+
   const finalMismatches = clean.filter(item => {
     const sourceFinal = item.endTargetY === item.targetY && item.sourceY === item.targetY;
     const targetReachedTermination =
@@ -294,6 +310,8 @@ if (expected === 'direct' || expected === 'direct-chrome') {
     staleButFinishedScroller,
     childOnlyMisses,
     edgeAbortSegments,
+    finishedOvershootSegments,
+    strictScrollerDeltaApplicable,
   };
 
   // V6 deliberately bypasses pre-consumption for a target-locked direct snap. Any NON_TOUCH pre
@@ -322,11 +340,14 @@ if (expected === 'direct' || expected === 'direct-chrome') {
     childDeltaMismatches.length === 0 &&
     strictScrollerDeltaMismatches.length === 0 &&
     finalMismatches.length === 0;
+
   targetSummary =
     `child target delta ${clean.length - childDeltaMismatches.length}/${clean.length}; ` +
-    `strict scroller delta ${clean.length - strictScrollerDeltaMismatches.length}/${clean.length}; ` +
+    `scroller delta ${strictScrollerDeltaApplicable.length - strictScrollerDeltaMismatches.length}/` +
+    `${strictScrollerDeltaApplicable.length} applicable; ` +
     `final ${clean.length - finalMismatches.length}/${clean.length}; ` +
-    `edgeSegments=${edgeAbortSegments.length}; noOpSkips=${stats.directSkips.length}; ` +
+    `finishedOvershoot=${finishedOvershootSegments.length}; ` +
+    `edgeResidual=${edgeAbortSegments.length}; noOpSkips=${stats.directSkips.length}; ` +
     `requests=${stats.directRequests.length}` +
     (childDeltaMismatches.length || strictScrollerDeltaMismatches.length || finalMismatches.length
       ? `; childMismatch=${childDeltaMismatches.length} ` +
@@ -381,6 +402,7 @@ if (directDiagnostics != null) {
     .join(' ');
   console.log(`  end reasons                 ${reasons || 'none'}`);
   console.log(`  edge-residual segments      ${directDiagnostics.edgeAbortSegments.length}`);
+  console.log(`  finished overfling tails    ${directDiagnostics.finishedOvershootSegments.length}`);
   console.log(
     `  raw scroller off target    ${directDiagnostics.rawScrollerOffTarget.length} ` +
       `(finished=${directDiagnostics.staleButFinishedScroller.length})`,
