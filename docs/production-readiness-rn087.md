@@ -1,6 +1,6 @@
 # RN 0.87 production-readiness plan
 
-Status date: 2026-08-12
+Status date: 2026-08-13
 
 ## Product invariant
 
@@ -24,19 +24,21 @@ The gate scans the production host/consumer transport and fails if it reintroduc
 
 ## Proven gates
 
-### Source semantics — PASS
+### Source semantics — PASS for the ordinary non-paging path
 
-RN 0.87 with `useNestedScrollViewAndroid=true` selects `ReactNestedScrollView`. Stock 0.87 loses the NON_TOUCH fling transaction because the generated override bypasses AndroidX's animated nested-scroll setup. Building ReactAndroid from source and priming AndroidX's TYPE_NON_TOUCH bookkeeping before reinstating RN's original `OverScroller` parameters restores frame-by-frame momentum dispatch without a parent shim.
+RN 0.87 with `useNestedScrollViewAndroid=true` selects `ReactNestedScrollView`. Stock 0.87 loses the NON_TOUCH fling transaction because the generated override bypasses AndroidX's animated nested-scroll setup. The bare probe has repeatedly shown that restoring the source-owned NON_TOUCH transaction makes ordinary momentum visible to Parent3 while React Native remains the source of motion.
+
+The production/upstream form of this fix is still gated on the remaining behavior matrix below. Do not infer that a probe implementation using private AndroidX bookkeeping or a custom source loop is the final patch shape.
 
 ### TopAppBar end to end — PASS
 
-The bare RN 0.87 probe drives a real Material3 `LargeTopAppBar` / `exitUntilCollapsedScrollBehavior` from the same Parent3 transaction. The validated run accounted for 249 complete frames, zero broken frames and zero unexpected pre-only frames, including full-pre frames that AndroidX legitimately does not post-dispatch after all motion has already been consumed.
+The bare RN 0.87 probe drives a real Material3 `LargeTopAppBar` / `exitUntilCollapsedScrollBehavior` from the same Parent3 transaction. The ledger explicitly accounts for normal post-complete frames and valid full-pre frames where AndroidX has no remaining motion to post-dispatch.
 
 ### Multi-consumer transaction — PASS
 
-A real Material3 FloatingToolbar now observes the same transaction as the consuming TopAppBar. It receives only non-zero `childConsumedY` in post-scroll and never modifies the Parent3 consumed array.
+A real Material3 FloatingToolbar observes the same transaction as the consuming TopAppBar. It receives only real non-zero `childConsumedY` post frames and never modifies the Parent3 consumed array.
 
-The validated run produced:
+A representative ordinary multi-consumer run produced:
 
 ```text
 Nested sessions
@@ -58,44 +60,88 @@ visual movement T/NT       109 / 2
 settle start / end          42 / 42
 ```
 
-Every FloatingToolbar input frame matched a real non-zero child-consumed post frame: 261/261 TOUCH and 314/314 NON_TOUCH. Adding the second consumer did not change TopAppBar accounting: 706 complete frames, zero broken and zero unexpected.
+Every FloatingToolbar input frame matched a real non-zero child-consumed post frame: 261/261 TOUCH and 314/314 NON_TOUCH. Adding the second consumer did not change TopAppBar accounting.
 
-This closes the architecture research gate: one RN-owned source transaction can drive multiple native Material consumers with different roles without introducing a second scroll model.
+This closes the architecture research gate: one RN-owned source transaction can drive multiple native Material consumers with different roles without introducing a second parent-owned scroll model.
 
 ## Behavior-regression gates
 
-### Direct snap — transaction PASS, behavioral equivalence NOT YET PASS
+### Direct `snapToInterval` — structural/target gate PASS; visual equivalence still an explicit release gate
 
-The first RN 0.87 direct-snap run with the V3 source probe produced balanced nested sessions and complete NON_TOUCH frame dispatch:
+The original V3/V4/V5 snap probes were rejected because the patched build visibly changed snap dynamics even when the nested transaction itself balanced. Those runs remain useful negative evidence: a green callback ledger is not sufficient if the source physics feels different from stock RN.
 
-```text
-starts TOUCH / NON_TOUCH    16 / 28
-stops  TOUCH / NON_TOUCH    16 / 28
-pre    TOUCH / NON_TOUCH   180 / 156
-post   TOUCH / NON_TOUCH   180 / 156
-direct-scroller requests    28
-direct nested primes        28
-```
-
-The structural analyzer passed, but the device test reported visibly jerky / unusual snap motion. Therefore this run is **not** evidence that snap behavior is production-safe. Visual behavior is part of the regression contract.
-
-The current direct analyzer also proves request-to-prime wiring, not yet exact final-position equivalence. Do not summarize this result as "snap PASS".
-
-A three-way A/B gate now compares the same `pagingEnabled + snapToInterval` JS configuration under:
+The current product-shape direct-snap probe therefore tests the source together with both real Material consumers and separates RN's visible child target from internal edge overfling bookkeeping. The validated 2026-08-13 run produced:
 
 ```text
-legacy   ReactScrollView, feature flag OFF, no source patch
-stock    ReactNestedScrollView, feature flag ON, prebuilt RN 0.87, no source patch
-patched  ReactNestedScrollView, feature flag ON, ReactAndroid from source + V3 patch
+Nested sessions
+starts TOUCH / NON_TOUCH     21 / 16
+stops  TOUCH / NON_TOUCH     21 / 16
+
+Material3 TopAppBar
+movement TOUCH / NON_TOUCH  131 / 8
+settle start / end           25 / 25
+settle completed/cancelled   25 / 0
+
+Transaction ledger
+post-complete frames        506
+full-pre TOUCH frames        78
+full-pre NON_TOUCH frames     0
+complete frames             584
+broken complete frames        0
+unexpected orphan pre         0
+
+Material3 FloatingToolbar
+child movement post T/NT   235 / 219
+observed posts T/NT        235 / 219
+visual movement T/NT       128 / 63
+settle start / end          25 / 25
+
+Direct snap
+direct-scroller requests     31
+direct no-op skips           15
+target-lock segments         16
+target-lock frames          219
+broken source frames          0
+orphan frames / ends        0 / 0
+overlapping starts            0
+child target delta          16 / 16
+scroller delta              14 / 14 applicable
+final target                16 / 16
+finished overfling tails      2
 ```
 
-The next decision depends on that comparison:
+All direct-snap analyzer gates pass:
 
-- if legacy, stock and patched all feel the same, the observed snapping is RN's existing behavior and the patch must merely preserve it;
-- if stock differs from legacy, the generated RN 0.87 nested source itself has a snap behavior regression;
-- if patched differs from stock, the V3 patch is responsible and must be changed before proceeding.
+```text
+bootstrap                  PASS
+source class               PASS
+NON_TOUCH session balance  PASS
+NON_TOUCH frame dispatch   PASS
+target-lock pre bypass     PASS
+direct chrome path         PASS
+snap target accounting     PASS
+```
 
-Paging-animator validation remains blocked until this A/B result is understood.
+The two `finished overfling tails` are internal `OverScroller.currY` values past the top edge after the visible child has already reached target `0`. They are retained as diagnostics rather than rewritten or hidden. The source child reached the RN-selected target in 16/16 segments and the corresponding scroller had already been forced finished.
+
+RN's own post-touch runnable intentionally issues a later `flingAndSnap(0)` pass for paging/snap stabilization. When that pass is a true no-op (`target == scrollY`, zero velocity), the probe does not open a second NON_TOUCH Material transaction. In the validated run 15 such no-op requests were skipped.
+
+This closes the **structural, conservation and final-target** gate for direct `snapToInterval` with TopAppBar + FloatingToolbar. It does **not** by itself prove perceptual equivalence to stock RN. A release claim of "direct snap behavior PASS" still requires the same build to feel indistinguishable from the stock A/B control on device.
+
+The current direct-snap source wrapper is still a probe implementation, not an upstream-final patch. It deliberately owns the transaction boundary around RN's existing snap `OverScroller`; its source-loop/edge behavior must not be promoted until the remaining regression matrix and upstream shape are resolved.
+
+### Basic `pagingEnabled` — NEXT BLOCKER
+
+Basic paging is a different RN animation path. With no explicit snap interval/offset/alignment, RN uses `smoothScrollAndSnap()` and its `ValueAnimator`-based `reactSmoothScrollTo()` path rather than the direct constrained `OverScroller` path above.
+
+The multi-chrome harness now runs both analyzers for this scenario:
+
+```bash
+npm run android:on-source-multi-chrome-paging
+npm run analyze:on-source-multi-chrome-paging
+```
+
+The first clean device run must establish whether the animator can expose a balanced source-owned NON_TOUCH transaction while preserving RN's final target with the real TopAppBar and FloatingToolbar present. Do not infer paging support from the direct-snap PASS.
 
 ## Required before calling the RN source patch production-safe
 
@@ -105,8 +151,9 @@ Explicitly validate:
 - interrupting a running fling with a new touch;
 - immediate direction reversal;
 - short and high-velocity flings;
-- paging mode;
-- snap interval and snap offsets;
+- basic `pagingEnabled` animator behavior;
+- `snapToInterval` interruption/edge/reversal behavior beyond the clean target gate;
+- `snapToOffsets`;
 - `disableIntervalMomentum`;
 - deceleration-rate behavior;
 - momentum begin/end event timing and count;
@@ -169,17 +216,18 @@ Before release, CI/device tests should cover at least:
 9. `npm run check:scroll-invariants`;
 10. release build smoke test with tracing disabled.
 
-Items 1–7 and 9 have concrete validated implementations in this branch. Item 8 is now the primary RN source-patch blocker; item 10 is the primary packaging/runtime-cost blocker.
+Items 1–7 have concrete passing product-shape gates for ordinary scroll and clean direct snap. Item 8 remains the primary RN source-patch blocker, with basic paging now the immediate scenario. Item 9 is implemented and must be executed in release validation; item 10 remains a packaging/runtime-cost blocker.
 
 ## Public/upstream path
 
-The public story and upstream proposal should separate three claims:
+The public story and upstream proposal should separate these claims:
 
 1. RN 0.87 already contains the AndroidX nested-scroll machinery.
-2. The generated RN fling override bypasses AndroidX's NON_TOUCH entry point.
-3. Once the source enters the AndroidX path, multiple native Material consumers can share the real RN-owned transaction without reconstructing a second scroll.
+2. The generated RN animated paths do not all enter that machinery consistently.
+3. Once the source exposes the transaction, multiple native Material consumers can share it without reconstructing a parent-owned second scroll.
+4. Target-locked snap/paging paths need their own behavioral contract; a transaction-conservation PASS alone does not prove physics equivalence.
 
-Do not present the proof patch as upstream-final until the RN behavior-regression matrix above is green.
+Do not present any probe source wrapper as upstream-final until the full RN behavior-regression matrix is green and the generator-level solution is defined.
 
 ## Definition of production ready
 
