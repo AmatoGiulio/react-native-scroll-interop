@@ -48,39 +48,58 @@ npx expo run:android
 
 The prebuild is deliberately clean for each variant so the generated `MainApplication.kt` cannot retain the previous experiment state.
 
-For the ON build, verify bootstrap first:
+## Stage 1 — source contract only
+
+Do not judge TopAppBar geometry in the flag-ON build yet. The validated 0.83 chrome bridge still names `ReactScrollView` directly and must be made type-neutral before that comparison is meaningful.
+
+For each variant capture one short Gallery/Profile trace:
 
 ```bash
 adb logcat -c
-adb logcat -s Rn087NestedScroll:I ExpoMaterialToolbar:D '*:S'
+adb logcat -v time -s Rn087NestedScroll:I ExpoMaterialToolbar:D '*:S' | tee /tmp/rn087-off.log
 ```
 
-Expected bootstrap evidence:
+or:
+
+```bash
+adb logcat -c
+adb logcat -v time -s Rn087NestedScroll:I ExpoMaterialToolbar:D '*:S' | tee /tmp/rn087-on.log
+```
+
+Exercise a drag and at least two ordinary single-pointer flings, then analyze from the repository root:
+
+```bash
+npm run analyze:rn087-source -- /tmp/rn087-off.log --expect off
+npm run analyze:rn087-source -- /tmp/rn087-on.log --expect on
+```
+
+Expected OFF evidence:
+
+```text
+source = com.facebook.react.views.scroll.ReactScrollView
+no source-owned NON_TOUCH nested session
+```
+
+Expected ON evidence:
 
 ```text
 Rn087NestedScroll: enabled=true ...
+source = com.facebook.react.views.scroll.ReactNestedScrollView
+TOUCH nested session present
+NON_TOUCH nested session + pre-scroll frames present
 ```
 
-and nested-scroll traces should identify the source class as:
-
-```text
-com.facebook.react.views.scroll.ReactNestedScrollView
-```
-
-The OFF variant should continue to identify:
-
-```text
-com.facebook.react.views.scroll.ReactScrollView
-```
+The ON analyzer intentionally gates only the source contract at this stage. The existing chrome bridge cannot yet account the post phase because it refuses the new concrete source type.
 
 ## Test order
 
 1. Build/run RN 0.87 with the flag OFF and no 0.83 RN source patch.
-2. Confirm touch behavior and establish that stock `ReactScrollView` still lacks the momentum transaction required by this PoC.
+2. Confirm the OFF analyzer sees `ReactScrollView` and establishes the stock momentum baseline.
 3. Build/run the same host with the flag ON.
-4. Confirm the actual native source is `ReactNestedScrollView`.
-5. Test TOUCH and NON_TOUCH nested sessions, pre/child/post accounting, top-edge post-consumption semantics, fling interruption, and repeated chrome collapse/expand.
-6. Only if the existing RN 0.87 path fails should we patch React Native, and any patch must target the generated Kotlin `ReactNestedScrollView` source rather than reintroducing the 0.83 `computeScroll()` implementation.
+4. Confirm the ON analyzer sees `ReactNestedScrollView` plus source-owned `NON_TOUCH` nested movement.
+5. Only after Stage 1 passes, make the PoC source plumbing type-neutral and rerun the full chrome ledger.
+6. Test pre/child/post accounting, top-edge Parent3 consumption semantics, fling interruption, repeated chrome collapse/expand, and FloatingToolbar settle.
+7. Only if the existing RN 0.87 nested source fails should we patch React Native. Any patch must target the generated Kotlin `ReactNestedScrollView` path rather than reintroducing the 0.83 `computeScroll()` implementation.
 
 ## Known PoC adaptation before the chrome test
 
