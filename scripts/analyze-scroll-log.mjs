@@ -57,6 +57,12 @@ const touchDownPattern = /TOUCH_DOWN pointers=(\d+)/;
 const floatSettlePattern = /FLOAT_SETTLE_END .*?completed=(true|false).*?offset=([-+]?\d+(?:\.\d+)?) limit=([-+]?\d+(?:\.\d+)?) fraction=([-+]?\d+(?:\.\d+)?)/;
 const topSettlePattern = /TX_TOP_SETTLE_END .*?completed=(true|false).*?heightOffset=([-+]?\d+(?:\.\d+)?) limit=([-+]?\d+(?:\.\d+)?) fraction=([-+]?\d+(?:\.\d+)?)/;
 
+// Material3's own settleAppBar() treats collapsedFraction < 0.01 as already expanded and returns
+// without running the snap. Mirror that semantic instead of inventing a stricter pixel threshold
+// that would classify a valid Material terminal state as drift.
+const TOP_APP_BAR_EXPANDED_FRACTION_EPSILON = 0.01;
+const COLLAPSED_ENDPOINT_PX_EPSILON = 1.0;
+
 const gestures = [];
 let currentGesture = null;
 let armed = 0;
@@ -73,6 +79,16 @@ function finishGesture(endLine) {
   currentGesture.endLine = endLine;
   gestures.push(currentGesture);
   currentGesture = null;
+}
+
+function isFloatingEndpoint(completed, offset, limit) {
+  return !completed || Math.min(Math.abs(offset), Math.abs(offset - limit)) <= 1.0;
+}
+
+function isTopAppBarEndpoint(completed, offset, limit, fraction) {
+  if (!completed) return true;
+  if (fraction < TOP_APP_BAR_EXPANDED_FRACTION_EPSILON) return true;
+  return Math.abs(offset - limit) <= COLLAPSED_ENDPOINT_PX_EPSILON;
 }
 
 for (let index = 0; index < lines.length; index += 1) {
@@ -123,7 +139,7 @@ for (let index = 0; index < lines.length; index += 1) {
     const offset = Number(floatSettle[2]);
     const limit = Number(floatSettle[3]);
     const fraction = Number(floatSettle[4]);
-    const endpoint = !completed || Math.min(Math.abs(offset), Math.abs(offset - limit)) <= 1.0;
+    const endpoint = isFloatingEndpoint(completed, offset, limit);
     floatingSettles.push({ line: index + 1, completed, offset, limit, fraction, endpoint });
   }
 
@@ -133,7 +149,7 @@ for (let index = 0; index < lines.length; index += 1) {
     const offset = Number(topSettle[2]);
     const limit = Number(topSettle[3]);
     const fraction = Number(topSettle[4]);
-    const endpoint = !completed || Math.min(Math.abs(offset), Math.abs(offset - limit)) <= 1.0;
+    const endpoint = isTopAppBarEndpoint(completed, offset, limit, fraction);
     topSettles.push({ line: index + 1, completed, offset, limit, fraction, endpoint });
   }
 }
