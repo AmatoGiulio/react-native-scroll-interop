@@ -1,0 +1,29 @@
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt
+@@ -688,27 +688,8 @@ internal open class ReactNestedScrollView
+ 
+     if (pagingEnabled) {
+       flingAndSnap(correctedVelocityY)
+-    } else if (scroller != null) {
+-      val scrollWindowHeight = height - paddingBottom - paddingTop
+-      scroller.fling(
+-          scrollX, // startX
+-          scrollY, // startY
+-          0, // velocityX
+-          correctedVelocityY, // velocityY
+-          0, // minX
+-          0, // maxX
+-          0, // minY
+-          Int.MAX_VALUE, // maxY
+-          0, // overX
+-          scrollWindowHeight / 2, // overY
+-      )
+-      postInvalidateOnAnimation()
+     } else {
++      // Let AndroidX open TYPE_NON_TOUCH, initialize its scroller baseline and dispatch the
++      // frame-by-frame nested pre/child/post transaction from NestedScrollView.computeScroll().
+       super.fling(correctedVelocityY)
+     }
+     handlePostTouchScrolling(0, correctedVelocityY)
+   }
