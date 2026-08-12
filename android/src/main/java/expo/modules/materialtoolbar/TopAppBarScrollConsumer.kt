@@ -18,6 +18,13 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 internal enum class TopAppBarInteropMode {
+  /**
+   * A visible app bar with no scroll behavior. Material never moves it, but the overlay still
+   * occupies the top of the screen, so the RN content below it needs the same scroll-away inset the
+   * scrolling modes install. Without this mode the consumer stayed unbound and the list rendered
+   * underneath the app bar.
+   */
+  Pinned,
   EnterAlways,
   ExitUntilCollapsed,
 }
@@ -57,6 +64,11 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
   private var originalPaddingRight = 0
   private var originalPaddingBottom = 0
 
+  /** A visible app bar owns the top of the screen, whether or not Material animates it. */
+  private val hasChrome: Boolean
+    get() = mode != null
+
+  /** Material can actually be driven: there is a behavior and a scope to settle it on. */
   private val isBound: Boolean
     get() = behavior != null && scope != null && mode != null
 
@@ -64,8 +76,13 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
   override val isSettlingChrome: Boolean
     get() = settleJob?.isActive == true
 
+  /**
+   * Only the modes the direct transport actually serves may hide from the sampled coordinator.
+   * Muting every mode whenever a nested-scroll host existed left enterAlways with no transport at
+   * all — the host refused it (see [isNestedDirectCapable]) and the fallback thought it was taken.
+   */
   override val isEnabled: Boolean
-    get() = isBound && !nestedTransportAvailable
+    get() = hasChrome && !isNestedDirectCapable
 
   override val requiresTopBoundaryGesture: Boolean
     get() = isEnabled && mode == TopAppBarInteropMode.ExitUntilCollapsed
@@ -80,9 +97,10 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
 
   fun setNestedTransportAvailable(available: Boolean) {
     if (nestedTransportAvailable == available) return
+    val wasDirect = isNestedDirectCapable
     nestedTransportAvailable = available
     cancelSettle()
-    if (!available) {
+    if (!available && wasDirect) {
       // The explicit marker no longer owns the source. Drop marker-owned visual state so the
       // sampled fallback can acquire a fresh source on its next native scroll session.
       clearScrollAwaySource()
@@ -275,15 +293,20 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
     scope = newScope
     mode = newMode
 
-    if (newBehavior == null || newScope == null || newMode == null) {
+    // Keyed on chrome presence, not on a bound behavior: a pinned app bar insets its content too.
+    if (newMode == null) {
       clearScrollAwaySource()
     } else {
       applyScrollAwayPadding()
     }
   }
 
-  fun unbind(expectedBehavior: TopAppBarScrollBehavior?) {
-    if (behavior !== expectedBehavior) return
+  fun unbind(
+    expectedBehavior: TopAppBarScrollBehavior?,
+    expectedMode: TopAppBarInteropMode?,
+  ) {
+    // Pinned mode has no behavior to identify it by, so the mode is part of the identity check.
+    if (behavior !== expectedBehavior || mode != expectedMode) return
     bind(null, null, null)
   }
 
@@ -318,7 +341,7 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
   }
 
   override fun onScrollSourceUnavailable(source: ViewGroup) {
-    if (nestedTransportAvailable) return
+    if (isNestedDirectCapable) return
     if (scrollAwaySource === source) clearScrollAwaySource()
   }
 
@@ -345,6 +368,9 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
     if (frame.deltaY != 0) {
       val scroll = Offset(0f, -frame.deltaY.toFloat())
       when (currentMode) {
+        // Nothing to drive; the mode exists only to own the content inset.
+        TopAppBarInteropMode.Pinned -> Unit
+
         TopAppBarInteropMode.EnterAlways -> {
           // enterAlways is a pre-scroll behavior: let Material3 mutate/consume its own height first,
           // then report only the logical remainder as child-consumed scroll.
@@ -442,7 +468,7 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
   }
 
   override fun onScrollSessionEnd() {
-    if (nestedTransportAvailable) return
+    if (isNestedDirectCapable) return
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     val currentMode = mode ?: return
@@ -652,7 +678,7 @@ internal class TopAppBarScrollConsumer : NativeScrollConsumer {
 
   private fun applyScrollAwayPadding() {
     val source = scrollAwaySource ?: return
-    val target = if (isBound) expandedChromeHeightPx.coerceAtLeast(0) else 0
+    val target = if (hasChrome) expandedChromeHeightPx.coerceAtLeast(0) else 0
     if (target == appliedScrollAwayPaddingPx) return
 
     // RN's unstable scroll-away primitive translates the content child by `target` and also adds

@@ -43,7 +43,7 @@ export default function FeedScreen() {
           contentContainerStyle={styles.listContent}
         />
       </NativeScrollHost>
-      <MaterialTopAppBar title="Feed" variant="small" scrollBehavior="none" />
+      <MaterialTopAppBar title="Feed" variant="small" scrollBehavior="enterAlways" />
     </View>
   );
 }

@@ -146,13 +146,17 @@ class ExpoMaterialTopAppBarView(
   ) {
     topAppBarScrollConsumer.bind(behavior, scope, mode)
     NativeNestedScrollRegistry.topBarStateChanged(this)
-    if (behavior != null && scope != null && mode != null) {
+    // Any visible mode needs a scroll source: the pinned one to inset it, the others to drive it.
+    if (mode != null) {
       nativeScrollCoordinator.discoverSources()
     }
   }
 
-  private fun unbindComposeScrollBehavior(behavior: TopAppBarScrollBehavior?) {
-    topAppBarScrollConsumer.unbind(behavior)
+  private fun unbindComposeScrollBehavior(
+    behavior: TopAppBarScrollBehavior?,
+    mode: TopAppBarInteropMode?,
+  ) {
+    topAppBarScrollConsumer.unbind(behavior, mode)
     NativeNestedScrollRegistry.topBarStateChanged(this)
   }
 
@@ -307,16 +311,21 @@ class ExpoMaterialTopAppBarView(
         } else {
           null
         }
-        val interopMode = when (uiState.scrollBehavior) {
-          "enterAlways" -> TopAppBarInteropMode.EnterAlways
-          "exitUntilCollapsed" -> TopAppBarInteropMode.ExitUntilCollapsed
-          else -> null
+        // A hidden app bar owns nothing, so it must not inset the content either.
+        val interopMode = if (!uiState.visible) {
+          null
+        } else {
+          when (uiState.scrollBehavior) {
+            "enterAlways" -> TopAppBarInteropMode.EnterAlways
+            "exitUntilCollapsed" -> TopAppBarInteropMode.ExitUntilCollapsed
+            else -> TopAppBarInteropMode.Pinned
+          }
         }
         val materialScrollScope = rememberCoroutineScope()
 
         DisposableEffect(materialScrollBehavior, materialScrollScope, interopMode) {
           bindComposeScrollBehavior(materialScrollBehavior, materialScrollScope, interopMode)
-          onDispose { unbindComposeScrollBehavior(materialScrollBehavior) }
+          onDispose { unbindComposeScrollBehavior(materialScrollBehavior, interopMode) }
         }
 
         if (uiState.visible) {
