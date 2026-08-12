@@ -24,6 +24,12 @@ It also fails if `useNestedScrollViewAndroid` was already read before the overri
 
 This mechanism exists only to test the 0.87 implementation before proposing an upstream-supported opt-in. It is not production integration code.
 
+### Expo 57 Android toolchain compatibility shims
+
+React Native 0.87 moved its Android build to Gradle 9.4.1 / AGP 9.2.1 while the Expo 57 prebuild template still emits a Gradle 9.3.1 wrapper. The RN 0.87 prebuild commands therefore patch the generated wrapper to Gradle 9.4.1 after every clean prebuild.
+
+Gradle 9.4.1 embeds Kotlin stdlib metadata 2.3.0. Expo 57's included Gradle builds currently pin the Kotlin JVM plugin to 2.1.20, whose compiler cannot consume that metadata. React Native 0.87 itself uses Kotlin 2.2.0 for its Gradle plugin, which can consume the Gradle 9.4.1 metadata. `patch:rn087:expo-kotlin` therefore aligns installed Expo Gradle-plugin included builds from Kotlin 2.1.20 to 2.2.0 before the experiment build. This is host compatibility plumbing only; it does not modify React Native scroll code.
+
 ### Reanimated intentionally removed from Stage 1
 
 Expo 57 currently bundles Reanimated 4.5.1, whose published peer range stops at React Native 0.86. Reanimated main has begun the 4.6 development line with React Native 0.87 support, but that line also depends on a matching Worklets main build.
@@ -56,7 +62,7 @@ npm run prebuild:rn087:on
 npx expo run:android
 ```
 
-The prebuild is deliberately clean for each variant so the generated `MainApplication.kt` cannot retain the previous experiment state.
+Each RN 0.87 prebuild automatically applies the Expo Kotlin 2.2 compatibility shim before prebuild and the Gradle 9.4.1 wrapper patch afterward. The prebuild is deliberately clean for each variant so the generated `MainApplication.kt` cannot retain the previous experiment state.
 
 ## Stage 1 — source contract only
 
