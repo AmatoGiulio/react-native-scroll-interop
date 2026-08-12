@@ -26,7 +26,7 @@
     "analyze:on-source-multi-chrome": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome.log --expect-floating",
     "analyze:on-source-snap": "node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-snap.log --expect direct",
     "analyze:on-source-paging": "node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-paging.log --expect paging",
-    "analyze:on-source-multi-chrome-snap": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap.log --expect-floating",
+    "analyze:on-source-multi-chrome-snap": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap.log --expect-floating && node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap.log --expect direct-chrome",
     "analyze:on-source-multi-chrome-paging": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-paging.log --expect-floating"
   },
   "dependencies": {
