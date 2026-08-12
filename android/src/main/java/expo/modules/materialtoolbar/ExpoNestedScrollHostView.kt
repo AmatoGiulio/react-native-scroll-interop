@@ -13,9 +13,6 @@ import androidx.core.view.ViewCompat
 import com.facebook.react.views.scroll.ReactScrollView
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.ceil
 
 /**
  * A nested-scrolling ancestor for a React Native scroll source, so native chrome can follow it.
@@ -28,16 +25,14 @@ import kotlin.math.ceil
  *
  * There is exactly one transaction and exactly one physics.
  *
- * **One transaction per frame.** Material's pre-scroll phase decides how much of the delta the
- * chrome takes, and the child must scroll by the remainder. Both run synchronously inside
- * [onNestedPreScroll], so chrome never trails the content by a frame. Every consumer on the screen
- * joins that same transaction in its own phase: an app bar that withholds scroll in pre, a floating
- * toolbar that reacts to what the list actually did in post.
+ * **The source owns the movement.** Touch comes through `ScrollView.onTouchEvent`, momentum through
+ * the source's own `TYPE_NON_TOUCH` dispatch (see `docs/upstream/`). This parent runs no scroller
+ * and never moves the list: it takes its share in pre-scroll, React Native scrolls the remainder
+ * with its own code, and post-scroll reports what actually happened. `scrollY` therefore only ever
+ * means "where React Native scrolled to".
  *
- * **The source owns the physics.** Touch comes through `ScrollView.onTouchEvent`, momentum through
- * the source's own `TYPE_NON_TOUCH` dispatch (see `docs/upstream/`). This parent never runs a
- * scroller of its own: reproducing a fling next to the one already running is a second, slightly
- * different scroll view driving the same pixels.
+ * **Every consumer joins the same transaction**, each in its own phase: an app bar that can withhold
+ * distance in pre, a floating toolbar that only watches the list in post.
  *
  * Being an explicit component the app wraps around its list is a limitation of this module, not of
  * the approach: the natural home for this is the screen layer, which already wraps screen content
@@ -63,6 +58,9 @@ class ExpoNestedScrollHostView(
   // True between the source's own TYPE_NON_TOUCH start and stop. The movement is not over when the
   // finger leaves; it changes owner, and chrome must not settle in between.
   private var momentumSessionActive = false
+
+  // The untyped platform callbacks have no consumed[] to report into; this stands in for it.
+  private val throwawayConsumed = IntArray(2)
 
   init {
     clipChildren = false
@@ -182,25 +180,8 @@ class ExpoNestedScrollHostView(
     finishTouch(target)
   }
 
-  override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) {
-    preCount += 1
-    val tx = driveTransaction(target, dy, NativeNestedInputType.Touch)
-    if (tx != null) {
-      // Both the Material and the child phase already ran synchronously inside the transaction, so
-      // claim what they used and nothing more. The remainder is distance nobody could absorb — the
-      // content is at an edge and chrome has no travel left — and leaving it unclaimed is what lets
-      // ScrollView run its own overscroll: the stretch on Android 12+, the glow before it. Claiming
-      // it too, as this did while the edge handoff was unimplemented, silently deleted that motion
-      // and made the list feel dead against its boundaries.
-      consumed[1] += dy - tx.unconsumedY
-      logTransaction("TOUCH", tx)
-    } else {
-      log(
-        "NESTED_PRE contract=platform n=$preCount dx=$dx dy=$dy consumedY=${consumed[1]} " +
-          targetLabel(target),
-      )
-    }
-  }
+  override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) =
+    onNestedPreScroll(target, dx, dy, consumed, ViewCompat.TYPE_TOUCH)
 
   override fun onNestedScroll(
     target: View,
@@ -209,13 +190,14 @@ class ExpoNestedScrollHostView(
     dxUnconsumed: Int,
     dyUnconsumed: Int,
   ) {
-    postCount += 1
-    // With the direct driver, platform child/post work should be zero because onNestedPreScroll
-    // claimed the complete delta after executing it itself. Never feed this callback into Material
-    // again; doing so would double-dispatch the same gesture.
-    log(
-      "NESTED_POST contract=platform n=$postCount childConsumedY=$dyConsumed " +
-        "unconsumedY=$dyUnconsumed direct=$directTransactionActive ${targetLabel(target)}",
+    onNestedScroll(
+      target,
+      dxConsumed,
+      dyConsumed,
+      dxUnconsumed,
+      dyUnconsumed,
+      ViewCompat.TYPE_TOUCH,
+      throwawayConsumed,
     )
   }
 
@@ -302,25 +284,24 @@ class ExpoNestedScrollHostView(
     type: Int,
   ) {
     preCount += 1
-    val inputType = if (type == ViewCompat.TYPE_NON_TOUCH) {
-      NativeNestedInputType.NonTouch
-    } else {
-      NativeNestedInputType.Touch
-    }
-    val tx = driveTransaction(target, dy, inputType)
-    if (tx != null) {
-      // Claim what the transaction actually used, never the whole delta. Distance nobody could
-      // absorb has to stay unclaimed: on touch it is what lets the source run its own overscroll,
-      // and during momentum it is the only signal that the fling has reached an edge — a source
-      // told its delta was consumed keeps producing distance for the rest of its decay curve.
-      consumed[1] += dy - tx.unconsumedY
-      logTransaction("ANDROIDX_${typeLabel(type)}", tx)
-    } else {
+    val topBar = activeTopBar?.takeIf { directTransactionActive && it.isNestedDirectCapable }
+    if (topBar == null || dy == 0) {
       log(
-        "NESTED_PRE contract=androidx type=${typeLabel(type)} n=$preCount dx=$dx dy=$dy " +
-          "consumedY=${consumed[1]} ${targetLabel(target)}",
+        "NESTED_PRE type=${typeLabel(type)} n=$preCount dy=$dy consumedY=${consumed[1]} " +
+          targetLabel(target),
       )
+      return
     }
+
+    // The app bar is the only consumer that can take distance away from the list, so pre-scroll is
+    // its phase alone. Claim exactly what its height moved — nothing is executed on the source, and
+    // React Native scrolls the remainder itself with its own code.
+    val pre = topBar.nestedPreScroll(dy, type.toInputType())
+    consumed[1] += pre.reportedConsumedY
+    log(
+      "TX_PRE type=${typeLabel(type)} n=$preCount dy=$dy chrome=${pre.reportedConsumedY} " +
+        "collapse=${topBar.currentCollapseAmountPx()} sourceY=${(target as? ViewGroup)?.scrollY}",
+    )
   }
 
   override fun onNestedScroll(
@@ -331,11 +312,14 @@ class ExpoNestedScrollHostView(
     dyUnconsumed: Int,
     type: Int,
   ) {
-    postCount += 1
-    log(
-      "NESTED_POST contract=androidx type=${typeLabel(type)} n=$postCount " +
-        "childConsumedY=$dyConsumed unconsumedY=$dyUnconsumed direct=$directTransactionActive " +
-        targetLabel(target),
+    onNestedScroll(
+      target,
+      dxConsumed,
+      dyConsumed,
+      dxUnconsumed,
+      dyUnconsumed,
+      type,
+      throwawayConsumed,
     )
   }
 
@@ -349,147 +333,32 @@ class ExpoNestedScrollHostView(
     consumed: IntArray,
   ) {
     postCount += 1
+    if (!directTransactionActive) return
+
+    // Post-scroll: what the list really did, reported by the list itself. The app bar may still
+    // take some of what nobody consumed — that is how it expands when the content reaches the top —
+    // and the floating toolbar only watches.
+    val inputType = type.toInputType()
+    val post = activeTopBar
+      ?.takeIf { it.isNestedDirectCapable }
+      ?.nestedPostScroll(dyConsumed, dyUnconsumed, inputType)
+    if (post != null) consumed[1] += post.availableConsumedY
+    activeToolbar?.nestedPostScroll(dyConsumed, inputType)
+
     log(
-      "NESTED_POST3 contract=androidx type=${typeLabel(type)} n=$postCount " +
-        "childConsumedY=$dyConsumed unconsumedY=$dyUnconsumed parentConsumedY=${consumed[1]} " +
-        "direct=$directTransactionActive ${targetLabel(target)}",
+      "TX_POST type=${typeLabel(type)} n=$postCount child=$dyConsumed unconsumed=$dyUnconsumed " +
+        "chrome=${post?.availableConsumedY ?: 0} collapse=${activeTopBar?.currentCollapseAmountPx()} " +
+        "sourceY=${(target as? ViewGroup)?.scrollY}",
     )
   }
+
+  private fun Int.toInputType(): NativeNestedInputType =
+    if (this == ViewCompat.TYPE_NON_TOUCH) NativeNestedInputType.NonTouch
+    else NativeNestedInputType.Touch
 
   // ---------------------------------------------------------------------------
   // One transaction driver for both touch and momentum.
   // ---------------------------------------------------------------------------
-
-  private data class DrivenTransaction(
-    val n: Long,
-    val requestedY: Int,
-    val preRequestY: Int,
-    val preReportedY: Int,
-    val preChromeY: Int,
-    val prePhysicalY: Int,
-    val childRequestedY: Int,
-    val childConsumedY: Int,
-    val postAvailableY: Int,
-    val postAvailableConsumedY: Int,
-    val postChromeY: Int,
-    val postPhysicalY: Int,
-    val unconsumedY: Int,
-    val sourceY: Int,
-    val logicalY: Int,
-    val collapseY: Float,
-  )
-
-  private fun driveTransaction(
-    target: View,
-    requestedY: Int,
-    inputType: NativeNestedInputType,
-  ): DrivenTransaction? {
-    if (!directTransactionActive || requestedY == 0) return null
-    val source = target as? ReactScrollView ?: return null
-    val topBar = activeTopBar?.takeIf { it.isNestedDirectCapable }
-    val toolbar = activeToolbar
-    if (topBar == null && toolbar == null) return null
-
-    transactionCount += 1
-
-    // Pre-scroll: the only phase that can take distance away from the list. A floating toolbar never
-    // does, so this phase belongs to the app bar alone.
-    //
-    // Material3 exitUntilCollapsed reports the whole pre-scroll `available` when its state changes,
-    // even if heightOffset clamps at the collapse limit. Android can batch hundreds of pixels into
-    // one callback (and a janked fling frame can be >1000 px), so split exactly at the Material
-    // boundary. This is two genuine nested-scroll segments, not a synthetic remainder: the first
-    // reaches the chrome endpoint, the second is then eligible for child consumption.
-    val preRequestY = when {
-      topBar == null -> 0
-      requestedY > 0 -> {
-        val remainingCollapse = ceil(topBar.remainingCollapseAmountPx().toDouble()).toInt()
-        if (remainingCollapse > 0) min(requestedY, remainingCollapse) else 0
-      }
-      else -> requestedY
-    }
-    val pre = topBar?.nestedPreScroll(preRequestY, inputType) ?: NativeNestedPreResult(0, 0)
-    val beforePrePhysical = source.scrollY
-    if (pre.chromeMovementY != 0) source.scrollBy(0, pre.chromeMovementY)
-    val prePhysical = source.scrollY - beforePrePhysical
-
-    val afterPreY = requestedY - pre.reportedConsumedY
-
-    // The physical RN coordinate contains Material's collapse amount because the native scroll-away
-    // content translation is fixed at expanded height. On downward motion only the *logical* child
-    // range may be consumed before the remainder becomes TopAppBar post-scroll available.
-    val childRequested = if (afterPreY < 0 && topBar != null) {
-      max(afterPreY, -topBar.logicalChildY(source))
-    } else {
-      afterPreY
-    }
-
-    val beforeChildY = source.scrollY
-    if (childRequested != 0) source.scrollBy(0, childRequested)
-    val childConsumed = source.scrollY - beforeChildY
-    val postAvailable = afterPreY - childConsumed
-
-    // Post-scroll: what the list actually did. Both consumers see the same number, in the phase
-    // Material's own behaviors expect it.
-    val post = topBar?.nestedPostScroll(childConsumed, postAvailable, inputType)
-      ?: NativeNestedPostResult(0, 0)
-    val beforePostPhysical = source.scrollY
-    if (post.chromeMovementY != 0) source.scrollBy(0, post.chromeMovementY)
-    val postPhysical = source.scrollY - beforePostPhysical
-    toolbar?.nestedPostScroll(childConsumed, inputType)
-
-    val unconsumed = postAvailable - post.availableConsumedY
-    val logicalAfter = topBar?.logicalChildY(source) ?: source.scrollY
-    val collapseAfter = topBar?.currentCollapseAmountPx() ?: 0f
-
-    if (BuildConfig.DEBUG) {
-      if (prePhysical != pre.chromeMovementY || postPhysical != post.chromeMovementY) {
-        log(
-          "TX_INVARIANT physicalClamp requested=$requestedY preExpected=${pre.chromeMovementY} " +
-            "preActual=$prePhysical postExpected=${post.chromeMovementY} postActual=$postPhysical " +
-            "sourceY=${source.scrollY} logicalY=$logicalAfter collapse=$collapseAfter",
-        )
-      }
-      val invariantY = logicalAfter + collapseAfter
-      if (kotlin.math.abs(source.scrollY.toFloat() - invariantY) > 1.25f) {
-        log(
-          "TX_INVARIANT coordinateMismatch sourceY=${source.scrollY} logicalY=$logicalAfter " +
-            "collapse=$collapseAfter expected=$invariantY requested=$requestedY",
-        )
-      }
-    }
-
-    return DrivenTransaction(
-      n = transactionCount,
-      requestedY = requestedY,
-      preRequestY = preRequestY,
-      preReportedY = pre.reportedConsumedY,
-      preChromeY = pre.chromeMovementY,
-      prePhysicalY = prePhysical,
-      childRequestedY = childRequested,
-      childConsumedY = childConsumed,
-      postAvailableY = postAvailable,
-      postAvailableConsumedY = post.availableConsumedY,
-      postChromeY = post.chromeMovementY,
-      postPhysicalY = postPhysical,
-      unconsumedY = unconsumed,
-      sourceY = source.scrollY,
-      logicalY = logicalAfter,
-      collapseY = collapseAfter,
-    )
-  }
-
-  private fun logTransaction(kind: String, tx: DrivenTransaction) {
-    log(
-      "TX_FRAME kind=$kind n=${tx.n} dy=${tx.requestedY} " +
-        "preReq=${tx.preRequestY} preReported=${tx.preReportedY} " +
-        "preChrome=${tx.preChromeY}/${tx.prePhysicalY} " +
-        "childReq=${tx.childRequestedY} child=${tx.childConsumedY} " +
-        "postAvail=${tx.postAvailableY} postConsumed=${tx.postAvailableConsumedY} " +
-        "postChrome=${tx.postChromeY}/${tx.postPhysicalY} remaining=${tx.unconsumedY} " +
-        "sourceY=${tx.sourceY} logicalY=${tx.logicalY} collapse=${tx.collapseY}",
-    )
-  }
 
   /**
    * Bind the transaction to the source and to whatever chrome is on this screen.

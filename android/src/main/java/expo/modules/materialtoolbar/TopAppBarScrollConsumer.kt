@@ -122,10 +122,14 @@ internal class TopAppBarScrollConsumer {
     val newHeightOffset = state.heightOffset
 
     // Material3 may report the whole available delta as pre-consumed even when the heightOffset
-    // setter clamps at its limit. Keep those two concepts separate: reportedConsumed controls what
-    // the child receives, while chromeMovement controls only the physical scroll-away coordinate.
-    val reportedConsumedY = clampSignedConsumption(deltaY, -returned.y)
+    // setter clamps at its limit. Only what the app bar's height actually moved may be withheld
+    // from the list: anything else would be distance deleted from the gesture.
     val chromeMovementY = clampSignedMovement(deltaY, oldHeightOffset - newHeightOffset)
+    val reportedConsumedY =
+      clampSignedConsumption(deltaY, -returned.y).let { reported ->
+        if (kotlin.math.abs(chromeMovementY) < kotlin.math.abs(reported)) chromeMovementY else reported
+      }
+    applyChromeTranslation()
     return NativeNestedPreResult(reportedConsumedY, chromeMovementY)
   }
 
@@ -146,17 +150,10 @@ internal class TopAppBarScrollConsumer {
     )
     val newHeightOffset = state.heightOffset
 
-    val availableConsumedY = clampSignedConsumption(availableY, -returned.y)
-    // Post-scroll height changes can be caused by either child-consumed upward motion or available
-    // downward motion. The actual state delta is authoritative for scroll-away geometry.
     val chromeMovementY = (oldHeightOffset - newHeightOffset).roundToInt()
+    val availableConsumedY = clampSignedConsumption(availableY, -returned.y)
+    applyChromeTranslation()
     return NativeNestedPostResult(availableConsumedY, chromeMovementY)
-  }
-
-  /** Physical RN y = logical child y + the actual Material collapse amount. */
-  fun logicalChildY(source: ReactScrollView): Int {
-    val collapse = currentCollapseAmountPx()
-    return (source.scrollY.toFloat() - collapse).coerceAtLeast(0f).roundToInt()
   }
 
   fun currentCollapseAmountPx(): Float =
@@ -168,9 +165,11 @@ internal class TopAppBarScrollConsumer {
     return (range - currentCollapseAmountPx()).coerceAtLeast(0f)
   }
   /**
-   * Finish a direct nested transaction using Material3's own snap engine. During the chrome-only
-   * snap there is no child scroll delta, so keep the RN scroll-away physical coordinate equal to
-   * logicalChildY + Material collapse amount. This is geometry synchronization, not replayed input.
+   * Finish the transaction with Material3's own snap engine.
+   *
+   * Nothing here touches the list's scroll position. The snap moves the app bar's height, and the
+   * content follows it through [applyChromeTranslation] — a view transform, not a scroll. That is
+   * what keeps `scrollY` meaning only "where React Native scrolled to".
    */
   fun endNestedTransaction(source: ReactScrollView, reason: String) {
     val currentBehavior = behavior ?: return
@@ -178,32 +177,29 @@ internal class TopAppBarScrollConsumer {
     if (!isNestedDirectCapable || !source.isAttachedToWindow) return
     cancelSettle()
 
-    val logicalY = logicalChildY(source).toFloat()
     val generation = ++settleGeneration
     if (BuildConfig.DEBUG) {
       val state = currentBehavior.state
       val fraction = if (state.heightOffsetLimit != 0f) state.heightOffset / state.heightOffsetLimit else 0f
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "TX_TOP_SETTLE_START gen=$generation reason=$reason logicalY=$logicalY " +
-          "sourceY=${source.scrollY} heightOffset=${state.heightOffset} limit=${state.heightOffsetLimit} fraction=$fraction",
+        "TX_TOP_SETTLE_START gen=$generation reason=$reason sourceY=${source.scrollY} " +
+          "heightOffset=${state.heightOffset} limit=${state.heightOffsetLimit} fraction=$fraction",
       )
     }
 
     settleJob = currentScope.launch(start = CoroutineStart.UNDISPATCHED) {
       var completedNormally = false
       val syncJob = launch(start = CoroutineStart.UNDISPATCHED) {
-        snapshotFlow { currentBehavior.state.heightOffset }.collect { heightOffset ->
-          if (generation == settleGeneration) {
-            syncDirectScrollAwaySettle(source, logicalY, heightOffset, currentBehavior)
-          }
+        snapshotFlow { currentBehavior.state.heightOffset }.collect {
+          if (generation == settleGeneration) applyChromeTranslation()
         }
       }
 
       try {
-        // The proxy already integrates the user fling as NON_TOUCH scroll deltas. Passing that
-        // velocity again here would double-apply momentum. Zero velocity asks Material only for its
-        // terminal snap, using the real state reached by the transaction stream.
+        // Zero velocity, deliberately: every frame of the fling already reached Material as a
+        // scroll delta, so handing it the velocity too would decay a second time over movement
+        // already applied. This asks only for the terminal snap.
         currentBehavior.nestedScrollConnection.onPostFling(
           consumed = Velocity.Zero,
           available = Velocity.Zero,
@@ -211,26 +207,15 @@ internal class TopAppBarScrollConsumer {
         completedNormally = true
       } finally {
         syncJob.cancel()
-        if (
-          completedNormally &&
-            generation == settleGeneration &&
-            source.isAttachedToWindow
-        ) {
-          syncDirectScrollAwaySettle(
-            source,
-            logicalY,
-            currentBehavior.state.heightOffset,
-            currentBehavior,
-          )
-        }
+        if (generation == settleGeneration) applyChromeTranslation()
         if (BuildConfig.DEBUG) {
           val state = currentBehavior.state
           val fraction = if (state.heightOffsetLimit != 0f) state.heightOffset / state.heightOffsetLimit else 0f
           Log.d(
             NATIVE_SCROLL_LOG_TAG,
             "TX_TOP_SETTLE_END gen=$generation completed=$completedNormally currentGen=$settleGeneration " +
-              "sourceY=${source.scrollY} logicalY=${logicalChildY(source)} " +
-              "heightOffset=${state.heightOffset} limit=${state.heightOffsetLimit} fraction=$fraction",
+              "sourceY=${source.scrollY} heightOffset=${state.heightOffset} " +
+              "limit=${state.heightOffsetLimit} fraction=$fraction",
           )
         }
         if (generation == settleGeneration) settleJob = null
@@ -291,6 +276,23 @@ internal class TopAppBarScrollConsumer {
     clearScrollAwaySource()
   }
 
+  /**
+   * Make the content follow the app bar's height, without scrolling it.
+   *
+   * React Native's scroll-away padding translates the content down by the *expanded* bar height and
+   * gives the list an equal bottom padding, once. Collapsing then means translating that same
+   * content back up by however much Material shrank the bar: a transform on a view, costing no
+   * layout, no Fabric state update, and above all no change to `scrollY` — which stays exactly
+   * where React Native put it.
+   */
+  private fun applyChromeTranslation() {
+    val source = scrollAwaySource ?: return
+    val content = source.getChildAt(0) ?: return
+    val resting = appliedScrollAwayPaddingPx.toFloat()
+    val target = resting - currentCollapseAmountPx()
+    if (content.translationY != target) content.translationY = target
+  }
+
   private fun ensureScrollAwaySource(source: ReactScrollView) {
     if (scrollAwaySource !== source) {
       clearScrollAwaySource()
@@ -299,30 +301,6 @@ internal class TopAppBarScrollConsumer {
     }
     applyScrollAwayPadding()
   }
-
-  private fun syncDirectScrollAwaySettle(
-    source: ReactScrollView,
-    logicalChildY: Float,
-    heightOffset: Float,
-    behavior: TopAppBarScrollBehavior,
-  ) {
-    if (!source.isAttachedToWindow) return
-    val collapseAmount = (-heightOffset).coerceAtLeast(0f)
-    val targetY = (logicalChildY + collapseAmount).roundToInt().coerceAtLeast(0)
-    if (source.scrollY != targetY) {
-      // The RN private OverScroller was intercepted by the explicit transport. A raw scrollTo is
-      // intentional here: this is chrome-settle geometry, not momentum that should be preserved.
-      source.scrollTo(source.scrollX, targetY)
-    }
-    if (BuildConfig.DEBUG) {
-      Log.d(
-        NATIVE_SCROLL_LOG_TAG,
-        "TX_TOP_SETTLE_SYNC targetY=$targetY logicalY=$logicalChildY collapse=$collapseAmount " +
-          "heightOffset=$heightOffset limit=${behavior.state.heightOffsetLimit}",
-      )
-    }
-  }
-
   private fun NativeNestedInputType.toComposeNestedSource(): NestedScrollSource = when (this) {
     NativeNestedInputType.Touch -> NestedScrollSource.UserInput
     NativeNestedInputType.NonTouch -> NestedScrollSource.SideEffect
