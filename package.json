@@ -6,7 +6,9 @@
   "scripts": {
     "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
     "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs",
-    "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs"
+    "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs",
+    "check:rn087-nested-fling": "node scripts/patch-rn087-nested-fling.mjs --check",
+    "patch:rn087-nested-fling": "node scripts/patch-rn087-nested-fling.mjs --apply"
   },
   "peerDependencies": {
     "expo": "*",
