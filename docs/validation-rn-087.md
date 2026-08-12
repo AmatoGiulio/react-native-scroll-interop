@@ -156,6 +156,55 @@ A fully pre-consumed frame legitimately has no parent post callback. On the touc
 
 Therefore the end-to-end TopAppBar gate is closed: the same RN-owned TOUCH/NON_TOUCH transaction drives Material3 pre/post consumption, scroll-away geometry and terminal settle, with every observable frame conserving distance and no second scroll physics.
 
+### F — one transaction, two real Material consumers
+
+The next gate added a real Material3 FloatingToolbar scroll behavior to the same Parent3 transaction. Unlike the TopAppBar, the FloatingToolbar consumes no distance: it observes only the child-consumed post-scroll movement and therefore cannot change the transaction ledger.
+
+Observed result:
+
+```text
+Source
+bootstrap true              true
+ReactNestedScrollView lines 1875
+source patch flings         34
+
+Nested sessions
+starts TOUCH / NON_TOUCH    68 / 34
+stops  TOUCH / NON_TOUCH    68 / 34
+
+Material3 TopAppBar
+movement TOUCH / NON_TOUCH  120 / 16
+settle start / end          42 / 42
+
+Transaction ledger
+post-complete frames        630
+full-pre TOUCH frames        76
+full-pre NON_TOUCH frames     0
+complete frames             706
+broken complete frames        0
+unexpected orphan pre         0
+
+Material3 FloatingToolbar
+behavior binds                1
+geometry samples              1
+child movement post T/NT    261 / 314
+observed posts T/NT         261 / 314
+visual movement T/NT        109 / 2
+settle start / end           42 / 42
+```
+
+Every gate passed. Most importantly, FloatingToolbar coverage was exact: 261/261 non-zero child post frames for TOUCH and 314/314 for NON_TOUCH. The TopAppBar ledger remained 706 complete / 0 broken / 0 unexpected.
+
+This closes the transport architecture proof:
+
+```text
+one RN-owned physics
+one real synchronous TOUCH/NON_TOUCH transaction
+TopAppBar consumes pre/post
+FloatingToolbar observes child-consumed post
+zero second-scroll reconstruction
+```
+
 ## Isolated defect
 
 `ReactNestedScrollView.kt` is generated from `ReactScrollView.kt`. In RN 0.87.0 the generated class inherits AndroidX `NestedScrollView`, but its copied `fling()` override still takes the legacy path:
