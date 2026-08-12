@@ -11,34 +11,19 @@ import androidx.core.view.NestedScrollingChild2
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
-import com.facebook.react.views.scroll.ReactScrollView
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 
 /**
- * A nested-scrolling ancestor for a React Native scroll source, so native chrome can follow it.
+ * Native nested-scrolling ancestor for React Native vertical scroll sources.
  *
- * Android chrome that reacts to scrolling is driven through nested scrolling. A [ReactScrollView]
- * emits those callbacks to its native ancestors, and nothing in the RN view tree listens — which is
- * why Compose Material3 behaviors, which are themselves NestedScrollConnections, cannot be reached
- * from React Native at all. Being that ancestor is the entire parent-side trick: no JS involvement,
- * no ref handed anywhere, and no second scroll driver. React Native 0.83 still needs the source-side
- * momentum patch under `docs/upstream/` so its own fling is reported as `TYPE_NON_TOUCH`.
+ * The source always owns gesture/fling physics. This host only consumes or observes the real
+ * synchronous nested-scroll transaction Android delivers. It never runs a scroller, never calls
+ * scrollBy/scrollTo on the child, and never reconstructs motion from sampled scrollY.
  *
- * There is exactly one transaction and exactly one physics.
- *
- * **The source owns the movement.** Touch comes through `ScrollView.onTouchEvent`, momentum through
- * the source's own `TYPE_NON_TOUCH` dispatch. This parent runs no scroller and never moves the list:
- * it takes its share in pre-scroll, React Native scrolls the remainder with its own code, and
- * post-scroll reports what actually happened. `scrollY` therefore only ever means "where React
- * Native scrolled to".
- *
- * **Every consumer joins the same transaction**, each in its own phase: an app bar that can withhold
- * distance in pre, a floating toolbar that only watches the list in post.
- *
- * Being an explicit component the app wraps around its list is a limitation of this module, not of
- * the approach: the natural home for this is the screen layer, which already wraps screen content
- * in a view group of its own.
+ * RN 0.83 uses ReactScrollView. RN 0.87 can use the Kotlin-internal ReactNestedScrollView. The host
+ * treats both as ViewGroup transaction sources through [ReactVerticalScrollSourceInterop]; the
+ * nested-scroll callback target remains authoritative.
  */
 class ExpoNestedScrollHostView(
   context: Context,
@@ -51,24 +36,19 @@ class ExpoNestedScrollHostView(
   private var preCount = 0L
   private var postCount = 0L
 
-  // These belong only to the nested-scroll session that Android actually opened. Pre-gesture source
-  // discovery never writes them: the transaction target is the authoritative source.
   private var activeTopBar: TopAppBarScrollConsumer? = null
   private var activeToolbar: FloatingToolbarScrollConsumer? = null
-  private var activeSource: ReactScrollView? = null
+  private var activeSource: ViewGroup? = null
   private var nestedTransactionActive = false
 
   // True between the source's own TYPE_NON_TOUCH start and stop. The movement is not over when the
-  // finger leaves; it changes owner, and chrome must not settle in between.
+  // finger leaves; it changes input type, and chrome must not settle in between.
   private var momentumSessionActive = false
 
-  // The untyped/Parent2 callbacks have no consumed[] result to report into. Always clear this before
-  // delegating so a previous callback can never leak its post-consumption into diagnostics.
   private val throwawayConsumed = IntArray(2)
 
-  // Mount ordering under Fabric/FlashList is asynchronous, but it is still observable through the
-  // native layout tree. Wait for a real layout change instead of guessing that 32/250/750 ms will be
-  // enough for the ReactScrollView to exist.
+  // Fabric mount order is asynchronous. Discovery waits on the real native tree instead of using
+  // timer guesses, and never gains transaction authority from this preparation pass.
   private var waitingForSourceLayout = false
   private val sourceLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
     if (!isAttachedToWindow) {
@@ -78,13 +58,8 @@ class ExpoNestedScrollHostView(
     if (refreshNestedChromeBinding()) stopWaitingForSourceLayout()
   }
 
-  // Debug transaction ledger. For one frame the four quantities must add up to what was asked, and
-  // none of them may be reconstructed from the frame before:
-  //
-  //     requested = chromePre + childConsumed + chromePost + remaining
-  //
-  // It also counts pre-scrolls that never got their post. Those are expected on the legacy
-  // android.widget.ScrollView touch contract when pre-scroll consumed everything.
+  // Per-frame conservation ledger:
+  // requested = chromePre + childConsumed + chromePost + remaining
   private var ledgerRequestedY = 0
   private var ledgerChromePreY = 0
   private var ledgerPending = false
@@ -141,13 +116,6 @@ class ExpoNestedScrollHostView(
     requestNestedChromeBindingRefresh()
   }
 
-  /**
-   * Ask for source preparation without depending on a mount delay.
-   *
-   * If the native ReactScrollView is already present, preparation happens in the posted turn. If
-   * Fabric/FlashList has not mounted it yet, the host listens to global layout only until the source
-   * appears, then removes the listener. Registry changes call this same path.
-   */
   fun requestNestedChromeBindingRefresh() {
     if (!isAttachedToWindow) return
     post {
@@ -161,39 +129,28 @@ class ExpoNestedScrollHostView(
   }
 
   /**
-   * Prepare the unique ReactScrollView before the first gesture.
+   * Prepare the unique supported RN vertical source before the first gesture.
    *
-   * Discovery has no transaction authority: it only enables native nested scrolling and installs
-   * TopAppBar visual geometry. The real source/consumer binding is resolved again from Android's
-   * nested-scroll `target` in [beginNestedSession]. Multiple ReactScrollViews fail closed for
-   * pre-gesture geometry instead of guessing which one the screen meant.
-   *
-   * @return true once discovery reached a terminal state for the current native tree (one source or
-   * an ambiguous set); false while no ReactScrollView exists yet and another layout may reveal it.
+   * Discovery only enables nested scrolling and installs TopAppBar visual geometry. The source and
+   * consumers are rebound from Android's actual nested-scroll target in [beginNestedSession].
    */
   fun refreshNestedChromeBinding(): Boolean {
     if (!isAttachedToWindow) return false
 
-    val scrollViews = mutableListOf<android.widget.ScrollView>()
-    collectScrollViewDescendants(this, scrollViews)
-    if (scrollViews.isEmpty()) {
-      log("SOURCE_TREE no-scrollview-descendant childCount=$childCount")
-      return false
-    }
-
-    scrollViews.forEach { view ->
-      val before = ViewCompat.isNestedScrollingEnabled(view)
-      if (!before) ViewCompat.setNestedScrollingEnabled(view, true)
-      val after = ViewCompat.isNestedScrollingEnabled(view)
-      if (before != after) {
-        log("SOURCE_ENABLE_NESTED ${targetLabel(view)} before=$before after=$after")
-      }
-    }
-
-    val reactSources = scrollViews.filterIsInstance<ReactScrollView>()
+    val reactSources = mutableListOf<ViewGroup>()
+    collectReactVerticalScrollSources(this, reactSources)
     if (reactSources.isEmpty()) {
-      log("SOURCE_TREE scrollviews=${scrollViews.size} reactSources=0")
+      log("SOURCE_TREE no-react-vertical-source childCount=$childCount")
       return false
+    }
+
+    reactSources.forEach { source ->
+      val before = ViewCompat.isNestedScrollingEnabled(source)
+      if (!before) ViewCompat.setNestedScrollingEnabled(source, true)
+      val after = ViewCompat.isNestedScrollingEnabled(source)
+      if (before != after) {
+        log("SOURCE_ENABLE_NESTED ${targetLabel(source)} before=$before after=$after")
+      }
     }
 
     if (reactSources.size != 1) {
@@ -201,14 +158,14 @@ class ExpoNestedScrollHostView(
       return true
     }
 
-    val react = reactSources.single()
-    val topBar = NativeNestedScrollRegistry.resolveTopBar(react)
-    val toolbar = NativeNestedScrollRegistry.resolveToolbar(react)
-    val prepared = topBar?.prepareNestedSource(react) == true
+    val source = reactSources.single()
+    val topBar = NativeNestedScrollRegistry.resolveTopBar(source)
+    val toolbar = NativeNestedScrollRegistry.resolveToolbar(source)
+    val prepared = topBar?.prepareNestedSource(source) == true
 
     log(
-      "SOURCE_TREE ${targetLabel(react)} " +
-        "canUp=${react.canScrollVertically(-1)} canDown=${react.canScrollVertically(1)} " +
+      "SOURCE_TREE ${targetLabel(source)} " +
+        "canUp=${source.canScrollVertically(-1)} canDown=${source.canScrollVertically(1)} " +
         "topBar=${topBar != null} toolbar=${toolbar != null} chromePrepared=$prepared",
     )
     return true
@@ -232,7 +189,7 @@ class ExpoNestedScrollHostView(
   }
 
   // ---------------------------------------------------------------------------
-  // Platform / NestedScrollingParent legacy contract used by android.widget.ScrollView.
+  // Platform nested contract used by the legacy android.widget.ScrollView source.
   // ---------------------------------------------------------------------------
 
   override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean {
@@ -281,10 +238,6 @@ class ExpoNestedScrollHostView(
     )
   }
 
-  /**
-   * Never consumed. The fling belongs to the source, which reports it back as `TYPE_NON_TOUCH`
-   * nested scroll — the same transaction, with the source's own physics behind it.
-   */
   override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
     log(
       "NESTED_PRE_FLING vx=$velocityX vy=$velocityY preCount=$preCount " +
@@ -310,17 +263,9 @@ class ExpoNestedScrollHostView(
   override fun getNestedScrollAxes(): Int = nestedParentHelper.nestedScrollAxes
 
   // ---------------------------------------------------------------------------
-  // NestedScrollingParent2 / Parent3 typed contract. Kept complete for sources that use AndroidX.
+  // Parent2 / Parent3 typed contract used by AndroidX and the 0.83 momentum proof.
   // ---------------------------------------------------------------------------
 
-  /**
-   * Whether the source reports its own momentum instead of leaving the parent to infer it.
-   *
-   * Asked of the source rather than of a version or a flag: `NestedScrollingChild2` is precisely
-   * the contract that carries TYPE_NON_TOUCH, so a `ReactScrollView` that dispatches its fling and
-   * a `NestedScrollView`-backed one both answer yes, and a plain `android.widget.ScrollView`
-   * answers no.
-   */
   private fun sourceOwnsMomentum(target: View): Boolean = target is NestedScrollingChild2
 
   override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
@@ -373,16 +318,13 @@ class ExpoNestedScrollHostView(
       return
     }
 
-    // The app bar is the only consumer that can take distance away from the list, so pre-scroll is
-    // its phase alone. Claim exactly what its height moved — nothing is executed on the source, and
-    // React Native scrolls the remainder itself with its own code.
     val pre = topBar.nestedPreScroll(dy, type.toInputType())
     consumed[1] += pre.reportedConsumedY
     recordLedgerPre(dy, pre.reportedConsumedY, type)
 
     log(
       "TX_PRE type=${typeLabel(type)} n=$preCount dy=$dy chrome=${pre.reportedConsumedY} " +
-        "collapse=${topBar.currentCollapseAmountPx()} sourceY=${(target as? ViewGroup)?.scrollY}",
+        "collapse=${topBar.currentCollapseAmountPx()} sourceY=${target.scrollY}",
     )
   }
 
@@ -418,9 +360,6 @@ class ExpoNestedScrollHostView(
     postCount += 1
     if (!nestedTransactionActive) return
 
-    // Post-scroll: what the list really did, reported by the list itself. The app bar may still
-    // take some of what nobody consumed — that is how it expands when the content reaches the top —
-    // and the floating toolbar only watches.
     val inputType = type.toInputType()
     val post = activeTopBar
       ?.takeIf { it.isNestedDirectCapable }
@@ -434,7 +373,7 @@ class ExpoNestedScrollHostView(
     log(
       "TX_POST type=${typeLabel(type)} n=$postCount child=$dyConsumed unconsumed=$dyUnconsumed " +
         "chrome=$chromePost collapse=${activeTopBar?.currentCollapseAmountPx()} " +
-        "sourceY=${(target as? ViewGroup)?.scrollY}",
+        "sourceY=${target.scrollY}",
     )
   }
 
@@ -443,43 +382,33 @@ class ExpoNestedScrollHostView(
     else NativeNestedInputType.Touch
 
   // ---------------------------------------------------------------------------
-  // Session binding / lifecycle. The source remains the only movement driver.
+  // Session binding / lifecycle.
   // ---------------------------------------------------------------------------
 
-  /**
-   * Bind the transaction to the source and to whatever chrome is on this screen.
-   *
-   * Called for both the touch session and the momentum session the source opens after it, because
-   * a fling is not a new gesture: rebinding is how the second half of the same movement finds the
-   * same consumers.
-   */
   private fun beginNestedSession(target: View) {
     flushPendingLedger("session-rebind")
     preCount = 0
     postCount = 0
 
-    val react = target as? ReactScrollView
+    val source = ReactVerticalScrollSourceInterop.asSupported(target)
     val topBar = NativeNestedScrollRegistry.resolveTopBar(target)
     val toolbar = NativeNestedScrollRegistry.resolveToolbar(target)
-    activeSource = react
+    activeSource = source
     activeTopBar = topBar
     activeToolbar = toolbar
 
-    val topBarReady = react != null && topBar?.beginNestedTransaction(react) == true
-    val toolbarReady = react != null && toolbar?.beginNestedTransaction(react) == true
+    val topBarReady = source != null && topBar?.beginNestedTransaction(source) == true
+    val toolbarReady = source != null && toolbar?.beginNestedTransaction(source) == true
     nestedTransactionActive = topBarReady || toolbarReady
 
     log(
-      "TX_BIND source=${react?.id} topBar=$topBarReady toolbar=$toolbarReady " +
-        "active=$nestedTransactionActive " +
+      "TX_BIND source=${source?.id} sourceClass=${source?.javaClass?.name} " +
+        "topBar=$topBarReady toolbar=$toolbarReady active=$nestedTransactionActive " +
         "surfaceSource=${surfaceId(target)} surfaceHost=${surfaceId(this)}",
     )
   }
 
   private fun finishTouch(target: View) {
-    // The source opens its momentum session inside `fling()`, which runs before the touch session
-    // is closed. The movement is not over here, it changed owner: settling now would run Material's
-    // terminal snap against a fling still to come.
     if (momentumSessionActive) {
       log("TX_TOUCH_STOP deferred=momentum ${targetLabel(target)}")
       return
@@ -487,11 +416,10 @@ class ExpoNestedScrollHostView(
     finishMovement(target, "touch-stop")
   }
 
-  /** Close the chrome transaction for a movement that has genuinely ended. */
   private fun finishMovement(target: View, reason: String) {
     flushPendingLedger(reason)
     if (!nestedTransactionActive) return
-    val source = target as? ReactScrollView ?: activeSource
+    val source = ReactVerticalScrollSourceInterop.asSupported(target) ?: activeSource
     if (source != null) activeTopBar?.endNestedTransaction(source, reason)
     activeToolbar?.endNestedTransaction()
     nestedTransactionActive = false
@@ -514,9 +442,7 @@ class ExpoNestedScrollHostView(
     ledgerRequestedY = requestedY
     ledgerChromePreY = chromePreY
     ledgerPending = true
-    log(
-      "TX_LEDGER_PRE type=${typeLabel(type)} requested=$requestedY chromePre=$chromePreY",
-    )
+    log("TX_LEDGER_PRE type=${typeLabel(type)} requested=$requestedY chromePre=$chromePreY")
   }
 
   private fun recordLedgerPost(
@@ -561,14 +487,11 @@ class ExpoNestedScrollHostView(
   // Tree / diagnostics.
   // ---------------------------------------------------------------------------
 
-  private fun collectScrollViewDescendants(
-    view: View,
-    output: MutableList<android.widget.ScrollView>,
-  ) {
-    if (view !== this && view is android.widget.ScrollView) output += view
+  private fun collectReactVerticalScrollSources(view: View, output: MutableList<ViewGroup>) {
+    if (view !== this) ReactVerticalScrollSourceInterop.asSupported(view)?.let(output::add)
     if (view !is ViewGroup) return
     for (index in 0 until view.childCount) {
-      collectScrollViewDescendants(view.getChildAt(index), output)
+      collectReactVerticalScrollSources(view.getChildAt(index), output)
     }
   }
 

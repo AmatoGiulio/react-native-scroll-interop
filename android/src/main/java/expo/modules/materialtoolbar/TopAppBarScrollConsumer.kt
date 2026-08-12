@@ -9,7 +9,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
-import com.facebook.react.views.scroll.ReactScrollView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -21,8 +20,7 @@ internal enum class TopAppBarInteropMode {
   /**
    * A visible app bar with no scroll behavior. Material never moves it, but the overlay still
    * occupies the top of the screen, so the RN content below it needs the same scroll-away inset the
-   * scrolling modes install. Without this mode the consumer stayed unbound and the list rendered
-   * underneath the app bar.
+   * scrolling modes install.
    */
   Pinned,
   EnterAlways,
@@ -30,15 +28,12 @@ internal enum class TopAppBarInteropMode {
 }
 
 /**
- * Material3 TopAppBar consumer. It takes the pre-scroll phase of the nested-scroll transaction the
- * source reports — the only phase that can withhold distance from the list — and forwards it into
- * the real Material3 TopAppBarScrollBehavior nested-scroll connection.
+ * Material3 TopAppBar consumer driven by the source's real nested-scroll transaction.
  *
- * Owns the RN-specific visual bridge required for a full-screen overlay TopAppBar:
- * the active ReactScrollView receives React Native's native scroll-away top padding using the
- * measured expanded Compose host height. This keeps the first list item aligned with the real
- * Material app-bar geometry and makes the physical RN content move in lockstep with collapse /
- * expansion instead of relying on a duplicated JS padding constant.
+ * Source typing is deliberately RN-version-neutral. RN 0.83 uses ReactScrollView while RN 0.87 can
+ * use the Kotlin-internal ReactNestedScrollView; both are handled as ViewGroup sources. Reflection
+ * is confined to the unstable RN scroll-away geometry primitive and is never used for scroll
+ * physics or per-frame dispatch.
  */
 internal class TopAppBarScrollConsumer {
   private var behavior: TopAppBarScrollBehavior? = null
@@ -48,7 +43,7 @@ internal class TopAppBarScrollConsumer {
   private var settleGeneration = 0L
 
   private var expandedChromeHeightPx = 0
-  private var scrollAwaySource: ReactScrollView? = null
+  private var scrollAwaySource: ViewGroup? = null
   private var appliedScrollAwayPaddingPx = 0
   private var originalClipToPadding: Boolean? = null
   private var originalPaddingLeft = 0
@@ -56,44 +51,32 @@ internal class TopAppBarScrollConsumer {
   private var originalPaddingRight = 0
   private var originalPaddingBottom = 0
 
-  /** A visible app bar owns the top of the screen, whether or not Material animates it. */
   val hasChrome: Boolean
     get() = mode != null
 
-  /** Material can actually be driven: there is a behavior and a scope to settle it on. */
   private val isBound: Boolean
     get() = behavior != null && scope != null && mode != null
 
-  /**
-   * Whether a transaction can drive this app bar.
-   *
-   * [TopAppBarInteropMode.Pinned] answers no on purpose: a pinned bar has no Material behavior to
-   * drive and only owns the content inset. Every other visible mode goes through the same
-   * transaction, because it is the only path there is.
-   */
   val isNestedDirectCapable: Boolean
     get() = isBound
 
-  /** Prepare the RN scroll-away visual coordinate before the first gesture. */
   fun prepareNestedSource(source: ViewGroup): Boolean {
-    // Keyed on chrome rather than on drivability: a pinned bar never moves and still has to inset
-    // the list it covers.
     if (!hasChrome) return false
-    val reactScrollView = source as? ReactScrollView ?: return false
-    ensureScrollAwaySource(reactScrollView)
+    val supported = ReactVerticalScrollSourceInterop.asSupported(source) ?: return false
+    ensureScrollAwaySource(supported)
     return appliedScrollAwayPaddingPx > 0
   }
 
   fun beginNestedTransaction(source: ViewGroup): Boolean {
     if (!isNestedDirectCapable) return false
-    val reactScrollView = source as? ReactScrollView ?: return false
+    val supported = ReactVerticalScrollSourceInterop.asSupported(source) ?: return false
     cancelSettle()
-    ensureScrollAwaySource(reactScrollView)
+    ensureScrollAwaySource(supported)
     if (BuildConfig.DEBUG) {
       val state = behavior?.state
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "TX_TOP_BEGIN view=${reactScrollView.id} y=${reactScrollView.scrollY} " +
+        "TX_TOP_BEGIN view=${supported.id} class=${supported.javaClass.name} y=${supported.scrollY} " +
           "heightOffset=${state?.heightOffset} limit=${state?.heightOffsetLimit} " +
           "collapse=${currentCollapseAmountPx()} scrollAway=$appliedScrollAwayPaddingPx",
       )
@@ -107,16 +90,12 @@ internal class TopAppBarScrollConsumer {
 
     val state = currentBehavior.state
     val oldHeightOffset = state.heightOffset
-    val composeSource = inputType.toComposeNestedSource()
     val returned = currentBehavior.nestedScrollConnection.onPreScroll(
       available = Offset(0f, -deltaY.toFloat()),
-      source = composeSource,
+      source = inputType.toComposeNestedSource(),
     )
     val newHeightOffset = state.heightOffset
 
-    // Material3 may report the whole available delta as pre-consumed even when the heightOffset
-    // setter clamps at its limit. Only what the app bar's height actually moved may be withheld
-    // from the list: anything else would be distance deleted from the gesture.
     val chromeMovementY = clampSignedMovement(deltaY, oldHeightOffset - newHeightOffset)
     val reportedConsumedY =
       clampSignedConsumption(deltaY, -returned.y).let { reported ->
@@ -152,14 +131,7 @@ internal class TopAppBarScrollConsumer {
   fun currentCollapseAmountPx(): Float =
     behavior?.state?.heightOffset?.let { (-it).coerceAtLeast(0f) } ?: 0f
 
-  /**
-   * Finish the transaction with Material3's own snap engine.
-   *
-   * Nothing here touches the list's scroll position. The snap moves the app bar's height, and the
-   * content follows it through [applyChromeTranslation] — a view transform, not a scroll. That is
-   * what keeps `scrollY` meaning only "where React Native scrolled to".
-   */
-  fun endNestedTransaction(source: ReactScrollView, reason: String) {
+  fun endNestedTransaction(source: ViewGroup, reason: String) {
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     if (!isNestedDirectCapable || !source.isAttachedToWindow) return
@@ -185,9 +157,8 @@ internal class TopAppBarScrollConsumer {
       }
 
       try {
-        // Zero velocity, deliberately: every frame of the fling already reached Material as a
-        // scroll delta, so handing it the velocity too would decay a second time over movement
-        // already applied. This asks only for the terminal snap.
+        // Every fling frame already arrived as nested-scroll distance. Velocity here would decay a
+        // second time; zero asks Material only for its terminal snap from the observed offset.
         currentBehavior.nestedScrollConnection.onPostFling(
           consumed = Velocity.Zero,
           available = Velocity.Zero,
@@ -222,7 +193,6 @@ internal class TopAppBarScrollConsumer {
     scope = newScope
     mode = newMode
 
-    // Keyed on chrome presence, not on a bound behavior: a pinned app bar insets its content too.
     if (newMode == null) {
       clearScrollAwaySource()
     } else {
@@ -234,16 +204,10 @@ internal class TopAppBarScrollConsumer {
     expectedBehavior: TopAppBarScrollBehavior?,
     expectedMode: TopAppBarInteropMode?,
   ) {
-    // Pinned mode has no behavior to identify it by, so the mode is part of the identity check.
     if (behavior !== expectedBehavior || mode != expectedMode) return
     bind(null, null, null)
   }
 
-  /**
-   * Called from the Android host after Compose measurement. The maximum observed height is the
-   * expanded app-bar host height (including Material3's top window inset). A collapsing TopAppBar
-   * remeasures smaller, so never replace the expanded geometry with that transient height.
-   */
   fun updateExpandedChromeHeight(heightPx: Int): Boolean {
     if (heightPx <= 0) return false
     if (heightPx <= expandedChromeHeightPx) return false
@@ -252,27 +216,16 @@ internal class TopAppBarScrollConsumer {
     return true
   }
 
-  /** Reset only when the TopAppBar variant itself changes and a new expanded measure is required. */
   fun resetExpandedChromeHeight() {
     expandedChromeHeightPx = 0
     applyScrollAwayPadding()
   }
 
-  /** Give the list its padding back: this app bar is leaving the screen. */
   fun onHostDetached() {
     cancelSettle()
     clearScrollAwaySource()
   }
 
-  /**
-   * Make the content follow the app bar's height, without scrolling it.
-   *
-   * React Native's scroll-away padding translates the content down by the *expanded* bar height and
-   * gives the list an equal bottom padding, once. Collapsing then means translating that same
-   * content back up by however much Material shrank the bar: a transform on a view, costing no
-   * layout, no Fabric state update, and above all no change to `scrollY` — which stays exactly
-   * where React Native put it.
-   */
   private fun applyChromeTranslation() {
     val source = scrollAwaySource ?: return
     val content = source.getChildAt(0) ?: return
@@ -281,7 +234,7 @@ internal class TopAppBarScrollConsumer {
     if (content.translationY != target) content.translationY = target
   }
 
-  private fun ensureScrollAwaySource(source: ReactScrollView) {
+  private fun ensureScrollAwaySource(source: ViewGroup) {
     if (scrollAwaySource !== source) {
       clearScrollAwaySource()
       scrollAwaySource = source
@@ -309,7 +262,7 @@ internal class TopAppBarScrollConsumer {
     else rounded.coerceIn(availableY, 0)
   }
 
-  private fun captureScrollViewVisualState(source: ReactScrollView) {
+  private fun captureScrollViewVisualState(source: ViewGroup) {
     originalClipToPadding = source.clipToPadding
     originalPaddingLeft = source.paddingLeft
     originalPaddingTop = source.paddingTop
@@ -322,12 +275,21 @@ internal class TopAppBarScrollConsumer {
     val target = if (hasChrome) expandedChromeHeightPx.coerceAtLeast(0) else 0
     if (target == appliedScrollAwayPaddingPx) return
 
-    // RN's unstable scroll-away primitive translates the content child by `target` and also adds
-    // an equal bottom padding to the ScrollView so the translated content keeps a reachable scroll
-    // range. With clipToPadding=true that bookkeeping padding becomes a permanently visible blank
-    // strip at the bottom of an overlay-style screen. Keep the extra range, but let content draw
-    // through the padding region so the bottom remains visually continuous.
-    source.setScrollAwayTopPaddingEnabledUnstable(target)
+    // RN 0.87 exposes setScrollAwayPaddingEnabledUnstable(top, bottom); older ReactScrollView uses
+    // setScrollAwayTopPaddingEnabledUnstable(top). The interop helper selects the available geometry
+    // primitive without importing the internal RN 0.87 class.
+    val applied = ReactVerticalScrollSourceInterop.setScrollAwayPadding(source, target, 0)
+    if (!applied) {
+      if (BuildConfig.DEBUG) {
+        Log.d(
+          NATIVE_SCROLL_LOG_TAG,
+          "scrollAway unsupported class=${source.javaClass.name} view=${source.id} target=$target",
+        )
+      }
+      return
+    }
+
+    // Keep RN's extra scroll range while preserving the screen's original padding values.
     source.setPadding(
       originalPaddingLeft,
       originalPaddingTop,
@@ -340,12 +302,13 @@ internal class TopAppBarScrollConsumer {
     if (BuildConfig.DEBUG) {
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "scrollAway view=${source.id} padding=$target hostExpanded=$expandedChromeHeightPx mode=$mode clipToPadding=${source.clipToPadding}",
+        "scrollAway view=${source.id} class=${source.javaClass.name} padding=$target " +
+          "hostExpanded=$expandedChromeHeightPx mode=$mode clipToPadding=${source.clipToPadding}",
       )
     }
   }
 
-  private fun restoreScrollViewVisualState(source: ReactScrollView) {
+  private fun restoreScrollViewVisualState(source: ViewGroup) {
     source.setPadding(
       originalPaddingLeft,
       originalPaddingTop,
@@ -359,11 +322,14 @@ internal class TopAppBarScrollConsumer {
     val source = scrollAwaySource
     if (source != null) {
       if (appliedScrollAwayPaddingPx != 0) {
-        source.setScrollAwayTopPaddingEnabledUnstable(0)
+        ReactVerticalScrollSourceInterop.setScrollAwayPadding(source, 0, 0)
       }
       restoreScrollViewVisualState(source)
       if (BuildConfig.DEBUG && appliedScrollAwayPaddingPx != 0) {
-        Log.d(NATIVE_SCROLL_LOG_TAG, "scrollAway view=${source.id} padding=0 detach")
+        Log.d(
+          NATIVE_SCROLL_LOG_TAG,
+          "scrollAway view=${source.id} class=${source.javaClass.name} padding=0 detach",
+        )
       }
     }
     scrollAwaySource = null
@@ -376,8 +342,6 @@ internal class TopAppBarScrollConsumer {
   }
 
   private fun cancelSettle() {
-    // Invalidate first so a canceled coroutine cannot perform stale final geometry work after a
-    // newer drag/settle generation has already taken ownership.
     settleGeneration += 1
     settleJob?.cancel()
     settleJob = null
