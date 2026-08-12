@@ -157,7 +157,7 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
           "Rn087NestedScroll",
           "SOURCE_SNAP_FRAME mode=post-only-target-lock requestedY=$requestedY " +
               "childConsumedY=$childConsumedY remainingY=$remainingY " +
-              "parentPostConsumedY=${nestedDirectSnapPostConsumed[1]} " +
+              "parentPostConsumedY=\${nestedDirectSnapPostConsumed[1]} " +
               "scrollerY=$scrollerY sourceY=$scrollY",
       )
     }
