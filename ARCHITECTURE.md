@@ -151,11 +151,28 @@ It receives the source's real `dyConsumed`. It consumes zero distance from the l
 
 ## Source and chrome registration
 
-The registry pairs a source with at most one eligible TopAppBar and one eligible FloatingToolbar in the same native/Fabric scope. Ambiguity fails closed rather than selecting a source heuristically.
+The **transaction source is authoritative only when Android opens nested scrolling**: `onStartNestedScroll(..., target, ...)` supplies the exact child that is moving, and `beginNestedSession` binds consumers from that target. Pre-gesture discovery does not write transaction state.
 
-The current standalone module still discovers the ReactScrollView by walking the host descendants and retries discovery after mount. It also force-enables nested scrolling for the actual native ScrollView because FlashList 2.0.2 does not forward the setting reliably in this setup.
+The standalone module still needs one piece of preparation before the first gesture: find the native ReactScrollView early enough to enable nested scrolling and install TopAppBar visual geometry. That preparation now follows native mount/layout events rather than fixed delays:
 
-That discovery is prototype plumbing, not part of the desired upstream architecture. A screen layer should own explicit source/chrome registration because the screen already knows which content belongs to it.
+```text
+host attach / child change / chrome state change
+        |
+        v
+posted source scan
+        |
+        +-- ReactScrollView exists -> prepare once
+        |
+        `-- not mounted yet -> OnGlobalLayoutListener
+                                |
+                                `-- source appears -> prepare + remove listener
+```
+
+There are no 32/250/750 ms retry timers. Discovery looks only for actual `android.widget.ScrollView` descendants, force-enables nested scrolling where FlashList 2.0.2 failed to forward it in this setup, and requires exactly one `ReactScrollView` for pre-gesture geometry. Multiple ReactScrollViews fail closed instead of being ranked heuristically.
+
+Chrome lookup is separately fail-closed: at most one eligible TopAppBar and one FloatingToolbar in the same native/Fabric scope may participate.
+
+This descendant walk remains standalone-module plumbing, not the desired upstream API. A screen layer should own explicit source/chrome registration because it already knows which content belongs to the screen; at that point even the preparation scan can disappear.
 
 ## Measured invariants
 
@@ -218,8 +235,8 @@ The screen layer should not own the source physics, and React Native should not 
 
 ## Next steps
 
-1. Keep this 0.83 implementation as the measured baseline.
+1. Re-run the 0.83 stress matrix after the layout-driven preparation change and keep the existing ledger baseline as the comparison point.
 2. Preserve the transaction ledger as debug/stress instrumentation.
-3. Replace prototype tree scanning with explicit source registration in the upstream-oriented shape.
+3. Replace the remaining prototype descendant walk with explicit source registration in the upstream-oriented screen shape.
 4. Move chrome geometry ownership out of the internal ReactScrollView content child when the screen layer can own that container.
 5. Use the 0.83 touch and momentum limitations as source-level evidence rather than adding more intelligence to the parent.
