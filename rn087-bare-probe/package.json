@@ -1,0 +1,32 @@
+{
+  "name": "rn087-nested-scroll-probe",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "node scripts/prepare-android.mjs",
+    "start": "react-native start",
+    "android:off": "node scripts/run-android.mjs off",
+    "android:on": "node scripts/run-android.mjs on",
+    "analyze:off": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-off.log --expect off",
+    "analyze:on": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on.log --expect on"
+  },
+  "dependencies": {
+    "react": "19.2.3",
+    "react-native": "0.87.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@react-native-community/cli": "20.2.0",
+    "@react-native-community/cli-platform-android": "20.2.0",
+    "@react-native/babel-preset": "0.87.0",
+    "@react-native/metro-config": "0.87.0",
+    "@react-native/typescript-config": "0.87.0",
+    "@types/react": "^19.2.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
