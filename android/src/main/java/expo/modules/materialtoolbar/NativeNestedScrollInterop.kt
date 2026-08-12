@@ -7,16 +7,19 @@ import com.facebook.react.uimanager.UIManagerHelper
 /**
  * Pairs a nested-scroll host with the native chrome that should follow its scroll source.
  *
- * The source is never guessed. It is whichever scrolling view sits under an
- * [ExpoNestedScrollHostView], because that host is its real Android ancestor and therefore the one
- * the view already talks to. Chrome lookup is fail-closed to match: at most one eligible consumer
- * of each kind on the same Fabric surface may participate, and ambiguity resolves to nothing rather
- * than to a heuristic. Picking "the largest visible ScrollView" is how this kind of code starts
- * producing bug reports nobody can reproduce.
+ * The transaction source is never guessed: it is the `target` Android supplies when a scrolling
+ * descendant opens nested scrolling with its real ancestor. Pre-gesture preparation is deliberately
+ * weaker. The standalone host may inspect its descendants only to enable nested scrolling and
+ * install visual chrome geometry before the first gesture; if more than one ReactScrollView is
+ * present, that preparation fails closed rather than choosing one heuristically.
+ *
+ * Chrome lookup is fail-closed too: at most one eligible consumer of each kind on the same Fabric
+ * surface may participate, and ambiguity resolves to nothing. Picking "the largest visible
+ * ScrollView" is how this kind of code starts producing bug reports nobody can reproduce.
  *
  * Registration belongs here only because the module has nowhere better to put it. In the upstream
- * shape the screen layer owns it: a screen already knows which content is its own, and no
- * app-level API can resolve that ambiguity from the outside.
+ * shape the screen layer owns it: a screen already knows which content is its own, and no app-level
+ * API can resolve that ambiguity from the outside.
  */
 internal object NativeNestedScrollRegistry {
   private data class TopBarEntry(
@@ -35,7 +38,7 @@ internal object NativeNestedScrollRegistry {
 
   fun registerHost(host: ExpoNestedScrollHostView) {
     hosts += host
-    host.post { host.refreshNestedChromeBinding() }
+    host.requestNestedChromeBindingRefresh()
   }
 
   fun unregisterHost(host: ExpoNestedScrollHostView) {
@@ -100,7 +103,7 @@ internal object NativeNestedScrollRegistry {
   private fun refreshHostsFor(owner: View) {
     hosts.forEach { host ->
       if (sameNativeScope(owner, host)) {
-        host.post { host.refreshNestedChromeBinding() }
+        host.requestNestedChromeBindingRefresh()
       }
     }
   }
@@ -129,13 +132,13 @@ internal enum class NativeNestedInputType {
 internal data class NativeNestedPreResult(
   /** Amount Material reports consumed from Android's requested dy, in Android sign convention. */
   val reportedConsumedY: Int,
-  /** Actual app-bar height movement; this is what advances the scroll-away physical coordinate. */
+  /** Actual app-bar height movement, used only for chrome geometry/diagnostics. */
   val chromeMovementY: Int,
 )
 
 internal data class NativeNestedPostResult(
   /** Amount of post-scroll available distance Material actually consumed, Android sign convention. */
   val availableConsumedY: Int,
-  /** Actual app-bar height movement; this is what advances the scroll-away physical coordinate. */
+  /** Actual app-bar height movement, used only for chrome geometry/diagnostics. */
   val chromeMovementY: Int,
 )
