@@ -4,7 +4,8 @@
   "main": "index.ts",
   "private": true,
   "scripts": {
-    "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs"
+    "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
+    "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs"
   },
   "peerDependencies": {
     "expo": "*",
