@@ -117,11 +117,9 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
       return
     }
 
-    if (currentScroller.isFinished) {
-      finishNestedDirectSnap("already-finished")
-      return
-    }
-
+    // Always sample currY once before deciding that the animation is over. OverScroller can expose
+    // the final coordinate on the call that transitions to finished; returning early here used to
+    // leave the RN child a few pixels short of the snap target.
     currentScroller.computeScrollOffset()
     val scrollerY = currentScroller.currY
     val requestedY = scrollerY - nestedDirectSnapLastScrollerY
@@ -131,6 +129,8 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
       setFrameContentVelocity(abs(currentScroller.currVelocity))
     }
 
+    var residualY = 0
+    var edgeAbort = false
     if (requestedY != 0) {
       // RN's snap target is a content offset. A nested pre-consumer would shorten the child path,
       // then RN's normal paging settle would issue a second corrective snap. Keep the exact RN
@@ -153,19 +153,29 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
         )
       }
 
+      residualY = remainingY - nestedDirectSnapPostConsumed[1]
+      if (residualY != 0) {
+        // Match the important AndroidX edge rule: once neither child nor parent can consume the
+        // remaining animated distance, do not let the scroller continue living beyond the edge.
+        // abortAnimation() snaps the OverScroller bookkeeping back to its RN-selected final target;
+        // the child is already clamped at the edge, so no synthetic reverse scroll is dispatched.
+        currentScroller.abortAnimation()
+        edgeAbort = true
+      }
+
       android.util.Log.i(
           "Rn087NestedScroll",
           "SOURCE_SNAP_FRAME mode=post-only-target-lock requestedY=$requestedY " +
               "childConsumedY=$childConsumedY remainingY=$remainingY " +
-              "parentPostConsumedY=\${nestedDirectSnapPostConsumed[1]} " +
-              "scrollerY=$scrollerY sourceY=$scrollY",
+              "parentPostConsumedY=\${nestedDirectSnapPostConsumed[1]} residualY=$residualY " +
+              "edgeAbort=$edgeAbort scrollerY=$scrollerY sourceY=$scrollY",
       )
     }
 
     if (!currentScroller.isFinished) {
       postInvalidateOnAnimation()
     } else {
-      finishNestedDirectSnap("finished")
+      finishNestedDirectSnap(if (edgeAbort) "edge-abort" else "finished")
     }
   }
 
