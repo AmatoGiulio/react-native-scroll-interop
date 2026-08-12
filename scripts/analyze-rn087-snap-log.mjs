@@ -46,6 +46,7 @@ const stats = {
   pres: {TOUCH: 0, NON_TOUCH: 0},
   posts: {TOUCH: 0, NON_TOUCH: 0},
   directRequests: [],
+  directSkips: [],
   directSegments: [],
   directFrames: 0,
   directFrameBroken: 0,
@@ -97,6 +98,21 @@ for (const line of lines) {
     stats.directRequests.push(lastDirectRequest);
   }
 
+  const directSkip = line.match(
+    /SOURCE_SNAP_DIRECT_SKIP reason=([A-Za-z0-9_-]+) targetY=(-?\d+) sourceVelocityY=(-?\d+) sourceY=(-?\d+)/,
+  );
+  if (directSkip) {
+    stats.directSkips.push({
+      reason: directSkip[1],
+      targetY: Number(directSkip[2]),
+      sourceVelocityY: Number(directSkip[3]),
+      sourceY: Number(directSkip[4]),
+      requestTargetY: lastDirectRequest?.targetY ?? null,
+      requestVelocityY: lastDirectRequest?.velocityY ?? null,
+    });
+    lastDirectRequest = null;
+  }
+
   const directStart = line.match(
     /SOURCE_SNAP_DIRECT_START mode=post-only-target-lock targetY=(-?\d+) sourceVelocityY=(-?\d+) baselineY=(-?\d+) started=(true|false)/,
   );
@@ -124,6 +140,7 @@ for (const line of lines) {
       endTargetY: null,
       sourceY: null,
       scrollerY: null,
+      scrollerFinished: null,
     };
     stats.directSegments.push(segment);
     activeDirectSegment = segment;
@@ -142,7 +159,8 @@ for (const line of lines) {
       const childConsumedY = Number(directFrame[2]);
       const remainingY = Number(directFrame[3]);
       const parentPostConsumedY = Number(directFrame[4]);
-      const residualY = directFrame[5] == null ? remainingY - parentPostConsumedY : Number(directFrame[5]);
+      const residualY =
+        directFrame[5] == null ? remainingY - parentPostConsumedY : Number(directFrame[5]);
       const edgeAbort = directFrame[6] === 'true';
       activeDirectSegment.requestedNetY += requestedY;
       activeDirectSegment.childNetY += childConsumedY;
@@ -157,7 +175,7 @@ for (const line of lines) {
   }
 
   const directEnd = line.match(
-    /SOURCE_SNAP_DIRECT_END reason=([A-Za-z0-9_-]+) targetY=(-?\d+) sourceY=(-?\d+) scrollerY=(-?\d+)/,
+    /SOURCE_SNAP_DIRECT_END reason=([A-Za-z0-9_-]+) targetY=(-?\d+) sourceY=(-?\d+) scrollerY=(-?\d+)(?: scrollerFinished=(true|false))?/,
   );
   if (directEnd) {
     if (activeDirectSegment == null) {
@@ -168,6 +186,8 @@ for (const line of lines) {
       activeDirectSegment.endTargetY = Number(directEnd[2]);
       activeDirectSegment.sourceY = Number(directEnd[3]);
       activeDirectSegment.scrollerY = Number(directEnd[4]);
+      activeDirectSegment.scrollerFinished =
+        directEnd[5] == null ? null : directEnd[5] === 'true';
       activeDirectSegment = null;
     }
   }
@@ -218,8 +238,20 @@ let directDiagnostics = null;
 
 if (expected === 'direct' || expected === 'direct-chrome') {
   const clean = stats.directSegments.filter(item => item.started && item.ended);
-  const requestMismatches = clean.filter(
-    item => item.requestTargetY == null || item.requestTargetY !== item.targetY,
+  const segmentRequestMismatches = clean.filter(
+    item =>
+      item.requestTargetY == null ||
+      item.requestTargetY !== item.targetY ||
+      item.requestVelocityY !== item.sourceVelocityY,
+  );
+  const skipMismatches = stats.directSkips.filter(
+    item =>
+      item.reason !== 'no-op' ||
+      item.requestTargetY == null ||
+      item.requestTargetY !== item.targetY ||
+      item.requestVelocityY !== item.sourceVelocityY ||
+      item.sourceVelocityY !== 0 ||
+      item.sourceY !== item.targetY,
   );
   const childDeltaMismatches = clean.filter(
     item => item.childNetY !== item.targetY - item.baselineY,
@@ -227,12 +259,13 @@ if (expected === 'direct' || expected === 'direct-chrome') {
   const strictScrollerDeltaMismatches = clean.filter(
     item => item.edgeAborts === 0 && item.requestedNetY !== item.targetY - item.baselineY,
   );
-  const finalMismatches = clean.filter(
-    item =>
-      item.endTargetY !== item.targetY ||
-      item.sourceY !== item.targetY ||
-      item.scrollerY !== item.targetY,
-  );
+  const finalMismatches = clean.filter(item => {
+    const sourceFinal = item.endTargetY === item.targetY && item.sourceY === item.targetY;
+    const targetReachedTermination =
+      item.reason?.startsWith('target-reached') === true && item.scrollerFinished === true;
+    const scrollerFinal = item.scrollerY === item.targetY || targetReachedTermination;
+    return !sourceFinal || !scrollerFinal;
+  });
   const unfinished = stats.directSegments.filter(item => !item.ended).length;
   const mismatchSet = new Set([
     ...childDeltaMismatches,
@@ -244,9 +277,12 @@ if (expected === 'direct' || expected === 'direct-chrome') {
   for (const item of clean) {
     reasonCounts.set(item.reason, (reasonCounts.get(item.reason) ?? 0) + 1);
   }
-  const scrollerMisses = finalMismatches.filter(item => item.scrollerY !== item.targetY);
+  const rawScrollerOffTarget = clean.filter(item => item.scrollerY !== item.targetY);
+  const staleButFinishedScroller = rawScrollerOffTarget.filter(
+    item => item.reason?.startsWith('target-reached') === true && item.scrollerFinished === true,
+  );
   const childOnlyMisses = finalMismatches.filter(
-    item => item.scrollerY === item.targetY && item.sourceY !== item.targetY,
+    item => item.sourceY !== item.targetY && item.scrollerY === item.targetY,
   );
   const edgeAbortSegments = clean.filter(item => item.edgeAborts > 0);
 
@@ -254,7 +290,8 @@ if (expected === 'direct' || expected === 'direct-chrome') {
     clean,
     mismatches,
     reasonCounts,
-    scrollerMisses,
+    rawScrollerOffTarget,
+    staleButFinishedScroller,
     childOnlyMisses,
     edgeAbortSegments,
   };
@@ -267,10 +304,11 @@ if (expected === 'direct' || expected === 'direct-chrome') {
 
   pathPass =
     stats.directRequests.length > 0 &&
-    stats.directSegments.length === stats.directRequests.length &&
+    stats.directSegments.length + stats.directSkips.length === stats.directRequests.length &&
     clean.length === stats.directSegments.length &&
     stats.directSegments.every(item => item.started) &&
-    requestMismatches.length === 0 &&
+    segmentRequestMismatches.length === 0 &&
+    skipMismatches.length === 0 &&
     stats.directFrameBroken === 0 &&
     stats.directOrphanFrames === 0 &&
     stats.directOrphanEnds === 0 &&
@@ -288,7 +326,8 @@ if (expected === 'direct' || expected === 'direct-chrome') {
     `child target delta ${clean.length - childDeltaMismatches.length}/${clean.length}; ` +
     `strict scroller delta ${clean.length - strictScrollerDeltaMismatches.length}/${clean.length}; ` +
     `final ${clean.length - finalMismatches.length}/${clean.length}; ` +
-    `edgeAbortSegments=${edgeAbortSegments.length}; requests=${stats.directRequests.length}` +
+    `edgeSegments=${edgeAbortSegments.length}; noOpSkips=${stats.directSkips.length}; ` +
+    `requests=${stats.directRequests.length}` +
     (childDeltaMismatches.length || strictScrollerDeltaMismatches.length || finalMismatches.length
       ? `; childMismatch=${childDeltaMismatches.length} ` +
         `scrollerDeltaMismatch=${strictScrollerDeltaMismatches.length} ` +
@@ -326,6 +365,7 @@ console.log(`  post   TOUCH / NON_TOUCH    ${stats.posts.TOUCH} / ${stats.posts.
 console.log('');
 console.log('Snap source');
 console.log(`  direct-scroller requests    ${stats.directRequests.length}`);
+console.log(`  direct no-op skips          ${stats.directSkips.length}`);
 console.log(`  target-lock segments        ${stats.directSegments.length}`);
 console.log(`  target-lock frames          ${stats.directFrames}`);
 console.log(`  broken source frames        ${stats.directFrameBroken}`);
@@ -340,10 +380,12 @@ if (directDiagnostics != null) {
     .map(([reason, count]) => `${reason}=${count}`)
     .join(' ');
   console.log(`  end reasons                 ${reasons || 'none'}`);
-  console.log(`  edge-abort segments         ${directDiagnostics.edgeAbortSegments.length}`);
+  console.log(`  edge-residual segments      ${directDiagnostics.edgeAbortSegments.length}`);
   console.log(
-    `  final miss split           scroller=${directDiagnostics.scrollerMisses.length} childOnly=${directDiagnostics.childOnlyMisses.length}`,
+    `  raw scroller off target    ${directDiagnostics.rawScrollerOffTarget.length} ` +
+      `(finished=${directDiagnostics.staleButFinishedScroller.length})`,
   );
+  console.log(`  child-only final misses     ${directDiagnostics.childOnlyMisses.length}`);
 
   if (directDiagnostics.mismatches.length > 0) {
     console.log('  mismatch details');
@@ -358,7 +400,8 @@ if (directDiagnostics != null) {
           `base=${item.baselineY} target=${item.targetY} expectedDelta=${expectedDelta} ` +
           `requestedDelta=${item.requestedNetY} childDelta=${item.childNetY} ` +
           `edgeAborts=${item.edgeAborts} residualNet=${item.residualNetY} ` +
-          `sourceY=${item.sourceY} scrollerY=${item.scrollerY} frames=${item.frames}${nextSummary}`,
+          `sourceY=${item.sourceY} scrollerY=${item.scrollerY} ` +
+          `scrollerFinished=${item.scrollerFinished} frames=${item.frames}${nextSummary}`,
       );
     }
   }
