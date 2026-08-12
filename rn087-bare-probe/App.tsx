@@ -7,22 +7,23 @@ export default function App() {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.header}>
-        <Text style={styles.title}>RN 0.87 nested-scroll probe</Text>
-        <Text style={styles.subtitle}>
-          Native parent observes the real ScrollView transaction and consumes zero.
-        </Text>
-      </View>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         nestedScrollEnabled
         showsVerticalScrollIndicator>
+        <View style={styles.intro}>
+          <Text style={styles.title}>RN 0.87 nested-scroll probe</Text>
+          <Text style={styles.subtitle}>
+            The native source owns all movement. The optional Material3 chrome probe consumes the
+            same nested transaction without a JS onScroll handler.
+          </Text>
+        </View>
         {ROWS.map(row => (
           <View key={row} style={styles.row}>
             <Text style={styles.rowTitle}>Row {row}</Text>
             <Text style={styles.rowBody}>
-              Drag, fling, reverse, and fling again. No JS onScroll handler is installed.
+              Drag, fling, hit both edges, interrupt momentum, reverse, and fling again.
             </Text>
           </View>
         ))}
@@ -33,11 +34,11 @@ export default function App() {
 
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: '#f7f7f7'},
-  header: {paddingHorizontal: 20, paddingTop: 20, paddingBottom: 14},
-  title: {fontSize: 22, fontWeight: '700', color: '#111111'},
-  subtitle: {fontSize: 13, lineHeight: 18, color: '#555555', marginTop: 4},
   scroll: {flex: 1},
   content: {paddingHorizontal: 16, paddingBottom: 48},
+  intro: {paddingHorizontal: 4, paddingTop: 20, paddingBottom: 18},
+  title: {fontSize: 22, fontWeight: '700', color: '#111111'},
+  subtitle: {fontSize: 13, lineHeight: 18, color: '#555555', marginTop: 4},
   row: {
     minHeight: 92,
     justifyContent: 'center',
