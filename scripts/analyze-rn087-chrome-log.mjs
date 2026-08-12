@@ -42,16 +42,19 @@ function movementFrames(type) {
 const touchChromeMovement = movementFrames('TOUCH');
 const nonTouchChromeMovement = movementFrames('NON_TOUCH');
 
-// AndroidX NestedScrollView's fling loop always dispatches pre-scroll, but deliberately skips the
-// post-scroll callback when the parent consumed the whole NON_TOUCH delta in pre. That is a complete
-// frame: requested == chromePre and child/post/remaining are all zero. TOUCH uses a different path
-// and still dispatches post, so only full-consumed NON_TOUCH pre-only frames are accepted here.
+// A pre-only frame is complete when the parent consumed the whole requested delta. AndroidX
+// NestedScrollView's touch path still calls dispatchNestedScroll after pre-scroll, but at that point
+// all child/post deltas are zero; NestedScrollingChildHelper deliberately suppresses the parent
+// callback for an all-zero dispatch ("No motion, no dispatch"). The fling path can also finish at
+// pre-scroll when nothing remains. Therefore both TOUCH and NON_TOUCH full-pre frames are valid.
+// Any pre-only frame with partial consumption remains an error.
 let pendingPre = null;
 let ledgerPostFrames = 0;
 let ledgerBroken = 0;
+let fullPreTouchFrames = 0;
 let fullPreNonTouchFrames = 0;
 let unexpectedOrphans = 0;
-let touchOrphans = 0;
+let partialTouchOrphans = 0;
 let partialNonTouchOrphans = 0;
 let unknownOrphans = 0;
 const unexpectedExamples = [];
@@ -85,11 +88,13 @@ for (const line of lines) {
   const type = pendingPre?.type ?? 'UNKNOWN';
   const fullPreConsumed = requested != null && chromePre != null && requested === chromePre;
 
-  if (type === 'NON_TOUCH' && fullPreConsumed) {
+  if (fullPreConsumed && type === 'TOUCH') {
+    fullPreTouchFrames += 1;
+  } else if (fullPreConsumed && type === 'NON_TOUCH') {
     fullPreNonTouchFrames += 1;
   } else {
     unexpectedOrphans += 1;
-    if (type === 'TOUCH') touchOrphans += 1;
+    if (type === 'TOUCH') partialTouchOrphans += 1;
     else if (type === 'NON_TOUCH') partialNonTouchOrphans += 1;
     else unknownOrphans += 1;
 
@@ -102,7 +107,8 @@ for (const line of lines) {
   pendingPre = null;
 }
 
-const ledgerCompleteFrames = ledgerPostFrames + fullPreNonTouchFrames;
+const fullPreFrames = fullPreTouchFrames + fullPreNonTouchFrames;
+const ledgerCompleteFrames = ledgerPostFrames + fullPreFrames;
 const ledgerConserved =
   ledgerCompleteFrames > 0 && ledgerBroken === 0 && unexpectedOrphans === 0;
 
@@ -136,11 +142,12 @@ console.log(`  settle start / end          ${settleStarts} / ${settleEnds}`);
 console.log('');
 console.log('Transaction ledger');
 console.log(`  post-complete frames        ${ledgerPostFrames}`);
+console.log(`  full-pre TOUCH frames       ${fullPreTouchFrames}`);
 console.log(`  full-pre NON_TOUCH frames   ${fullPreNonTouchFrames}`);
 console.log(`  complete frames             ${ledgerCompleteFrames}`);
 console.log(`  broken complete frames      ${ledgerBroken}`);
 console.log(`  unexpected orphan pre       ${unexpectedOrphans}`);
-console.log(`    TOUCH                     ${touchOrphans}`);
+console.log(`    TOUCH partial             ${partialTouchOrphans}`);
 console.log(`    NON_TOUCH partial         ${partialNonTouchOrphans}`);
 console.log(`    UNKNOWN                   ${unknownOrphans}`);
 if (unexpectedExamples.length > 0) {
