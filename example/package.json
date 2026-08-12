@@ -7,8 +7,9 @@
     "start": "expo start --dev-client",
     "android": "expo run:android",
     "prebuild": "expo prebuild -p android --clean",
-    "prebuild:rn087:off": "RN_NESTED_SCROLL_ANDROID=0 expo prebuild -p android --clean",
-    "prebuild:rn087:on": "RN_NESTED_SCROLL_ANDROID=1 expo prebuild -p android --clean"
+    "verify:rn087": "node ../scripts/verify-rn087-host.mjs",
+    "prebuild:rn087:off": "npm run verify:rn087 && RN_NESTED_SCROLL_ANDROID=0 expo prebuild -p android --clean",
+    "prebuild:rn087:on": "npm run verify:rn087 && RN_NESTED_SCROLL_ANDROID=1 expo prebuild -p android --clean"
   },
   "expo": {
     "autolinking": {
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@expo/config-plugins": "~57.0.6",
+    "@react-native/gradle-plugin": "0.87.0",
     "@types/react": "~19.2.2",
     "typescript": "^5.9.2"
   },
