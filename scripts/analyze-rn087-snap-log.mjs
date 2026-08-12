@@ -106,11 +106,13 @@ for (const line of lines) {
     }
 
     const segment = {
+      index: stats.directSegments.length + 1,
       targetY: Number(directStart[1]),
       sourceVelocityY: Number(directStart[2]),
       baselineY: Number(directStart[3]),
       started: directStart[4] === 'true',
       requestTargetY: lastDirectRequest?.targetY ?? null,
+      requestVelocityY: lastDirectRequest?.velocityY ?? null,
       requestedNetY: 0,
       childNetY: 0,
       frames: 0,
@@ -205,6 +207,7 @@ let targetPass = false;
 let nonTouchFramesPass = false;
 let prePolicyPass = true;
 let targetSummary = '';
+let directDiagnostics = null;
 
 if (expected === 'direct' || expected === 'direct-chrome') {
   const clean = stats.directSegments.filter(item => item.started && item.ended);
@@ -221,6 +224,24 @@ if (expected === 'direct' || expected === 'direct-chrome') {
       item.scrollerY !== item.targetY,
   );
   const unfinished = stats.directSegments.filter(item => !item.ended).length;
+  const mismatchSet = new Set([...deltaMismatches, ...finalMismatches]);
+  const mismatches = clean.filter(item => mismatchSet.has(item));
+  const reasonCounts = new Map();
+  for (const item of clean) {
+    reasonCounts.set(item.reason, (reasonCounts.get(item.reason) ?? 0) + 1);
+  }
+  const scrollerMisses = finalMismatches.filter(item => item.scrollerY !== item.targetY);
+  const childOnlyMisses = finalMismatches.filter(
+    item => item.scrollerY === item.targetY && item.sourceY !== item.targetY,
+  );
+
+  directDiagnostics = {
+    clean,
+    mismatches,
+    reasonCounts,
+    scrollerMisses,
+    childOnlyMisses,
+  };
 
   // V6 deliberately bypasses pre-consumption for a target-locked direct snap. Any NON_TOUCH pre
   // callback here means the snap has fallen back into the path that can shorten RN's absolute
@@ -290,6 +311,34 @@ console.log(`  overlapping starts          ${stats.directOverlappingStarts}`);
 console.log(`  paging-animator requests    ${stats.pagingRequests.length}`);
 console.log(`  animator starts / ends      ${stats.animatorStarts.length} / ${stats.animatorEnds.length}`);
 console.log(`  ${targetSummary}`);
+
+if (directDiagnostics != null) {
+  const reasons = [...directDiagnostics.reasonCounts.entries()]
+    .map(([reason, count]) => `${reason}=${count}`)
+    .join(' ');
+  console.log(`  end reasons                 ${reasons || 'none'}`);
+  console.log(
+    `  final miss split           scroller=${directDiagnostics.scrollerMisses.length} childOnly=${directDiagnostics.childOnlyMisses.length}`,
+  );
+
+  if (directDiagnostics.mismatches.length > 0) {
+    console.log('  mismatch details');
+    for (const item of directDiagnostics.mismatches.slice(0, 10)) {
+      const next = stats.directSegments[item.index] ?? null;
+      const expectedDelta = item.targetY - item.baselineY;
+      const nextSummary = next
+        ? ` next=#${next.index} target=${next.targetY} v=${next.sourceVelocityY} base=${next.baselineY}`
+        : ' next=none';
+      console.log(
+        `    #${item.index} reason=${item.reason} v=${item.sourceVelocityY} ` +
+          `base=${item.baselineY} target=${item.targetY} expectedDelta=${expectedDelta} ` +
+          `requestedDelta=${item.requestedNetY} childDelta=${item.childNetY} ` +
+          `sourceY=${item.sourceY} scrollerY=${item.scrollerY} frames=${item.frames}${nextSummary}`,
+      );
+    }
+  }
+}
+
 console.log('');
 console.log(`bootstrap                    ${bootstrapPass ? 'PASS' : 'FAIL'}`);
 console.log(`source class                 ${sourcePass ? 'PASS' : 'FAIL'}`);
