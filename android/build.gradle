@@ -53,8 +53,4 @@ dependencies {
   implementation 'androidx.compose.material3:material3:1.5.0-alpha17'
   implementation 'io.coil-kt.coil3:coil-compose:3.3.0'
   implementation 'io.coil-kt.coil3:coil-network-okhttp:3.3.0'
-
-  // Keep JUnit available for transport invariants that can be expressed as pure logic, without a
-  // device or Robolectric shadow.
-  testImplementation 'junit:junit:4.13.2'
 }
