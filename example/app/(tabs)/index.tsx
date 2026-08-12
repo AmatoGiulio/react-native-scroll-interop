@@ -25,14 +25,8 @@ export default function GalleryScreen() {
 				style={styles.cell}
 				onPress={() => setSelected((current) => (current === item.id ? null : item.id))}
 			>
-				<Image
-					source={{ uri: item.uri }}
-					style={[styles.image, item.id === selected && styles.imageSelected]}
-					contentFit="cover"
-					transition={120}
-					placeholder={{ blurhash: undefined }}
-					placeholderContentFit="cover"
-				/>
+				<View style={styles.image}></View>
+				
 			</Pressable>
 		),
 		[selected]
@@ -40,7 +34,7 @@ export default function GalleryScreen() {
 
 	return (
 		<View style={styles.root}>
-
+			<NativeScrollHost style={{ flex: 1 }}>
 				<FlashList
 					data={PHOTOS}
 					masonry
@@ -49,6 +43,7 @@ export default function GalleryScreen() {
 					showsVerticalScrollIndicator={false}
 					renderItem={renderItem}
 				/>
+			</NativeScrollHost>
 			<MaterialTopAppBar title="Gallery" variant="large" scrollBehavior="exitUntilCollapsed" />
 		</View>
 	);
@@ -57,7 +52,7 @@ export default function GalleryScreen() {
 const styles = StyleSheet.create({
 	root: { flex: 1 },
 	cell: { flex: 1 / COLUMNS, aspectRatio: 1, padding: 1 },
-	image: { flex: 1, borderRadius: 8 },
+	image: { flex: 1, borderRadius: 8, backgroundColor: '#50304f' },
 	imageSelected: { borderRadius: 14 },
 	badge: {
 		position: 'absolute',
