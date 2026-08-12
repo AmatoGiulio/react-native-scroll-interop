@@ -34,11 +34,12 @@ if (reactNativePackage.version !== '0.87.0') {
   process.exit(1);
 }
 
-const marker = 'RN087_NESTED_FLING_SOURCE_PATCH';
+const marker = 'RN087_NESTED_FLING_SOURCE_PATCH_V2';
+const previousMarker = 'RN087_NESTED_FLING_SOURCE_PATCH';
 let source = fs.readFileSync(sourcePath, 'utf8');
 
 if (source.includes(marker)) {
-  console.log('RN 0.87 source fling patch: already applied');
+  console.log('RN 0.87 source fling patch v2: already applied');
   process.exit(0);
 }
 
@@ -53,10 +54,12 @@ if (start === -1 || end === -1) {
 }
 
 const originalFunction = source.slice(start, end);
+const upgradingPreviousProbePatch = originalFunction.includes(previousMarker);
 if (
-  !originalFunction.includes('scroller.fling(') ||
-  !originalFunction.includes('postInvalidateOnAnimation()') ||
-  !originalFunction.includes('super.fling(correctedVelocityY)')
+  !upgradingPreviousProbePatch &&
+  (!originalFunction.includes('scroller.fling(') ||
+    !originalFunction.includes('postInvalidateOnAnimation()') ||
+    !originalFunction.includes('super.fling(correctedVelocityY)'))
 ) {
   console.error(
     'RN 0.87 source probe: ReactNestedScrollView.fling() no longer matches the expected 0.87.0 implementation.',
@@ -69,13 +72,35 @@ const patchedFunction = `  override fun fling(velocityY: Int) {
 
     if (pagingEnabled) {
       flingAndSnap(correctedVelocityY)
-    } else {
-      // ${marker}: the generated nested implementation must use AndroidX's fling path.
-      // NestedScrollView.fling() starts TYPE_NON_TOUCH, initializes its scroller baseline,
-      // and computeScroll() then owns the real pre/child/post transaction frame by frame.
+    } else if (scroller != null) {
+      // ${marker}
+      // Prime AndroidX's animated nested-scroll bookkeeping, then overwrite the same reflected
+      // mScroller before any frame runs with RN 0.87's original fling parameters. This preserves
+      // RN's trajectory/overfling configuration while keeping TYPE_NON_TOUCH + mLastScrollerY.
       android.util.Log.i(
           "Rn087NestedScroll",
-          "SOURCE_FLING_PATCH velocityY=$correctedVelocityY",
+          "SOURCE_FLING_PATCH mode=prime-then-rn velocityY=$correctedVelocityY",
+      )
+      super.fling(correctedVelocityY)
+
+      val scrollWindowHeight = height - paddingBottom - paddingTop
+      scroller.fling(
+          scrollX, // startX
+          scrollY, // startY
+          0, // velocityX
+          correctedVelocityY, // velocityY
+          0, // minX
+          0, // maxX
+          0, // minY
+          Int.MAX_VALUE, // maxY
+          0, // overX
+          scrollWindowHeight / 2, // overY
+      )
+      postInvalidateOnAnimation()
+    } else {
+      android.util.Log.i(
+          "Rn087NestedScroll",
+          "SOURCE_FLING_PATCH mode=androidx-fallback velocityY=$correctedVelocityY",
       )
       super.fling(correctedVelocityY)
     }
@@ -86,4 +111,8 @@ const patchedFunction = `  override fun fling(velocityY: Int) {
 source = source.slice(0, start) + patchedFunction + source.slice(end);
 fs.writeFileSync(sourcePath, source);
 
-console.log('RN 0.87 source fling patch: ReactNestedScrollView delegates ordinary fling to AndroidX');
+console.log(
+  upgradingPreviousProbePatch
+    ? 'RN 0.87 source fling patch: upgraded probe patch to v2 (AndroidX prime + original RN scroller)'
+    : 'RN 0.87 source fling patch v2: AndroidX prime + original RN scroller parameters',
+);
