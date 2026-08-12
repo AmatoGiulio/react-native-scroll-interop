@@ -27,10 +27,73 @@ function run(command, args, cwd = root) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-run('./gradlew', [':app:installDebug', `-PrnNestedScrollAndroid=${enabled}`, '--no-daemon'], path.join(root, 'android'));
-run('adb', ['reverse', 'tcp:8081', 'tcp:8081']);
-run('adb', ['shell', 'am', 'force-stop', appId]);
-run('adb', ['shell', 'am', 'start', '-n', `${appId}/.MainActivity`]);
+function capture(command, args, cwd = root) {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    env: process.env,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    if (result.stderr) process.stderr.write(result.stderr);
+    process.exit(result.status ?? 1);
+  }
+  return result.stdout ?? '';
+}
+
+const adbDevices = capture('adb', ['devices'])
+  .split(/\r?\n/)
+  .slice(1)
+  .map(line => line.trim())
+  .filter(Boolean)
+  .map(line => {
+    const [serial, state] = line.split(/\s+/);
+    return {serial, state};
+  });
+
+const requestedSerial = process.env.ANDROID_SERIAL ?? null;
+let deviceSerial = requestedSerial;
+
+if (requestedSerial) {
+  const requested = adbDevices.find(device => device.serial === requestedSerial);
+  if (!requested || requested.state !== 'device') {
+    console.error(
+      `ANDROID_SERIAL=${requestedSerial} is not an available connected device.\n` +
+        `adb devices:\n${adbDevices.map(device => `  ${device.serial}\t${device.state}`).join('\n') || '  none'}`,
+    );
+    process.exit(1);
+  }
+} else {
+  const readyDevices = adbDevices.filter(device => device.state === 'device');
+  if (readyDevices.length === 0) {
+    console.error(
+      'RN 0.87 probe: no connected Android device/emulator.\n' +
+        'Start an emulator or connect a device, verify it with `adb devices`, then rerun this command.',
+    );
+    process.exit(1);
+  }
+  if (readyDevices.length > 1) {
+    console.error(
+      'RN 0.87 probe: multiple Android devices are connected.\n' +
+        readyDevices.map(device => `  ${device.serial}`).join('\n') +
+        '\nSet ANDROID_SERIAL=<serial> and rerun the command.',
+    );
+    process.exit(1);
+  }
+  deviceSerial = readyDevices[0].serial;
+}
+
+const adb = args => run('adb', ['-s', deviceSerial, ...args]);
+console.log(`RN 0.87 probe device: ${deviceSerial}`);
+
+run(
+  './gradlew',
+  [':app:installDebug', `-PrnNestedScrollAndroid=${enabled}`, '--no-daemon'],
+  path.join(root, 'android'),
+);
+adb(['reverse', 'tcp:8081', 'tcp:8081']);
+adb(['shell', 'am', 'force-stop', appId]);
+adb(['shell', 'am', 'start', '-n', `${appId}/.MainActivity`]);
 
 console.log(`RN 0.87 probe launched with useNestedScrollViewAndroid=${enabled}`);
-console.log(`Capture: adb logcat -v time -s Rn087NestedScroll:I '*:S'`);
+console.log(`Capture: adb -s ${deviceSerial} logcat -v time -s Rn087NestedScroll:I '*:S'`);
