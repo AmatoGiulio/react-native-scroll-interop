@@ -21,6 +21,7 @@ Relevant upstream paths at tag `v0.87.0`:
 ```text
 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/shell/MainReactPackage.kt
 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt
+packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/generate-nested-scroll-view.js
 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
 packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
 ```
@@ -31,89 +32,118 @@ packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
 
 The default Android new-architecture entry point also calls `ReactNativeFeatureFlags.override(...)` itself according to `DefaultNewArchitectureEntryPoint.releaseLevel`. The generated `ReactNativeApplicationEntryPoint.loadReactNative()` invokes that default entry point.
 
-So this is **not** a safe experiment setup:
-
-```text
-ReactNativeFeatureFlags.override(customProvider)
-loadReactNative(this) // default entry point tries to override again
-```
-
-Nor should the experiment silently use `dangerouslyForceOverride` after runtime initialization without first proving no relevant flags were already consumed.
-
-The opt-in mechanism must therefore be explicit and isolated. Candidate mechanisms are:
-
-1. a tiny experiment-only patch that changes only the 0.87 OSS stable feature-flag provider's value for `useNestedScrollViewAndroid`, with no ScrollView algorithm changes; or
-2. a custom startup path that supplies a complete provider before the React Native runtime is initialized, if a clean supported hook is identified.
-
-The first mechanism is acceptable as a **flag-selection patch** for an experiment, but must never be confused with the old 0.83 source-physics patch.
+The bare probe therefore uses `dangerouslyForceOverride` only after the normal bootstrap and fails if `useNestedScrollViewAndroid` was already accessed. The runtime class gate then verifies that the requested implementation was actually selected.
 
 ## Expo compatibility constraint
 
-The current Expo SDK 57 documentation targets React Native 0.86. The current `expo/expo` main bare template inspected on 2026-08-12 also still contains:
+Expo SDK 57 is not a clean RN 0.87 host. The attempted pinned host exposed independent Gradle/Kotlin/AGP incompatibilities before any nested-scroll code ran. The RN 0.87 source experiment was therefore moved to `rn087-bare-probe/`, which uses the RN 0.87 toolchain directly.
 
-```json
-{
-  "expo": "~57.0.9",
-  "react": "19.2.3",
-  "react-native": "0.86.2"
-}
-```
+This keeps Expo host compatibility separate from the source transaction result.
 
-Therefore this branch must not blindly run `expo install --fix` and assume it creates a supported RN 0.87 host. Expo's normal dependency alignment would target 0.86 at this point.
+## Runtime result
 
-The 0.87 source experiment should either:
-
-- wait for / use an Expo prerelease that explicitly targets RN 0.87 once available; or
-- use a deliberately pinned experimental host and treat any Expo compatibility issue separately from the nested-scroll result.
-
-## Required experiment matrix
-
-Do not carry `docs/upstream/react-scroll-view-momentum-nested-scroll.patch` into the RN 0.87 source test.
+The bare probe established the following matrix on 2026-08-12.
 
 ### A — flag OFF
 
 ```text
-React Native 0.87.0
-useNestedScrollViewAndroid = false
-no 0.83 momentum patch
+Native source classes
+ReactScrollView  502
+
+starts TOUCH / NON_TOUCH   47 / 0
+stops  TOUCH / NON_TOUCH   47 / 0
+pre    TOUCH / NON_TOUCH   175 / 0
+pre-fling / fling          29 / 29
+
+OFF source-class gate: PASS
 ```
 
-Run the existing host against the ordinary `ReactScrollView` path and record drag + fling behavior. This is the control.
+This is the expected control: legacy ReactScrollView reports touch nested scrolling but not source-owned momentum.
 
-### B — flag ON
+### B — flag ON, stock RN 0.87.0
 
 ```text
-React Native 0.87.0
-useNestedScrollViewAndroid = true
-no ScrollView algorithm patch
+Native source classes
+ReactNestedScrollView  208
+
+starts TOUCH / NON_TOUCH   9 / 0
+stops  TOUCH / NON_TOUCH   9 / 0
+pre    TOUCH / NON_TOUCH   89 / 0
+pre-fling / fling          6 / 6
+
+ON source-class gate:     PASS
+ON NON_TOUCH source gate: FAIL
 ```
 
-Verify the actual native source class is the AndroidX-backed path, then run:
+The feature flag works: the actual native source changes to `ReactNestedScrollView`. The stock implementation still fails the momentum contract.
 
-- slow drag;
-- collapse-limit handoff;
-- reverse direction;
-- top-edge expansion;
-- short and hard fling;
-- `TYPE_NON_TOUCH` transaction delivery;
-- new touch interrupting momentum;
-- TopAppBar + FloatingToolbar;
-- RN ScrollView + FlashList;
-- transaction ledger conservation.
+### C — causal parent shim
 
-## Decision gate
+A diagnostic-only parent shim called `startNestedScroll(VERTICAL, TYPE_NON_TOUCH)` on the *real transaction target* when the target emitted its already-existing fling callback. The parent still consumed zero, never moved the child and owned no scroller.
 
-If flag ON gives the host a complete touch + momentum nested transaction:
+Result:
 
 ```text
-DO NOT upstream the old 0.83 computeScroll/OverScroller patch.
+ReactNestedScrollView  500
+starts TOUCH / NON_TOUCH   5 / 2
+stops  TOUCH / NON_TOUCH   5 / 2
+pre    TOUCH / NON_TOUCH   188 / 52
+pre-fling / fling          2 / 2
+
+ON bootstrap gate:        PASS
+ON source-class gate:     PASS
+ON NON_TOUCH source gate: PASS
 ```
 
-The React Native contribution should instead focus on whatever is required to make the existing `ReactNestedScrollView` path usable, correct and testable upstream.
+This proved that AndroidX's frame loop was already capable of producing the desired momentum transaction once its NON_TOUCH session existed.
 
-If flag ON fails, isolate the smallest defect in the generated Kotlin/AndroidX path and patch that defect only.
+### D — RN 0.87 built from source, parent shim removed
 
-The screen/parent architecture remains unchanged in either case:
+The source probe then compiled ReactAndroid from `node_modules/react-native` and changed the ordinary `ReactNestedScrollView.fling()` path to delegate to AndroidX `NestedScrollView.fling()` instead of directly invoking the reflected `OverScroller`.
+
+Result:
+
+```text
+ReactNestedScrollView  826
+starts TOUCH / NON_TOUCH   42 / 21
+stops  TOUCH / NON_TOUCH   42 / 21
+pre    TOUCH / NON_TOUCH   115 / 214
+pre-fling / fling          21 / 21
+source patch flings        21
+
+ON bootstrap gate:            PASS
+ON source-class gate:         PASS
+ON NON_TOUCH source gate:     PASS
+ON source-patch runtime gate: PASS
+```
+
+This is the decisive source result: RN remains the owner of the fling, the parent owns no physics, and the AndroidX source emits the real frame-by-frame NON_TOUCH transaction itself.
+
+## Isolated defect
+
+`ReactNestedScrollView.kt` is generated from `ReactScrollView.kt`. In RN 0.87.0 the generated class inherits AndroidX `NestedScrollView`, but its copied `fling()` override still takes the legacy path:
+
+```text
+correct velocity
+-> reflected mScroller.fling(...)
+-> postInvalidateOnAnimation()
+```
+
+That bypasses AndroidX `NestedScrollView.fling()`, whose animated-scroll setup starts `TYPE_NON_TOUCH`, initializes the scroller baseline, and lets `computeScroll()` perform nested pre/post dispatch until the fling stops.
+
+So the 0.87 defect is much smaller than the 0.83 limitation: the AndroidX transaction machinery already exists, but the generated RN override bypasses its fling entry point.
+
+## Upstream direction
+
+Do **not** carry `docs/upstream/react-scroll-view-momentum-nested-scroll.patch` forward as the RN 0.87 solution.
+
+The upstream shape should instead adjust the nested variant generation so ordinary `ReactNestedScrollView` flings enter AndroidX's own fling path while preserving RN-specific paging/snap behavior. Because `ReactNestedScrollView.kt` is generated, the canonical fix belongs in `generate-nested-scroll-view.js` (plus regenerated output), not as a hand edit to the generated Kotlin file.
+
+Before proposing that change upstream, validate edge/overfling, interruption, paging/snap and momentum event behavior because delegating to `NestedScrollView.fling()` intentionally uses AndroidX's own scroller setup rather than the legacy copied parameters.
+
+## Parent-side consequence
+
+The parent/screen architecture does not change:
 
 ```text
 one source physics
@@ -122,3 +152,5 @@ screen/native ancestor consumes or observes that transaction
 no parent-owned scroller
 no sampled scrollY reconstruction
 ```
+
+The module adapter must accept both RN source classes without directly importing the Kotlin-internal RN 0.87 class. The transaction `target` remains authoritative; runtime class inspection is only a compatibility boundary for source preparation/binding, and reflection is allowed only for RN's unstable scroll-away geometry primitive.
