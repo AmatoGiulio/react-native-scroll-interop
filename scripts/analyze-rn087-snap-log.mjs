@@ -45,11 +45,17 @@ const stats = {
   posts: {TOUCH: 0, NON_TOUCH: 0},
   direct: [],
   directPrimes: 0,
-  nonTouchStopY: [],
+  directSessions: [],
+  directStopsWithoutTarget: 0,
+  directStopsWithoutSourceY: 0,
   pagingRequests: [],
   animatorStarts: [],
   animatorEnds: [],
 };
+
+let nonTouchSessionActive = false;
+let pendingDirectTarget = null;
+let activeDirectTarget = null;
 
 function addSource(name) {
   if (!name) return;
@@ -65,16 +71,46 @@ for (const line of lines) {
   const source = line.match(/target=([A-Za-z0-9_.$]+)#/);
   if (source) addSource(source[1]);
 
-  const start = line.match(/NESTED_START .*type=(TOUCH|NON_TOUCH)/);
-  if (start) stats.starts[start[1]] += 1;
+  const direct = line.match(
+    /SOURCE_SNAP_PATCH mode=direct-scroller targetY=(-?\d+) velocityY=(-?\d+)/,
+  );
+  if (direct) {
+    const request = {targetY: Number(direct[1]), velocityY: Number(direct[2])};
+    stats.direct.push(request);
+    if (nonTouchSessionActive) activeDirectTarget = request.targetY;
+    else pendingDirectTarget = request.targetY;
+  }
 
-  const stopWithY = line.match(/NESTED_STOP .*type=(TOUCH|NON_TOUCH).*sourceY=(-?\d+)/);
-  if (stopWithY) {
-    stats.stops[stopWithY[1]] += 1;
-    if (stopWithY[1] === 'NON_TOUCH') stats.nonTouchStopY.push(Number(stopWithY[2]));
-  } else {
-    const stop = line.match(/NESTED_STOP .*type=(TOUCH|NON_TOUCH)/);
-    if (stop) stats.stops[stop[1]] += 1;
+  if (line.includes('SOURCE_NESTED_PRIME reason=snap-direct')) stats.directPrimes += 1;
+
+  const start = line.match(/NESTED_START .*type=(TOUCH|NON_TOUCH)/);
+  if (start) {
+    stats.starts[start[1]] += 1;
+    if (start[1] === 'NON_TOUCH') {
+      nonTouchSessionActive = true;
+      activeDirectTarget = pendingDirectTarget;
+      pendingDirectTarget = null;
+    }
+  }
+
+  const stopType = line.match(/NESTED_STOP .*type=(TOUCH|NON_TOUCH)/);
+  if (stopType) {
+    stats.stops[stopType[1]] += 1;
+    if (stopType[1] === 'NON_TOUCH') {
+      const sourceYMatch = line.match(/sourceY=(-?\d+)/);
+      if (activeDirectTarget == null) {
+        stats.directStopsWithoutTarget += 1;
+      } else if (!sourceYMatch) {
+        stats.directStopsWithoutSourceY += 1;
+      } else {
+        stats.directSessions.push({
+          targetY: activeDirectTarget,
+          sourceY: Number(sourceYMatch[1]),
+        });
+      }
+      nonTouchSessionActive = false;
+      activeDirectTarget = null;
+    }
   }
 
   const pre = line.match(/NESTED_PRE type=(TOUCH|NON_TOUCH)/);
@@ -82,13 +118,6 @@ for (const line of lines) {
 
   const post = line.match(/NESTED_POST type=(TOUCH|NON_TOUCH)/);
   if (post) stats.posts[post[1]] += 1;
-
-  const direct = line.match(
-    /SOURCE_SNAP_PATCH mode=direct-scroller targetY=(-?\d+) velocityY=(-?\d+)/,
-  );
-  if (direct) stats.direct.push({targetY: Number(direct[1]), velocityY: Number(direct[2])});
-
-  if (line.includes('SOURCE_NESTED_PRIME reason=snap-direct')) stats.directPrimes += 1;
 
   const paging = line.match(
     /SOURCE_SNAP_PATCH mode=paging-animator targetY=(-?\d+) velocityY=(-?\d+)/,
@@ -131,23 +160,28 @@ let targetPass = false;
 let targetSummary = '';
 
 if (expected === 'direct') {
-  const pairCount = Math.min(stats.direct.length, stats.nonTouchStopY.length);
-  const mismatches = [];
-  for (let index = 0; index < pairCount; index += 1) {
-    const requested = stats.direct[index].targetY;
-    const actual = stats.nonTouchStopY[index];
-    if (requested !== actual) mismatches.push(`${index + 1}:${requested}->${actual}`);
-  }
+  const mismatches = stats.directSessions.filter(item => item.targetY !== item.sourceY);
+  const completedWithTarget = stats.directSessions.length;
+  const completedExpected = stats.stops.NON_TOUCH;
 
   pathPass =
     stats.direct.length > 0 &&
     stats.directPrimes === stats.direct.length &&
-    stats.nonTouchStopY.length === stats.direct.length;
+    nonTouchBalance &&
+    completedWithTarget > 0 &&
+    completedWithTarget === completedExpected &&
+    stats.directStopsWithoutTarget === 0 &&
+    stats.directStopsWithoutSourceY === 0;
   targetPass = pathPass && mismatches.length === 0;
   targetSummary =
-    `direct target/stop matches ${pairCount - mismatches.length}/${stats.direct.length}; ` +
-    `primes ${stats.directPrimes}/${stats.direct.length}` +
-    (mismatches.length ? `; mismatches=${mismatches.slice(0, 5).join(',')}` : '');
+    `session target/stop matches ${completedWithTarget - mismatches.length}/${completedWithTarget}; ` +
+    `requests ${stats.direct.length}; primes ${stats.directPrimes}` +
+    (mismatches.length
+      ? `; mismatches=${mismatches
+          .slice(0, 5)
+          .map((item, index) => `${index + 1}:${item.targetY}->${item.sourceY}`)
+          .join(',')}`
+      : '');
 } else {
   const endedNormally = stats.animatorEnds.filter(item => item.reason === 'end');
   const exact = endedNormally.filter(item => item.targetY === item.actualY);
@@ -179,7 +213,9 @@ console.log('');
 console.log('Snap source');
 console.log(`  direct-scroller requests    ${stats.direct.length}`);
 console.log(`  direct nested primes        ${stats.directPrimes}`);
-console.log(`  NON_TOUCH stop positions    ${stats.nonTouchStopY.length}`);
+console.log(`  direct completed sessions   ${stats.directSessions.length}`);
+console.log(`  stops without target        ${stats.directStopsWithoutTarget}`);
+console.log(`  stops without sourceY       ${stats.directStopsWithoutSourceY}`);
 console.log(`  paging-animator requests    ${stats.pagingRequests.length}`);
 console.log(`  animator starts / ends      ${stats.animatorStarts.length} / ${stats.animatorEnds.length}`);
 console.log(`  ${targetSummary}`);
