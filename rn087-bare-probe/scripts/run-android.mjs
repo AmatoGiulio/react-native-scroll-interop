@@ -7,8 +7,8 @@ import process from 'node:process';
 import {spawn, spawnSync} from 'node:child_process';
 
 const mode = process.argv[2];
-if (mode !== 'off' && mode !== 'on' && mode !== 'on-shim') {
-  console.error('Usage: node scripts/run-android.mjs off|on|on-shim');
+if (mode !== 'off' && mode !== 'on' && mode !== 'on-shim' && mode !== 'on-source') {
+  console.error('Usage: node scripts/run-android.mjs off|on|on-shim|on-source');
   process.exit(2);
 }
 
@@ -21,6 +21,7 @@ if (!fs.existsSync(gradlew)) {
 
 const enabled = mode !== 'off';
 const flingSessionShim = mode === 'on-shim';
+const buildReactNativeFromSource = mode === 'on-source';
 const appId = 'com.rn087nestedscrollprobe';
 const sdkRoots = [
   process.env.ANDROID_SDK_ROOT,
@@ -249,12 +250,17 @@ if (requestedSerial) {
 const adb = args => run(adbBinary, ['-s', deviceSerial, ...args]);
 console.log(`RN 0.87 probe device: ${deviceSerial}`);
 
+if (buildReactNativeFromSource) {
+  run(process.execPath, [path.join(root, 'scripts', 'patch-rn087-source-fling.mjs')]);
+}
+
 run(
   './gradlew',
   [
     ':app:installDebug',
     `-PrnNestedScrollAndroid=${enabled}`,
     `-PrnNestedScrollFlingShim=${flingSessionShim}`,
+    `-PrnBuildReactNativeFromSource=${buildReactNativeFromSource}`,
     '--no-daemon',
   ],
   path.join(root, 'android'),
@@ -266,15 +272,16 @@ adb(['reverse', 'tcp:8081', 'tcp:8081']);
 adb(['shell', 'am', 'force-stop', appId]);
 adb(['shell', 'am', 'start', '-n', `${appId}/.MainActivity`]);
 
-const logPath =
-  mode === 'off'
-    ? '/tmp/rn087-bare-off.log'
-    : mode === 'on'
-      ? '/tmp/rn087-bare-on.log'
-      : '/tmp/rn087-bare-on-shim.log';
+const logPaths = {
+  off: '/tmp/rn087-bare-off.log',
+  on: '/tmp/rn087-bare-on.log',
+  'on-shim': '/tmp/rn087-bare-on-shim.log',
+  'on-source': '/tmp/rn087-bare-on-source.log',
+};
+const logPath = logPaths[mode];
 
 console.log(
-  `RN 0.87 probe launched with useNestedScrollViewAndroid=${enabled} flingSessionShim=${flingSessionShim}`,
+  `RN 0.87 probe launched with useNestedScrollViewAndroid=${enabled} flingSessionShim=${flingSessionShim} buildFromSource=${buildReactNativeFromSource}`,
 );
 console.log('Do not run `adb logcat -c` after this launch; the bootstrap line is part of the gate.');
 console.log(
