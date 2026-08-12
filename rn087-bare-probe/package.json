@@ -12,7 +12,7 @@
     "analyze:off": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-off.log --expect off",
     "analyze:on": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on.log --expect on",
     "analyze:on-shim": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on-shim.log --expect on",
-    "analyze:on-source": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on-source.log --expect on"
+    "analyze:on-source": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on-source.log --expect on-source"
   },
   "dependencies": {
     "react": "19.2.3",

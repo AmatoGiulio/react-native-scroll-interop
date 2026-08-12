@@ -11,8 +11,8 @@ for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
   if (arg === '--expect') {
     expected = args[++i] ?? null;
-    if (expected !== 'off' && expected !== 'on') {
-      console.error('Usage: analyze-rn087-source-log.mjs <log> [--expect off|on]');
+    if (expected !== 'off' && expected !== 'on' && expected !== 'on-source') {
+      console.error('Usage: analyze-rn087-source-log.mjs <log> [--expect off|on|on-source]');
       process.exit(2);
     }
   } else if (arg.startsWith('-')) {
@@ -27,7 +27,7 @@ for (let i = 0; i < args.length; i += 1) {
 }
 
 if (logPath == null || !fs.existsSync(logPath)) {
-  console.error('Usage: analyze-rn087-source-log.mjs <log> [--expect off|on]');
+  console.error('Usage: analyze-rn087-source-log.mjs <log> [--expect off|on|on-source]');
   process.exit(2);
 }
 
@@ -44,6 +44,7 @@ const stats = {
   pres: { TOUCH: 0, NON_TOUCH: 0 },
   preFling: 0,
   fling: 0,
+  sourcePatchFlings: 0,
 };
 
 function addSource(name) {
@@ -82,6 +83,7 @@ for (let index = 0; index < lines.length; index += 1) {
 
   if (line.includes('NESTED_PRE_FLING')) stats.preFling += 1;
   if (line.includes('NESTED_FLING')) stats.fling += 1;
+  if (line.includes('SOURCE_FLING_PATCH')) stats.sourcePatchFlings += 1;
 }
 
 const legacySeen = stats.sourceClasses.has(LEGACY);
@@ -106,6 +108,7 @@ console.log(`  starts TOUCH / NON_TOUCH   ${stats.starts.TOUCH} / ${stats.starts
 console.log(`  stops  TOUCH / NON_TOUCH   ${stats.stops.TOUCH} / ${stats.stops.NON_TOUCH}`);
 console.log(`  pre    TOUCH / NON_TOUCH   ${stats.pres.TOUCH} / ${stats.pres.NON_TOUCH}`);
 console.log(`  pre-fling / fling          ${stats.preFling} / ${stats.fling}`);
+console.log(`  source patch flings        ${stats.sourcePatchFlings}`);
 console.log('');
 
 if (expected === 'off') {
@@ -114,14 +117,18 @@ if (expected === 'off') {
   console.log(`OFF source-class gate:       ${sourcePass ? 'PASS' : 'FAIL'}`);
   console.log(`OFF stock momentum baseline: ${baselineExpected ? 'NO NON_TOUCH (expected)' : 'NON_TOUCH PRESENT (investigate)'}`);
   process.exitCode = sourcePass ? 0 : 1;
-} else if (expected === 'on') {
+} else if (expected === 'on' || expected === 'on-source') {
   const bootstrapPass = stats.bootstrapEnabled === true;
   const sourcePass = nestedSeen && !legacySeen;
   const momentumPass = nonTouchSeen;
+  const sourcePatchPass = expected !== 'on-source' || stats.sourcePatchFlings > 0;
   console.log(`ON bootstrap gate:           ${bootstrapPass ? 'PASS' : 'FAIL'}`);
   console.log(`ON source-class gate:        ${sourcePass ? 'PASS' : 'FAIL'}`);
   console.log(`ON NON_TOUCH source gate:    ${momentumPass ? 'PASS' : 'FAIL'}`);
-  process.exitCode = bootstrapPass && sourcePass && momentumPass ? 0 : 1;
+  if (expected === 'on-source') {
+    console.log(`ON source-patch runtime gate:${sourcePatchPass ? ' PASS' : ' FAIL'}`);
+  }
+  process.exitCode = bootstrapPass && sourcePass && momentumPass && sourcePatchPass ? 0 : 1;
 } else {
   console.log(`Legacy ReactScrollView seen: ${legacySeen}`);
   console.log(`ReactNestedScrollView seen:  ${nestedSeen}`);

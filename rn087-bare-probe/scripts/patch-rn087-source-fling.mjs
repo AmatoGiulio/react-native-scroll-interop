@@ -73,6 +73,10 @@ const patchedFunction = `  override fun fling(velocityY: Int) {
       // ${marker}: the generated nested implementation must use AndroidX's fling path.
       // NestedScrollView.fling() starts TYPE_NON_TOUCH, initializes its scroller baseline,
       // and computeScroll() then owns the real pre/child/post transaction frame by frame.
+      android.util.Log.i(
+          "Rn087NestedScroll",
+          "SOURCE_FLING_PATCH velocityY=$correctedVelocityY",
+      )
       super.fling(correctedVelocityY)
     }
     handlePostTouchScrolling(0, correctedVelocityY)
