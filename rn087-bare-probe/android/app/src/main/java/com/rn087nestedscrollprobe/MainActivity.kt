@@ -1,6 +1,5 @@
 package com.rn087nestedscrollprobe
 
-import android.os.Bundle
 import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -14,11 +13,6 @@ class MainActivity : ReactActivity() {
 
   override fun createReactActivityDelegate(): ReactActivityDelegate =
     object : DefaultReactActivityDelegate(this, mainComponentName) {
-      override fun getLaunchOptions(): Bundle =
-        Bundle().apply {
-          putString("probeMode", BuildConfig.RN_SCROLL_PROBE_MODE)
-        }
-
       override fun loadApp(appKey: String?) {
         super.loadApp(appKey)
         attachProbeHost()
@@ -46,8 +40,7 @@ class MainActivity : ReactActivity() {
 
     Log.i(
       "Rn087NestedScroll",
-      "PROBE_HOST attached mode=${BuildConfig.RN_SCROLL_PROBE_MODE} " +
-        "root=${reactRoot.javaClass.name}#${Integer.toHexString(System.identityHashCode(reactRoot))}",
+      "PROBE_HOST attached root=${reactRoot.javaClass.name}#${Integer.toHexString(System.identityHashCode(reactRoot))}",
     )
   }
 }

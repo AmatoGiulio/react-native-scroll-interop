@@ -1,69 +1,29 @@
-diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/generate-nested-scroll-view.js b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/generate-nested-scroll-view.js
---- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/generate-nested-scroll-view.js
-+++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/generate-nested-scroll-view.js
-@@ -72,6 +72,49 @@ function replaceCopyrightHeader(content, sourceFile) {
-   return content.replace(COPYRIGHT_HEADER_PATTERN, generatedHeader(sourceFile));
- }
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactNestedScrollView.kt
+@@ -688,27 +688,8 @@ internal open class ReactNestedScrollView
  
-+/**
-+ * The source ScrollView owns a legacy direct-OverScroller fling path. That is correct for the
-+ * android.widget.ScrollView implementation, but copying it into the NestedScrollView variant
-+ * bypasses AndroidX's animated nested-scroll setup. Keep RN's paging/snap path, while ordinary
-+ * ReactNestedScrollView flings delegate to NestedScrollView.fling().
-+ */
-+function replaceNestedFlingPath(content) {
-+  const legacyBranch = `    } else if (scroller != null) {
-+      val scrollWindowHeight = height - paddingBottom - paddingTop
-+      scroller.fling(
-+          scrollX, // startX
-+          scrollY, // startY
-+          0, // velocityX
-+          correctedVelocityY, // velocityY
-+          0, // minX
-+          0, // maxX
-+          0, // minY
-+          Int.MAX_VALUE, // maxY
-+          0, // overX
-+          scrollWindowHeight / 2, // overY
-+      )
-+      postInvalidateOnAnimation()
-+    } else {
-+      super.fling(correctedVelocityY)
-+    }`;
-+
-+  if (!content.includes(legacyBranch)) {
-+    throw new Error(
-+      'Could not locate the legacy ReactScrollView fling branch while generating ReactNestedScrollView.',
-+    );
-+  }
-+
-+  return content.replace(
-+    legacyBranch,
-+    `    } else {
-+      // NestedScrollView.fling() opens TYPE_NON_TOUCH, initializes its animated-scroll baseline,
-+      // and lets computeScroll() dispatch the real pre/child/post nested transaction.
-+      super.fling(correctedVelocityY)
-+    }`,
-+  );
-+}
-+
- /**
-  * Transform ReactScrollView.kt to ReactNestedScrollView.kt
-  */
-@@ -91,6 +134,9 @@ function transformScrollView(content) {
-   // Replace ReactScrollView with ReactNestedScrollView
-   content = replaceClassNames(content);
- 
-+  // The generated AndroidX variant must enter AndroidX's own animated nested-scroll fling path.
-+  content = replaceNestedFlingPath(content);
-+
-   // Make the class internal to keep it out of the public API
-   content = content.replace(
-     'public open class ReactNestedScrollView',
-
-# After applying this generator change from the scroll source directory, run:
-#
-#   node generate-nested-scroll-view.js
-#   node generate-nested-scroll-view.js --verify
-#
-# and commit the regenerated ReactNestedScrollView.kt (including its new SignedSource hash).
+     if (pagingEnabled) {
+       flingAndSnap(correctedVelocityY)
+-    } else if (scroller != null) {
+-      val scrollWindowHeight = height - paddingBottom - paddingTop
+-      scroller.fling(
+-          scrollX, // startX
+-          scrollY, // startY
+-          0, // velocityX
+-          correctedVelocityY, // velocityY
+-          0, // minX
+-          0, // maxX
+-          0, // minY
+-          Int.MAX_VALUE, // maxY
+-          0, // overX
+-          scrollWindowHeight / 2, // overY
+-      )
+-      postInvalidateOnAnimation()
+     } else {
++      // Let AndroidX open TYPE_NON_TOUCH, initialize its scroller baseline and dispatch the
++      // frame-by-frame nested pre/child/post transaction from NestedScrollView.computeScroll().
+       super.fling(correctedVelocityY)
+     }
+     handlePostTouchScrolling(0, correctedVelocityY)
+   }

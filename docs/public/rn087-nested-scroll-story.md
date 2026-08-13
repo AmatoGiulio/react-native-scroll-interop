@@ -185,36 +185,13 @@ unexpected orphan pre       0
 
 That gave us the property we cared about: every observable frame conserved distance, with no second scroll model needed to repair drift.
 
-## One transaction, two different Material consumers
+## Why multiple consumers matter
 
 A TopAppBar is a consuming participant: it may take part of the requested distance before or after the child.
 
-A floating toolbar has a different role. It should not withhold pixels from the list at all. It observes only the distance the child really consumed in post-scroll and updates its own Material state from that movement.
+A floating toolbar has a different role. It should not withhold pixels from the list at all. It can observe only the distance the child really consumed in post-scroll and update its own Material state from that movement.
 
-We added a real Material3 FloatingToolbar behavior to the same transaction and required exact coverage of every non-zero child-consumed post frame. A stress run produced:
-
-```text
-Nested sessions
-starts TOUCH / NON_TOUCH     68 / 34
-stops  TOUCH / NON_TOUCH     68 / 34
-
-Transaction ledger
-post-complete frames        630
-full-pre TOUCH frames        76
-complete frames             706
-broken complete frames        0
-unexpected orphan pre         0
-
-FloatingToolbar
-child movement post T/NT   261 / 314
-observed posts T/NT        261 / 314
-visual movement T/NT       109 / 2
-settle start / end          42 / 42
-```
-
-The observer received 261/261 TOUCH child-movement frames and 314/314 NON_TOUCH frames. The consuming TopAppBar still accounted for all 706 complete transaction frames with zero broken or unexpected frames.
-
-The validated shape is therefore:
+The target architecture therefore becomes:
 
 ```text
 ReactNestedScrollView
@@ -227,7 +204,7 @@ Native Parent3
    └─ other native chrome consumers
 ```
 
-The number of chrome components is not the important part. The important part is that they all participate in the same transaction while React Native remains the only owner of scroll physics.
+The important property is not the number of chrome components. It is that they all participate in the same transaction while React Native remains the only owner of scroll physics.
 
 ## What this does not prove yet
 

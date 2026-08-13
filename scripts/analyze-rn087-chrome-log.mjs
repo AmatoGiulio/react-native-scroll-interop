@@ -5,11 +5,9 @@ import process from 'node:process';
 
 const logPath = process.argv[2];
 const expectFloating = process.argv.includes('--expect-floating');
-const expectSnap = process.argv.includes('--expect-snap');
-const expectPaging = process.argv.includes('--expect-paging');
-if (!logPath || (expectSnap && expectPaging)) {
+if (!logPath) {
   console.error(
-    'Usage: node scripts/analyze-rn087-chrome-log.mjs <log-path> [--expect-floating] [--expect-snap|--expect-paging]',
+    'Usage: node scripts/analyze-rn087-chrome-log.mjs <log-path> [--expect-floating]',
   );
   process.exit(2);
 }
@@ -29,53 +27,9 @@ const nonTouchStarts = count(/NESTED_START .*type=NON_TOUCH/);
 const touchStops = count(/NESTED_STOP .*type=TOUCH/);
 const nonTouchStops = count(/NESTED_STOP .*type=NON_TOUCH/);
 const sourcePatchFlings = count(/SOURCE_FLING_PATCH/);
-const sourcePatchSnapStarts = count(/SOURCE_SNAP_DIRECT_START mode=post-only-target-lock/);
-const sourcePatchPagingStarts = count(/SOURCE_SNAP_ANIMATOR_START/);
-const sourcePatchRuntime = expectSnap
-  ? sourcePatchSnapStarts > 0
-  : expectPaging
-    ? sourcePatchPagingStarts > 0
-    : sourcePatchFlings > 0;
 const scrollAwaySuccess = count(/CHROME_SCROLL_AWAY .*target=[1-9][0-9]* success=true/);
 const settleStarts = count(/CHROME_SETTLE_START/);
 const settleEnds = count(/CHROME_SETTLE_END/);
-
-const settleByGen = new Map();
-for (const line of lines) {
-  const start = line.match(/CHROME_SETTLE_START gen=(\d+) reason=([^ ]+)/);
-  if (start) {
-    settleByGen.set(Number(start[1]), {
-      gen: Number(start[1]),
-      reason: start[2],
-      completed: null,
-    });
-    continue;
-  }
-
-  const end = line.match(/CHROME_SETTLE_END gen=(\d+) completed=(true|false)/);
-  if (end) {
-    const gen = Number(end[1]);
-    const entry = settleByGen.get(gen) ?? {gen, reason: 'unknown', completed: null};
-    entry.completed = end[2] === 'true';
-    settleByGen.set(gen, entry);
-  }
-}
-
-const settleReasonCounts = new Map();
-let settleCompleted = 0;
-let settleCancelled = 0;
-let settleMissingEnd = 0;
-let touchStopCancelled = 0;
-let momentumStopCancelled = 0;
-for (const entry of settleByGen.values()) {
-  settleReasonCounts.set(entry.reason, (settleReasonCounts.get(entry.reason) ?? 0) + 1);
-  if (entry.completed === true) settleCompleted += 1;
-  else if (entry.completed === false) {
-    settleCancelled += 1;
-    if (entry.reason === 'touch-stop') touchStopCancelled += 1;
-    if (entry.reason === 'momentum-stop') momentumStopCancelled += 1;
-  } else settleMissingEnd += 1;
-}
 
 function movementFrames(type) {
   let frames = 0;
@@ -126,10 +80,7 @@ const floatingSettleEnds = count(/FLOAT_SETTLE_END/);
 // all child/post deltas are zero; NestedScrollingChildHelper deliberately suppresses the parent
 // callback for an all-zero dispatch ("No motion, no dispatch"). The fling path can also finish at
 // pre-scroll when nothing remains. Therefore both TOUCH and NON_TOUCH full-pre frames are valid.
-//
-// V6 target-locked snap is deliberately post-only. NestedScrollProbeLayout synthesizes a ledger
-// pre-record with chromePre=0 from childConsumed+unconsumed before recording that post callback, so
-// the exact same conservation equation remains valid for both transaction shapes.
+// Any pre-only frame with partial consumption remains an error.
 let pendingPre = null;
 let ledgerPostFrames = 0;
 let ledgerBroken = 0;
@@ -197,14 +148,12 @@ const ledgerConserved =
 const gates = [
   ['bootstrap', bootstrapTrue],
   ['source class', nestedClassLines > 0],
-  ['source patch runtime', sourcePatchRuntime],
+  ['source patch runtime', sourcePatchFlings > 0],
   ['TOUCH session balance', touchStarts > 0 && touchStarts === touchStops],
   ['NON_TOUCH session balance', nonTouchStarts > 0 && nonTouchStarts === nonTouchStops],
   ['scroll-away geometry', scrollAwaySuccess > 0],
   ['TOUCH chrome movement', touchChromeMovement > 0],
-  expectPaging
-    ? ['NON_TOUCH paging source movement', childNonTouchPostMovement > 0]
-    : ['NON_TOUCH chrome movement', nonTouchChromeMovement > 0],
+  ['NON_TOUCH chrome movement', nonTouchChromeMovement > 0],
   ['ledger conservation', ledgerConserved],
   ['Material settle', settleStarts > 0 && settleEnds > 0],
 ];
@@ -235,8 +184,6 @@ console.log('Source');
 console.log(`  bootstrap true              ${bootstrapTrue}`);
 console.log(`  ReactNestedScrollView lines ${nestedClassLines}`);
 console.log(`  source patch flings         ${sourcePatchFlings}`);
-console.log(`  target-lock snap starts     ${sourcePatchSnapStarts}`);
-console.log(`  paging animator starts      ${sourcePatchPagingStarts}`);
 console.log('');
 console.log('Nested sessions');
 console.log(`  starts TOUCH / NON_TOUCH    ${touchStarts} / ${nonTouchStarts}`);
@@ -245,21 +192,7 @@ console.log('');
 console.log('Material3 TopAppBar');
 console.log(`  scroll-away success         ${scrollAwaySuccess}`);
 console.log(`  movement TOUCH / NON_TOUCH  ${touchChromeMovement} / ${nonTouchChromeMovement}`);
-if (expectPaging && nonTouchChromeMovement === 0) {
-  console.log('  paging NON_TOUCH chrome     no positional change in this capture');
-}
 console.log(`  settle start / end          ${settleStarts} / ${settleEnds}`);
-console.log(
-  `  settle completed/cancelled ${settleCompleted} / ${settleCancelled}` +
-    (settleMissingEnd ? ` missing=${settleMissingEnd}` : ''),
-);
-const reasonSummary = [...settleReasonCounts.entries()]
-  .map(([reason, value]) => `${reason}=${value}`)
-  .join(' ');
-console.log(`  settle reasons              ${reasonSummary || 'none'}`);
-console.log(
-  `  cancelled touch/momentum   ${touchStopCancelled} / ${momentumStopCancelled}`,
-);
 console.log('');
 console.log('Transaction ledger');
 console.log(`  post-complete frames        ${ledgerPostFrames}`);

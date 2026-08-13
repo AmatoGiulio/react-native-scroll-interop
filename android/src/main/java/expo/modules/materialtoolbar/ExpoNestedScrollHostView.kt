@@ -62,10 +62,8 @@ class ExpoNestedScrollHostView(
   // requested = chromePre + childConsumed + chromePost + remaining
   private var ledgerRequestedY = 0
   private var ledgerChromePreY = 0
-  private var ledgerType = ViewCompat.TYPE_TOUCH
   private var ledgerPending = false
   private var ledgerFrames = 0L
-  private var ledgerFullPreFrames = 0L
   private var ledgerBrokenFrames = 0L
   private var ledgerOrphanPres = 0L
 
@@ -427,7 +425,7 @@ class ExpoNestedScrollHostView(
     nestedTransactionActive = false
     log(
       "TX_END reason=$reason sourceY=${source?.scrollY} ledgerFrames=$ledgerFrames " +
-        "fullPre=$ledgerFullPreFrames broken=$ledgerBrokenFrames orphanPre=$ledgerOrphanPres",
+        "broken=$ledgerBrokenFrames orphanPre=$ledgerOrphanPres",
     )
   }
 
@@ -443,7 +441,6 @@ class ExpoNestedScrollHostView(
     flushPendingLedger("next-pre")
     ledgerRequestedY = requestedY
     ledgerChromePreY = chromePreY
-    ledgerType = type
     ledgerPending = true
     log("TX_LEDGER_PRE type=${typeLabel(type)} requested=$requestedY chromePre=$chromePreY")
   }
@@ -459,14 +456,14 @@ class ExpoNestedScrollHostView(
     ledgerFrames += 1
     val remaining = dyUnconsumed - chromePostY
     val sum = ledgerChromePreY + childConsumedY + chromePostY + remaining
-    val balanced = sum == ledgerRequestedY && type == ledgerType
+    val balanced = sum == ledgerRequestedY
     if (!balanced) ledgerBrokenFrames += 1
 
     log(
-      "TX_LEDGER type=${typeLabel(type)} preType=${typeLabel(ledgerType)} n=$ledgerFrames " +
-        "requested=$ledgerRequestedY chromePre=$ledgerChromePreY child=$childConsumedY " +
-        "chromePost=$chromePostY remaining=$remaining sum=$sum balanced=$balanced " +
-        "fullPre=$ledgerFullPreFrames broken=$ledgerBrokenFrames orphanPre=$ledgerOrphanPres",
+      "TX_LEDGER type=${typeLabel(type)} n=$ledgerFrames requested=$ledgerRequestedY " +
+        "chromePre=$ledgerChromePreY child=$childConsumedY chromePost=$chromePostY " +
+        "remaining=$remaining sum=$sum balanced=$balanced broken=$ledgerBrokenFrames " +
+        "orphanPre=$ledgerOrphanPres",
     )
     ledgerPending = false
   }
@@ -478,26 +475,10 @@ class ExpoNestedScrollHostView(
       return
     }
 
-    // AndroidX does not dispatch a post callback when pre-scroll consumed the entire frame. On the
-    // touch path NestedScrollingChildHelper suppresses the resulting all-zero post dispatch; the
-    // animated path can likewise finish in pre. This is a complete, conserved frame, not an orphan.
-    if (ledgerRequestedY == ledgerChromePreY) {
-      ledgerFrames += 1
-      ledgerFullPreFrames += 1
-      log(
-        "TX_LEDGER type=${typeLabel(ledgerType)} n=$ledgerFrames requested=$ledgerRequestedY " +
-          "chromePre=$ledgerChromePreY child=0 chromePost=0 remaining=0 " +
-          "sum=$ledgerChromePreY balanced=true fullPre=true reason=$reason " +
-          "fullPreCount=$ledgerFullPreFrames broken=$ledgerBrokenFrames orphanPre=$ledgerOrphanPres",
-      )
-      ledgerPending = false
-      return
-    }
-
     ledgerOrphanPres += 1
     log(
-      "TX_LEDGER orphanPre type=${typeLabel(ledgerType)} n=$ledgerOrphanPres reason=$reason " +
-        "requested=$ledgerRequestedY chromePre=$ledgerChromePreY",
+      "TX_LEDGER orphanPre n=$ledgerOrphanPres reason=$reason requested=$ledgerRequestedY " +
+        "chromePre=$ledgerChromePreY",
     )
     ledgerPending = false
   }
