@@ -12,6 +12,7 @@ const ROUTES = [
   { href: '/transport-flashlist-probe', label: 'Transport matrix · FlashList + TopAppBar + FloatingToolbar' },
   { href: '/transport-lifecycle-stress-probe', label: 'Stress matrix · source replacement + both chrome' },
   { href: '/transport-navigation-stress-probe', label: 'Stress matrix · replace whole screen during fling' },
+  { href: '/transport-orientation-stress-probe', label: 'Stress matrix · rotate during drag/fling' },
   { href: '/(tabs)', label: 'Tabs · Gallery (legacy harness)' },
   { href: '/(tabs)/feed', label: 'Tabs · Feed (legacy harness)' },
   { href: '/(tabs)/profile', label: 'Tabs · Profile (legacy harness)' },
