@@ -92,9 +92,20 @@ abstract class ComposeChromeHostView(
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-    // Fabric measures this view from SurfaceMountingManager.updateLayout before attaching it, and
-    // onMeasure skips the Compose child while detached. Complete that deferred pass now that a
-    // window exists.
+    // Fabric can attach this host before its final Yoga bounds have reached Android. The attach pass
+    // is still useful when bounds are already present; onSizeChanged below closes the complementary
+    // ordering where this post runs while width/height are still zero.
+    scheduleHostMeasureAndLayout()
+  }
+
+  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+    super.onSizeChanged(w, h, oldw, oldh)
+    if (!isAttachedToWindow || w <= 0 || h <= 0) return
+
+    // Fabric's mount order is not guaranteed to be attach -> measured non-zero bounds. If attach
+    // happened while this host was 0x0, scheduleHostMeasureAndLayout() intentionally did nothing and
+    // the Compose child would otherwise remain unmeasured forever. Retry exactly when RN gives the
+    // host usable bounds; unchanged layouts do not re-enter this path, so there is no layout loop.
     scheduleHostMeasureAndLayout()
   }
 
@@ -107,7 +118,7 @@ abstract class ComposeChromeHostView(
     // window: it resolves the recomposer from the view tree. Fabric measures a view before attaching
     // it — reliably so when a screen is pushed rather than mounted with the surface — and measuring
     // the child here would throw "Cannot locate windowRecomposer". Skip it while detached;
-    // onAttachedToWindow asks again.
+    // onAttachedToWindow/onSizeChanged ask again once both window and usable bounds exist.
     if (!isAttachedToWindow) return
 
     onMeasureComposeChild(width, height)
