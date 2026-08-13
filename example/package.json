@@ -9,9 +9,10 @@
     "prebuild": "expo prebuild -p android --clean",
     "verify:rn087": "node scripts/verify-rn087-host.mjs",
     "patch:rn087:expo-kotlin": "node scripts/patch-rn087-expo-kotlin.mjs",
+    "patch:rn087:agp9-kotlin": "node scripts/patch-rn087-agp9-kotlin.mjs",
     "patch:rn087:gradle": "node scripts/patch-rn087-gradle-wrapper.mjs",
-    "prebuild:rn087:off": "npm run verify:rn087 && npm run patch:rn087:expo-kotlin && RN_NESTED_SCROLL_ANDROID=0 expo prebuild -p android --clean && npm run patch:rn087:gradle",
-    "prebuild:rn087:on": "npm run verify:rn087 && npm run patch:rn087:expo-kotlin && RN_NESTED_SCROLL_ANDROID=1 expo prebuild -p android --clean && npm run patch:rn087:gradle"
+    "prebuild:rn087:off": "npm run verify:rn087 && npm run patch:rn087:expo-kotlin && RN_NESTED_SCROLL_ANDROID=0 expo prebuild -p android --clean && npm run patch:rn087:agp9-kotlin && npm run patch:rn087:gradle",
+    "prebuild:rn087:on": "npm run verify:rn087 && npm run patch:rn087:expo-kotlin && RN_NESTED_SCROLL_ANDROID=1 expo prebuild -p android --clean && npm run patch:rn087:agp9-kotlin && npm run patch:rn087:gradle"
   },
   "expo": {
     "autolinking": {
