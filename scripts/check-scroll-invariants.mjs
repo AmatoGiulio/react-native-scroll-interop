@@ -139,8 +139,17 @@ if (fs.existsSync(hostAbsolutePath)) {
   if (host.includes('momentumSessionActive')) {
     violations.push(`${hostPath}: momentum lifecycle must not be host-global`);
   }
-  if (!host.includes('private var momentumSource: ViewGroup? = null')) {
-    violations.push(`${hostPath}: missing source-scoped momentum owner`);
+  if (!host.includes('SourceScopedNestedScrollLifecycle')) {
+    violations.push(`${hostPath}: production host is not using the shared lifecycle kernel`);
+  }
+  if (!host.includes('private val sourceLifecycle = SourceScopedNestedScrollLifecycle()')) {
+    violations.push(`${hostPath}: production host must delegate lifecycle ownership to shared kernel`);
+  }
+  if (host.includes('private var momentumSource:')) {
+    violations.push(`${hostPath}: production host must not duplicate shared momentum ownership`);
+  }
+  if (host.includes('private var activeSource:')) {
+    violations.push(`${hostPath}: production host must not duplicate shared active-source ownership`);
   }
   if (!host.includes('TX_ABORT reason=source-replaced')) {
     violations.push(`${hostPath}: missing source replacement abort path`);
@@ -149,37 +158,36 @@ if (fs.existsSync(hostAbsolutePath)) {
     violations.push(`${hostPath}: stale PRE/POST callbacks must fail closed`);
   }
 
-  const typedStopStart = host.indexOf(
-    'override fun onStopNestedScroll(target: View, type: Int)',
-  );
-  const typedStopEnd = host.indexOf('override fun onNestedPreScroll(', typedStopStart);
-  const typedStop =
-    typedStopStart >= 0 && typedStopEnd > typedStopStart
-      ? host.slice(typedStopStart, typedStopEnd)
-      : '';
-  const typedGuard = typedStop.indexOf('if (!activeTarget)');
-  const typedHelper = typedStop.indexOf(
-    'nestedParentHelper.onStopNestedScroll(target, type)',
-  );
-  if (typedGuard < 0 || typedHelper < 0 || typedGuard > typedHelper) {
-    violations.push(
-      `${hostPath}: typed stale STOP must be rejected before NestedScrollingParentHelper`,
-    );
-  }
+  const assertStopOrder = ({label, signature, helperCall}) => {
+    const stopStart = host.indexOf(signature);
+    const stopEnd = host.indexOf('override fun onNestedPreScroll(', stopStart);
+    const stop = stopStart >= 0 && stopEnd > stopStart ? host.slice(stopStart, stopEnd) : '';
+    const classify = stop.indexOf('sourceLifecycle.stop(');
+    const staleGuard = stop.indexOf('StopDecision.Stale');
+    const helper = stop.indexOf(helperCall);
+    if (
+      classify < 0 ||
+      staleGuard < 0 ||
+      helper < 0 ||
+      classify > staleGuard ||
+      staleGuard > helper
+    ) {
+      violations.push(
+        `${hostPath}: ${label} stale STOP must be classified and rejected before NestedScrollingParentHelper`,
+      );
+    }
+  };
 
-  const platformStopStart = host.indexOf('override fun onStopNestedScroll(target: View)');
-  const platformStopEnd = host.indexOf('override fun onNestedPreScroll(', platformStopStart);
-  const platformStop =
-    platformStopStart >= 0 && platformStopEnd > platformStopStart
-      ? host.slice(platformStopStart, platformStopEnd)
-      : '';
-  const platformGuard = platformStop.indexOf('if (!activeTarget)');
-  const platformHelper = platformStop.indexOf('nestedParentHelper.onStopNestedScroll(target)');
-  if (platformGuard < 0 || platformHelper < 0 || platformGuard > platformHelper) {
-    violations.push(
-      `${hostPath}: platform stale STOP must be rejected before NestedScrollingParentHelper`,
-    );
-  }
+  assertStopOrder({
+    label: 'typed',
+    signature: 'override fun onStopNestedScroll(target: View, type: Int)',
+    helperCall: 'nestedParentHelper.onStopNestedScroll(target, type)',
+  });
+  assertStopOrder({
+    label: 'platform',
+    signature: 'override fun onStopNestedScroll(target: View)',
+    helperCall: 'nestedParentHelper.onStopNestedScroll(target)',
+  });
 }
 
 if (violations.length > 0) {
@@ -198,7 +206,7 @@ console.log('  no parent-started nested session');
 console.log('  no timer-based scroll reconstruction');
 console.log('  concrete RN scroll source types confined to compatibility adapter');
 console.log('  explicit RN vertical source capability model present');
-console.log('  momentum ownership scoped to active RN source');
-console.log('  stale nested callbacks fail closed before parent helper mutation');
 console.log('  shared Android lifecycle kernel compiled by Expo and bare RN hosts');
 console.log('  bare RN 0.87 host uses shared source-scoped lifecycle ownership');
+console.log('  production host uses shared source-scoped lifecycle ownership');
+console.log('  stale nested callbacks fail closed before parent helper mutation');
