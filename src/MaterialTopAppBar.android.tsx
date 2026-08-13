@@ -15,7 +15,7 @@ export function MaterialTopAppBar({
 }: MaterialTopAppBarProps) {
   return (
     <ExpoMaterialTopAppBarNativeView
-      style={[StyleSheet.absoluteFillObject, style]}
+      style={[styles.topOverlay, style]}
       pointerEvents="box-none"
       title={title}
       visible={visible}
@@ -26,3 +26,12 @@ export function MaterialTopAppBar({
     />
   );
 }
+
+const styles = StyleSheet.create({
+  topOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+});
