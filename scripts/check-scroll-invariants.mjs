@@ -15,12 +15,15 @@ const sharedLifecyclePath =
   'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt';
 const sharedLedgerPath =
   'android-shared/src/main/java/com/material3scroll/transport/NestedScrollConservationLedger.kt';
+const sharedDispatcherPath =
+  'android-shared/src/main/java/com/material3scroll/transport/VerticalNestedScrollTransactionDispatcher.kt';
 const bareHostPath =
   'rn087-bare-probe/android/app/src/main/java/com/rn087nestedscrollprobe/NestedScrollProbeLayout.kt';
 const files = [
   hostPath,
   sharedLifecyclePath,
   sharedLedgerPath,
+  sharedDispatcherPath,
   topBarConsumerPath,
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt',
@@ -121,6 +124,30 @@ if (fs.existsSync(sharedLedgerAbsolutePath)) {
   }
 }
 
+const sharedDispatcherAbsolutePath = path.join(root, sharedDispatcherPath);
+if (fs.existsSync(sharedDispatcherAbsolutePath)) {
+  const dispatcher = stripComments(fs.readFileSync(sharedDispatcherAbsolutePath, 'utf8'));
+  if (!dispatcher.includes('class VerticalNestedScrollTransactionDispatcher')) {
+    violations.push(`${sharedDispatcherPath}: missing shared vertical transaction dispatcher`);
+  }
+  for (const phase of ['PreConsumer', 'PostConsumer', 'PostObserver']) {
+    if (!dispatcher.includes(`fun interface ${phase}`)) {
+      violations.push(`${sharedDispatcherPath}: missing ${phase} dispatch port`);
+    }
+  }
+  if (!dispatcher.includes('ledger.beginFrame(requestedY, consumedY)')) {
+    violations.push(`${sharedDispatcherPath}: PRE dispatch must feed shared conservation accounting`);
+  }
+  if (!dispatcher.includes('ledger.completeFrame(childConsumedY, availableY, consumedY)')) {
+    violations.push(`${sharedDispatcherPath}: POST dispatch must complete shared conservation accounting`);
+  }
+  const postConsumer = dispatcher.indexOf('for (consumer in postConsumers)');
+  const postObserver = dispatcher.indexOf('for (observer in postObservers)');
+  if (postConsumer < 0 || postObserver < 0 || postConsumer > postObserver) {
+    violations.push(`${sharedDispatcherPath}: POST observers must run after consuming POST participants`);
+  }
+}
+
 const expoGradlePath = path.join(root, 'android/build.gradle');
 const bareGradlePath = path.join(root, 'rn087-bare-probe/android/app/build.gradle');
 for (const [label, gradlePath] of [
@@ -145,8 +172,17 @@ if (!fs.existsSync(bareHostAbsolutePath)) {
   if (!bareHost.includes('SourceScopedNestedScrollLifecycle')) {
     violations.push(`${bareHostPath}: bare RN 0.87 host is not using the shared lifecycle kernel`);
   }
-  if (!bareHost.includes('NestedScrollConservationLedger')) {
-    violations.push(`${bareHostPath}: bare RN 0.87 host is not using the shared conservation ledger`);
+  if (!bareHost.includes('VerticalNestedScrollTransactionDispatcher')) {
+    violations.push(`${bareHostPath}: bare RN 0.87 host is not using the shared PRE/POST dispatcher`);
+  }
+  if (!bareHost.includes('private val dispatcher = VerticalNestedScrollTransactionDispatcher()')) {
+    violations.push(`${bareHostPath}: bare host must delegate vertical dispatch to shared core`);
+  }
+  if (!bareHost.includes('dispatcher.dispatchPre(') || !bareHost.includes('dispatcher.dispatchPost(')) {
+    violations.push(`${bareHostPath}: bare host PRE/POST callbacks must route through shared dispatcher`);
+  }
+  if (bareHost.includes('NestedScrollConservationLedger')) {
+    violations.push(`${bareHostPath}: bare host must not own the shared ledger outside the dispatcher`);
   }
   if (/private var ledger(RequestedY|ChromePreY|Pending|Frames|Broken|Orphans|OrphanPres)/.test(bareHost)) {
     violations.push(`${bareHostPath}: bare host must not duplicate shared conservation state`);
@@ -277,7 +313,8 @@ console.log('  explicit RN vertical source capability model present');
 console.log('  shared Android lifecycle kernel compiled by Expo and bare RN hosts');
 console.log('  bare RN 0.87 host uses shared source-scoped lifecycle ownership');
 console.log('  shared conservation ledger compiled by Expo and bare RN hosts');
-console.log('  bare RN 0.87 host uses shared conservation accounting');
+console.log('  shared vertical PRE/POST dispatcher compiled by Expo and bare RN hosts');
+console.log('  bare RN 0.87 host uses shared vertical PRE/POST dispatcher');
 console.log('  production host uses shared source-scoped lifecycle ownership');
 console.log('  production host uses shared conservation accounting');
 console.log('  stale nested callbacks fail closed before parent helper mutation');
