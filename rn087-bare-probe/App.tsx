@@ -1,14 +1,17 @@
 import React from 'react';
 import {ScrollView, StatusBar, StyleSheet, Text, View} from 'react-native';
 
-const ROWS = Array.from({length: 120}, (_, index) => index + 1);
-
-type ProbeMode = 'ordinary' | 'snap' | 'paging';
+type ProbeMode = 'ordinary' | 'snap' | 'snap-stress' | 'paging';
 type AppProps = {probeMode?: ProbeMode};
 
 export default function App({probeMode = 'ordinary'}: AppProps) {
-  const pagingEnabled = probeMode === 'snap' || probeMode === 'paging';
-  const snapToInterval = probeMode === 'snap' ? 184 : undefined;
+  const directSnap = probeMode === 'snap' || probeMode === 'snap-stress';
+  const pagingEnabled = directSnap || probeMode === 'paging';
+  const snapToInterval = directSnap ? 184 : undefined;
+  // Keep the exact same direct-snap props while making both content edges reachable in a short
+  // manual stress run. The source still moves only from real RN gestures/animations.
+  const rowCount = probeMode === 'snap-stress' ? 36 : 120;
+  const rows = Array.from({length: rowCount}, (_, index) => index + 1);
 
   return (
     <View style={styles.root}>
@@ -24,16 +27,18 @@ export default function App({probeMode = 'ordinary'}: AppProps) {
           <Text style={styles.title}>RN 0.87 nested-scroll probe</Text>
           <Text style={styles.subtitle}>mode={probeMode}</Text>
           <Text style={styles.subtitle}>
-            The native source owns all movement. Snap/paging modes keep React Native's own animation
-            path while exposing it as a TYPE_NON_TOUCH nested-scroll transaction.
+            {probeMode === 'snap-stress'
+              ? 'Direct-snap stress gate: interrupt momentum with a new touch, reverse direction, and exercise both content edges. All movement remains RN-owned.'
+              : "The native source owns all movement. Snap/paging modes keep React Native's own animation path while exposing it as a TYPE_NON_TOUCH nested-scroll transaction."}
           </Text>
         </View>
-        {ROWS.map(row => (
+        {rows.map(row => (
           <View key={row} style={styles.row}>
             <Text style={styles.rowTitle}>Row {row}</Text>
             <Text style={styles.rowBody}>
-              Drag and release cleanly for the target gate. Interruption/reversal gets its own
-              regression gate after the basic snap transaction passes.
+              {probeMode === 'snap-stress'
+                ? 'Release into snap, touch again before it settles, then drag/release in the opposite direction. Also complete clean snaps at the top and bottom edges.'
+                : 'Drag and release cleanly for the target gate. Interruption/reversal gets its own regression gate after the basic snap transaction passes.'}
             </Text>
           </View>
         ))}
