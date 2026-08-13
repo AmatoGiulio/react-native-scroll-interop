@@ -7,6 +7,10 @@ import process from 'node:process';
 const root = process.cwd();
 const hostPath =
   'android/src/main/java/expo/modules/materialtoolbar/ExpoNestedScrollHostView.kt';
+const composeHostPath =
+  'android/src/main/java/expo/modules/materialtoolbar/ComposeChromeHostView.kt';
+const topBarConsumerPath =
+  'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt';
 const sharedLifecyclePath =
   'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt';
 const bareHostPath =
@@ -14,7 +18,7 @@ const bareHostPath =
 const files = [
   hostPath,
   sharedLifecyclePath,
-  'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt',
+  topBarConsumerPath,
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt',
 ];
@@ -190,6 +194,38 @@ if (fs.existsSync(hostAbsolutePath)) {
   });
 }
 
+const composeHostAbsolutePath = path.join(root, composeHostPath);
+if (!fs.existsSync(composeHostAbsolutePath)) {
+  violations.push(`${composeHostPath}: missing Compose/Fabric chrome host`);
+} else {
+  const composeHost = stripComments(fs.readFileSync(composeHostAbsolutePath, 'utf8'));
+  if (!composeHost.includes('onMeasureComposeChild(hostWidth, hostHeight)')) {
+    violations.push(`${composeHostPath}: Fabric retry must directly measure the Compose child`);
+  }
+  if (!composeHost.includes('onLayout(')) {
+    violations.push(`${composeHostPath}: Fabric retry must directly lay out the Compose child`);
+  }
+}
+
+const topBarConsumerAbsolutePath = path.join(root, topBarConsumerPath);
+if (!fs.existsSync(topBarConsumerAbsolutePath)) {
+  violations.push(`${topBarConsumerPath}: missing TopAppBar consumer`);
+} else {
+  const topBar = stripComments(fs.readFileSync(topBarConsumerAbsolutePath, 'utf8'));
+  if (!topBar.includes('hasResolvedHeightOffsetLimit')) {
+    violations.push(`${topBarConsumerPath}: unresolved Material heightOffsetLimit is not guarded`);
+  }
+  if (!topBar.includes('limit > -Float.MAX_VALUE')) {
+    violations.push(`${topBarConsumerPath}: Material -Float.MAX_VALUE sentinel must fail closed`);
+  }
+  if (!topBar.includes('private var transactionActive = false')) {
+    violations.push(`${topBarConsumerPath}: TopAppBar readiness must be fixed for the whole transaction`);
+  }
+  if (!topBar.includes('TX_TOP_BEGIN rejected=geometry-unresolved')) {
+    violations.push(`${topBarConsumerPath}: missing unresolved-geometry diagnostic`);
+  }
+}
+
 if (violations.length > 0) {
   console.error('Native scroll invariant: FAIL');
   for (const violation of violations) console.error(`  ${violation}`);
@@ -210,3 +246,5 @@ console.log('  shared Android lifecycle kernel compiled by Expo and bare RN host
 console.log('  bare RN 0.87 host uses shared source-scoped lifecycle ownership');
 console.log('  production host uses shared source-scoped lifecycle ownership');
 console.log('  stale nested callbacks fail closed before parent helper mutation');
+console.log('  Compose chrome child remeasured directly from Fabric-owned bounds');
+console.log('  unresolved Material TopAppBar geometry fails closed');
