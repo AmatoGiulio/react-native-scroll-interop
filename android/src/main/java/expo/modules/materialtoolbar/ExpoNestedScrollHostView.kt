@@ -205,11 +205,19 @@ class ExpoNestedScrollHostView(
   }
 
   override fun onStopNestedScroll(target: View) {
-    nestedParentHelper.onStopNestedScroll(target)
+    val activeTarget = activeSource === target
     log(
       "NESTED_STOP contract=platform preCount=$preCount postCount=$postCount " +
-        "active=$nestedTransactionActive ${targetLabel(target)}",
+        "active=$nestedTransactionActive activeTarget=$activeTarget ${targetLabel(target)}",
     )
+    if (!activeTarget) {
+      log(
+        "TX_STALE_STOP contract=platform ignored=true " +
+          "activeSource=${sourceIdentity(activeSource)} ${targetLabel(target)}",
+      )
+      return
+    }
+    nestedParentHelper.onStopNestedScroll(target)
     finishTouch(target)
   }
 
@@ -293,7 +301,6 @@ class ExpoNestedScrollHostView(
   }
 
   override fun onStopNestedScroll(target: View, type: Int) {
-    nestedParentHelper.onStopNestedScroll(target, type)
     val activeTarget = activeSource === target
     log(
       "NESTED_STOP contract=androidx type=${typeLabel(type)} preCount=$preCount postCount=$postCount " +
@@ -307,6 +314,7 @@ class ExpoNestedScrollHostView(
       )
       return
     }
+    nestedParentHelper.onStopNestedScroll(target, type)
     if (type == ViewCompat.TYPE_NON_TOUCH) {
       if (momentumSource === target) momentumSource = null
       finishMovement(target, "momentum-stop")
