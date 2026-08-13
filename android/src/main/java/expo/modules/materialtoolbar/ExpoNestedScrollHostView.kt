@@ -10,6 +10,7 @@ import android.view.ViewTreeObserver
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
+import com.material3scroll.transport.NestedScrollConservationLedger
 import com.material3scroll.transport.SourceScopedNestedScrollLifecycle
 import com.material3scroll.transport.SourceScopedNestedScrollLifecycle.StopDecision
 import expo.modules.kotlin.AppContext
@@ -33,6 +34,7 @@ class ExpoNestedScrollHostView(
 
   private val nestedParentHelper = NestedScrollingParentHelper(this)
   private val sourceLifecycle = SourceScopedNestedScrollLifecycle()
+  private val conservationLedger = NestedScrollConservationLedger()
 
   private var eventSequence = 0L
   private var preCount = 0L
@@ -61,15 +63,6 @@ class ExpoNestedScrollHostView(
     }
     if (refreshNestedChromeBinding()) stopWaitingForSourceLayout()
   }
-
-  // Per-frame conservation ledger:
-  // requested = chromePre + childConsumed + chromePost + remaining
-  private var ledgerRequestedY = 0
-  private var ledgerChromePreY = 0
-  private var ledgerPending = false
-  private var ledgerFrames = 0L
-  private var ledgerBrokenFrames = 0L
-  private var ledgerOrphanPres = 0L
 
   init {
     clipChildren = false
@@ -494,9 +487,10 @@ class ExpoNestedScrollHostView(
       activeTopBar?.endNestedTransaction(source, reason)
       activeToolbar?.endNestedTransaction()
     }
+    val ledger = conservationLedger.snapshot()
     log(
-      "TX_END reason=$reason sourceY=${source.scrollY} ledgerFrames=$ledgerFrames " +
-        "broken=$ledgerBrokenFrames orphanPre=$ledgerOrphanPres",
+      "TX_END reason=$reason sourceY=${source.scrollY} ledgerFrames=${ledger.frames} " +
+        "broken=${ledger.brokenFrames} orphanPre=${ledger.orphanPres}",
     )
     clearActiveSession()
   }
@@ -515,13 +509,17 @@ class ExpoNestedScrollHostView(
 
   private fun recordLedgerPre(requestedY: Int, chromePreY: Int, type: Int) {
     if (!NativeScrollTracing.enabled) {
-      ledgerPending = false
+      conservationLedger.discardPending()
       return
     }
-    flushPendingLedger("next-pre")
-    ledgerRequestedY = requestedY
-    ledgerChromePreY = chromePreY
-    ledgerPending = true
+
+    val begin = conservationLedger.beginFrame(requestedY, chromePreY)
+    begin.orphanBeforePre?.let { orphan ->
+      log(
+        "TX_LEDGER orphanPre n=${orphan.index} reason=next-pre requested=${orphan.requestedY} " +
+          "chromePre=${orphan.chromePreY}",
+      )
+    }
     log("TX_LEDGER_PRE type=${typeLabel(type)} requested=$requestedY chromePre=$chromePreY")
   }
 
@@ -531,36 +529,29 @@ class ExpoNestedScrollHostView(
     chromePostY: Int,
     type: Int,
   ) {
-    if (!NativeScrollTracing.enabled || !ledgerPending) return
-
-    ledgerFrames += 1
-    val remaining = dyUnconsumed - chromePostY
-    val sum = ledgerChromePreY + childConsumedY + chromePostY + remaining
-    val balanced = sum == ledgerRequestedY
-    if (!balanced) ledgerBrokenFrames += 1
+    if (!NativeScrollTracing.enabled) return
+    val frame = conservationLedger.completeFrame(childConsumedY, dyUnconsumed, chromePostY) ?: return
 
     log(
-      "TX_LEDGER type=${typeLabel(type)} n=$ledgerFrames requested=$ledgerRequestedY " +
-        "chromePre=$ledgerChromePreY child=$childConsumedY chromePost=$chromePostY " +
-        "remaining=$remaining sum=$sum balanced=$balanced broken=$ledgerBrokenFrames " +
-        "orphanPre=$ledgerOrphanPres",
+      "TX_LEDGER type=${typeLabel(type)} n=${frame.index} requested=${frame.requestedY} " +
+        "chromePre=${frame.chromePreY} child=${frame.childConsumedY} chromePost=${frame.chromePostY} " +
+        "remaining=${frame.remainingY} sum=${frame.sumY} balanced=${frame.balanced} " +
+        "broken=${frame.brokenFrames} orphanPre=${frame.orphanPres}",
     )
-    ledgerPending = false
   }
 
   private fun flushPendingLedger(reason: String) {
-    if (!ledgerPending) return
+    if (!conservationLedger.hasPendingPre) return
     if (!NativeScrollTracing.enabled) {
-      ledgerPending = false
+      conservationLedger.discardPending()
       return
     }
 
-    ledgerOrphanPres += 1
+    val orphan = conservationLedger.flushPending() ?: return
     log(
-      "TX_LEDGER orphanPre n=$ledgerOrphanPres reason=$reason requested=$ledgerRequestedY " +
-        "chromePre=$ledgerChromePreY",
+      "TX_LEDGER orphanPre n=${orphan.index} reason=$reason requested=${orphan.requestedY} " +
+        "chromePre=${orphan.chromePreY}",
     )
-    ledgerPending = false
   }
 
   // ---------------------------------------------------------------------------
