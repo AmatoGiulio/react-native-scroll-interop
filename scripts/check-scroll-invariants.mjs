@@ -13,11 +13,14 @@ const topBarConsumerPath =
   'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt';
 const sharedLifecyclePath =
   'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt';
+const sharedLedgerPath =
+  'android-shared/src/main/java/com/material3scroll/transport/NestedScrollConservationLedger.kt';
 const bareHostPath =
   'rn087-bare-probe/android/app/src/main/java/com/rn087nestedscrollprobe/NestedScrollProbeLayout.kt';
 const files = [
   hostPath,
   sharedLifecyclePath,
+  sharedLedgerPath,
   topBarConsumerPath,
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt',
@@ -104,6 +107,20 @@ if (fs.existsSync(sharedLifecycleAbsolutePath)) {
   }
 }
 
+const sharedLedgerAbsolutePath = path.join(root, sharedLedgerPath);
+if (fs.existsSync(sharedLedgerAbsolutePath)) {
+  const ledger = stripComments(fs.readFileSync(sharedLedgerAbsolutePath, 'utf8'));
+  if (!ledger.includes('class NestedScrollConservationLedger')) {
+    violations.push(`${sharedLedgerPath}: missing shared conservation ledger`);
+  }
+  if (!ledger.includes('sumY == pre.requestedY')) {
+    violations.push(`${sharedLedgerPath}: conservation equation is missing`);
+  }
+  if (!ledger.includes('fun flushPending(): OrphanPre?')) {
+    violations.push(`${sharedLedgerPath}: orphan pre-scroll accounting is missing`);
+  }
+}
+
 const expoGradlePath = path.join(root, 'android/build.gradle');
 const bareGradlePath = path.join(root, 'rn087-bare-probe/android/app/build.gradle');
 for (const [label, gradlePath] of [
@@ -127,6 +144,12 @@ if (!fs.existsSync(bareHostAbsolutePath)) {
   const bareHost = stripComments(fs.readFileSync(bareHostAbsolutePath, 'utf8'));
   if (!bareHost.includes('SourceScopedNestedScrollLifecycle')) {
     violations.push(`${bareHostPath}: bare RN 0.87 host is not using the shared lifecycle kernel`);
+  }
+  if (!bareHost.includes('NestedScrollConservationLedger')) {
+    violations.push(`${bareHostPath}: bare RN 0.87 host is not using the shared conservation ledger`);
+  }
+  if (/private var ledger(RequestedY|ChromePreY|Pending|Frames|Broken|Orphans)/.test(bareHost)) {
+    violations.push(`${bareHostPath}: bare host must not duplicate shared conservation state`);
   }
   if (bareHost.includes('private var momentumSource:')) {
     violations.push(`${bareHostPath}: bare host must not duplicate shared momentum ownership`);
@@ -244,6 +267,8 @@ console.log('  concrete RN scroll source types confined to compatibility adapter
 console.log('  explicit RN vertical source capability model present');
 console.log('  shared Android lifecycle kernel compiled by Expo and bare RN hosts');
 console.log('  bare RN 0.87 host uses shared source-scoped lifecycle ownership');
+console.log('  shared conservation ledger compiled by Expo and bare RN hosts');
+console.log('  bare RN 0.87 host uses shared conservation accounting');
 console.log('  production host uses shared source-scoped lifecycle ownership');
 console.log('  stale nested callbacks fail closed before parent helper mutation');
 console.log('  Compose chrome child remeasured directly from Fabric-owned bounds');
