@@ -46,7 +46,7 @@ export default function TransportImeStressProbe() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#12141a' },
   host: { flex: 1 },
-  content: { paddingTop: 152, paddingBottom: 160 },
+  content: { paddingBottom: 160 },
   input: { minHeight: 52, marginHorizontal: 20, marginBottom: 20, padding: 12, backgroundColor: '#ffffff', color: '#111111' },
   row: { minHeight: 64, padding: 20, color: '#eceff4' },
   oracle: {
