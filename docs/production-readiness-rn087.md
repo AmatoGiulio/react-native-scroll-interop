@@ -66,11 +66,11 @@ This closes the architecture research gate: one RN-owned source transaction can 
 
 ## Behavior-regression gates
 
-### Direct `snapToInterval` — structural/target gate PASS; visual equivalence still an explicit release gate
+### Direct `snapToInterval` — clean product-shape gate PASS; stress gate next
 
 The original V3/V4/V5 snap probes were rejected because the patched build visibly changed snap dynamics even when the nested transaction itself balanced. Those runs remain useful negative evidence: a green callback ledger is not sufficient if the source physics feels different from stock RN.
 
-The current product-shape direct-snap probe therefore tests the source together with both real Material consumers and separates RN's visible child target from internal edge overfling bookkeeping. The validated 2026-08-13 run produced:
+The current V6 product-shape direct-snap probe tests the source together with both real Material consumers and separates RN's visible child target from internal edge overfling bookkeeping. The validated 2026-08-13 run produced:
 
 ```text
 Nested sessions
@@ -126,33 +126,60 @@ The two `finished overfling tails` are internal `OverScroller.currY` values past
 
 RN's own post-touch runnable intentionally issues a later `flingAndSnap(0)` pass for paging/snap stabilization. When that pass is a true no-op (`target == scrollY`, zero velocity), the probe does not open a second NON_TOUCH Material transaction. In the validated run 15 such no-op requests were skipped.
 
-This closes the **structural, conservation and final-target** gate for direct `snapToInterval` with TopAppBar + FloatingToolbar. It does **not** by itself prove perceptual equivalence to stock RN. A release claim of "direct snap behavior PASS" still requires the same build to feel indistinguishable from the stock A/B control on device.
+The same V6 device build was subsequently reported to have returned to normal snap feel after the earlier V3/V4/V5 regressions. Therefore the **clean direct-snap transaction, target and perceptual gate is PASS** for the tested gesture set. This is not yet a release-wide behavior PASS: interruption, immediate reversal and both content edges must still pass under deliberate stress.
+
+The dedicated stress harness is:
+
+```bash
+npm run android:on-source-multi-chrome-snap-stress
+npm run analyze:on-source-multi-chrome-snap-stress
+```
+
+It keeps the same `pagingEnabled + snapToInterval=184` physics, shortens only the test content so both edges are reachable, and adds diagnostics for `ACTION_DOWN` while a direct snap is still active. The stress analyzer treats an interrupted snap correctly: it does not require arrival at the abandoned target, but it does require zero old-snap frames after the new touch, balanced sessions, a real opposite-direction restart, exact targets for completed segments, and top/bottom edge coverage.
 
 The current direct-snap source wrapper is still a probe implementation, not an upstream-final patch. It deliberately owns the transaction boundary around RN's existing snap `OverScroller`; its source-loop/edge behavior must not be promoted until the remaining regression matrix and upstream shape are resolved.
 
-### Basic `pagingEnabled` — NEXT BLOCKER
+### Basic `pagingEnabled` — transaction/target PASS and stock behavioral parity PASS
 
 Basic paging is a different RN animation path. With no explicit snap interval/offset/alignment, RN uses `smoothScrollAndSnap()` and its `ValueAnimator`-based `reactSmoothScrollTo()` path rather than the direct constrained `OverScroller` path above.
 
-The multi-chrome harness now runs both analyzers for this scenario:
+The validated multi-chrome paging run produced:
 
-```bash
-npm run android:on-source-multi-chrome-paging
-npm run analyze:on-source-multi-chrome-paging
+```text
+Nested sessions
+starts TOUCH / NON_TOUCH     13 / 8
+stops  TOUCH / NON_TOUCH     13 / 8
+
+Transaction ledger
+post-complete frames        187
+full-pre TOUCH frames        38
+complete frames             225
+broken complete frames        0
+unexpected orphan pre         0
+
+FloatingToolbar
+child movement post T/NT    42 / 120
+observed posts T/NT         42 / 120
+visual movement T/NT        24 / 44
+
+Paging animator
+requests                      8
+starts / ends               8 / 8
+animator target matches     8 / 8
 ```
 
-The first clean device run must establish whether the animator can expose a balanced source-owned NON_TOUCH transaction while preserving RN's final target with the real TopAppBar and FloatingToolbar present. Do not infer paging support from the direct-snap PASS.
+All paging transaction and final-target gates pass. The page-size snap can feel aggressive because `pagingEnabled` without an explicit snap interval uses RN's page-sized paging semantics. A three-way source-only comparison using the same JS props found the same undesirable feel in legacy `ReactScrollView`, stock `ReactNestedScrollView`, and the patched nested source. Therefore that feel is **stock behavioral parity**, not a regression introduced by the source transaction patch.
+
+Do not reinterpret this result as a recommendation to use `pagingEnabled` for ordinary scrolling. The compatibility requirement is that the patch preserve RN's behavior, and that requirement is satisfied for the tested clean paging path.
 
 ## Required before calling the RN source patch production-safe
 
 Explicitly validate:
 
-- top and bottom edge behavior, including overfling/edge effects;
-- interrupting a running fling with a new touch;
-- immediate direction reversal;
-- short and high-velocity flings;
-- basic `pagingEnabled` animator behavior;
-- `snapToInterval` interruption/edge/reversal behavior beyond the clean target gate;
+- direct `snapToInterval` top and bottom edge behavior, including internal overfling tails;
+- interrupting a running direct snap with a new touch;
+- immediate direction reversal after interruption;
+- short and high-velocity direct snaps;
 - `snapToOffsets`;
 - `disableIntervalMomentum`;
 - deceleration-rate behavior;
@@ -212,11 +239,11 @@ Before release, CI/device tests should cover at least:
 5. complete transaction conservation ledger;
 6. FloatingToolbar 100% coverage of non-zero child-consumed post frames;
 7. Material settle completion for both consumers;
-8. edge/interruption/snap/paging regression scenarios, including behavioral A/B against stock RN;
+8. edge/interruption/snap/paging regression scenarios, including behavioral comparison against stock RN;
 9. `npm run check:scroll-invariants`;
 10. release build smoke test with tracing disabled.
 
-Items 1–7 have concrete passing product-shape gates for ordinary scroll and clean direct snap. Item 8 remains the primary RN source-patch blocker, with basic paging now the immediate scenario. Item 9 is implemented and must be executed in release validation; item 10 remains a packaging/runtime-cost blocker.
+Items 1–7 have concrete passing product-shape gates for ordinary scroll, clean direct snap and clean basic paging where applicable. Basic paging now has transaction/target PASS plus legacy/stock/patched behavioral parity. Item 8 remains the primary RN source-patch blocker, with direct-snap interruption/reversal/edge stress now the immediate scenario. Item 9 is implemented and must be executed in release validation; item 10 remains a packaging/runtime-cost blocker.
 
 ## Public/upstream path
 
