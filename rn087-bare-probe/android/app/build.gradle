@@ -14,7 +14,7 @@ def nestedScrollFlingShim = (project.findProperty('rnNestedScrollFlingShim') ?: 
 def chromeProbe = (project.findProperty('rnChromeProbe') ?: 'false').toBoolean()
 def floatingToolbarProbe = (project.findProperty('rnFloatingToolbarProbe') ?: 'false').toBoolean()
 def scrollProbeMode = System.getenv('RN_SCROLL_PROBE_MODE') ?: 'ordinary'
-if (!["ordinary", "snap", "paging"].contains(scrollProbeMode)) {
+if (!["ordinary", "snap", "snap-stress", "paging"].contains(scrollProbeMode)) {
     throw new GradleException("Unsupported RN_SCROLL_PROBE_MODE=${scrollProbeMode}")
 }
 
