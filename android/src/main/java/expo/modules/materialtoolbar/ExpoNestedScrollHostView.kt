@@ -10,6 +10,8 @@ import android.view.ViewTreeObserver
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
+import com.material3scroll.transport.SourceScopedNestedScrollLifecycle
+import com.material3scroll.transport.SourceScopedNestedScrollLifecycle.StopDecision
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 
@@ -30,6 +32,7 @@ class ExpoNestedScrollHostView(
 ) : ExpoView(context, appContext), NestedScrollingParent3 {
 
   private val nestedParentHelper = NestedScrollingParentHelper(this)
+  private val sourceLifecycle = SourceScopedNestedScrollLifecycle()
 
   private var eventSequence = 0L
   private var preCount = 0L
@@ -37,14 +40,14 @@ class ExpoNestedScrollHostView(
 
   private var activeTopBar: TopAppBarScrollConsumer? = null
   private var activeToolbar: FloatingToolbarScrollConsumer? = null
-  private var activeSource: ViewGroup? = null
   private var activeSourceCapabilities: ReactVerticalScrollSourceCapabilities? = null
   private var nestedTransactionActive = false
 
-  // Momentum belongs to a concrete source instance, not to the host. Fabric can destroy a source
-  // while its TYPE_NON_TOUCH transaction is active without delivering a matching stop callback.
-  // Keeping the owner here prevents that stale state from leaking into a replacement source.
-  private var momentumSource: ViewGroup? = null
+  private val activeSource: ViewGroup?
+    get() = sourceLifecycle.activeSource
+
+  private val momentumSource: ViewGroup?
+    get() = sourceLifecycle.momentumSource
 
   private val throwawayConsumed = IntArray(2)
 
@@ -191,7 +194,7 @@ class ExpoNestedScrollHostView(
 
   override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean {
     val accepted = axes and ViewCompat.SCROLL_AXIS_VERTICAL != 0
-    if (accepted) beginNestedSession(target)
+    if (accepted) beginNestedSession(target, ViewCompat.TYPE_TOUCH)
     log(
       "NESTED_START contract=platform axes=${axesLabel(axes)} accepted=$accepted " +
         "active=$nestedTransactionActive ${targetLabel(target)}",
@@ -205,12 +208,14 @@ class ExpoNestedScrollHostView(
   }
 
   override fun onStopNestedScroll(target: View) {
-    val activeTarget = activeSource === target
+    val targetSource = target as? ViewGroup
+    val activeTarget = sourceLifecycle.isActive(targetSource)
+    val decision = targetSource?.let { sourceLifecycle.stop(it, ViewCompat.TYPE_TOUCH) } ?: StopDecision.Stale
     log(
       "NESTED_STOP contract=platform preCount=$preCount postCount=$postCount " +
         "active=$nestedTransactionActive activeTarget=$activeTarget ${targetLabel(target)}",
     )
-    if (!activeTarget) {
+    if (decision == StopDecision.Stale) {
       log(
         "TX_STALE_STOP contract=platform ignored=true " +
           "activeSource=${sourceIdentity(activeSource)} ${targetLabel(target)}",
@@ -218,7 +223,7 @@ class ExpoNestedScrollHostView(
       return
     }
     nestedParentHelper.onStopNestedScroll(target)
-    finishTouch(target)
+    completeStop(target, decision)
   }
 
   override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) =
@@ -279,12 +284,7 @@ class ExpoNestedScrollHostView(
 
   override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
     val accepted = axes and ViewCompat.SCROLL_AXIS_VERTICAL != 0
-    if (accepted) {
-      beginNestedSession(target)
-      if (type == ViewCompat.TYPE_NON_TOUCH && activeSource === target) {
-        momentumSource = activeSource
-      }
-    }
+    if (accepted) beginNestedSession(target, type)
     log(
       "NESTED_START contract=androidx type=${typeLabel(type)} axes=${axesLabel(axes)} " +
         "accepted=$accepted active=$nestedTransactionActive ${targetLabel(target)}",
@@ -301,13 +301,16 @@ class ExpoNestedScrollHostView(
   }
 
   override fun onStopNestedScroll(target: View, type: Int) {
-    val activeTarget = activeSource === target
+    val targetSource = target as? ViewGroup
+    val activeTarget = sourceLifecycle.isActive(targetSource)
+    val momentumOwner = sourceLifecycle.isMomentumOwner(targetSource)
+    val decision = targetSource?.let { sourceLifecycle.stop(it, type) } ?: StopDecision.Stale
     log(
       "NESTED_STOP contract=androidx type=${typeLabel(type)} preCount=$preCount postCount=$postCount " +
         "active=$nestedTransactionActive activeTarget=$activeTarget " +
-        "momentumOwner=${momentumSource === target} ${targetLabel(target)}",
+        "momentumOwner=$momentumOwner ${targetLabel(target)}",
     )
-    if (!activeTarget) {
+    if (decision == StopDecision.Stale) {
       log(
         "TX_STALE_STOP type=${typeLabel(type)} ignored=true " +
           "activeSource=${sourceIdentity(activeSource)} ${targetLabel(target)}",
@@ -315,12 +318,7 @@ class ExpoNestedScrollHostView(
       return
     }
     nestedParentHelper.onStopNestedScroll(target, type)
-    if (type == ViewCompat.TYPE_NON_TOUCH) {
-      if (momentumSource === target) momentumSource = null
-      finishMovement(target, "momentum-stop")
-    } else {
-      finishTouch(target)
-    }
+    completeStop(target, decision)
   }
 
   override fun onNestedPreScroll(
@@ -330,7 +328,7 @@ class ExpoNestedScrollHostView(
     consumed: IntArray,
     type: Int,
   ) {
-    if (activeSource !== target) {
+    if (!sourceLifecycle.isActive(target as? ViewGroup)) {
       log(
         "TX_STALE_PRE type=${typeLabel(type)} dy=$dy ignored=true " +
           "activeSource=${sourceIdentity(activeSource)} ${targetLabel(target)}",
@@ -387,7 +385,7 @@ class ExpoNestedScrollHostView(
     type: Int,
     consumed: IntArray,
   ) {
-    if (activeSource !== target) {
+    if (!sourceLifecycle.isActive(target as? ViewGroup)) {
       log(
         "TX_STALE_POST type=${typeLabel(type)} child=$dyConsumed unconsumed=$dyUnconsumed " +
           "ignored=true activeSource=${sourceIdentity(activeSource)} ${targetLabel(target)}",
@@ -423,7 +421,7 @@ class ExpoNestedScrollHostView(
   // Session binding / lifecycle.
   // ---------------------------------------------------------------------------
 
-  private fun beginNestedSession(target: View) {
+  private fun beginNestedSession(target: View, type: Int) {
     val capabilities = ReactVerticalScrollSourceInterop.resolve(target)
     val source = capabilities?.view
     if (source == null) {
@@ -431,10 +429,8 @@ class ExpoNestedScrollHostView(
       return
     }
 
-    val previous = activeSource
-    if (previous != null && previous !== source) {
-      abandonActiveSession(previous, source)
-    }
+    val replacement = sourceLifecycle.begin(source, type)
+    if (replacement != null) abandonActiveSession(replacement)
 
     flushPendingLedger("session-rebind")
     preCount = 0
@@ -442,7 +438,6 @@ class ExpoNestedScrollHostView(
 
     val topBar = NativeNestedScrollRegistry.resolveTopBar(target)
     val toolbar = NativeNestedScrollRegistry.resolveToolbar(target)
-    activeSource = source
     activeSourceCapabilities = capabilities
     activeTopBar = topBar
     activeToolbar = toolbar
@@ -460,33 +455,32 @@ class ExpoNestedScrollHostView(
     )
   }
 
-  private fun abandonActiveSession(previous: ViewGroup, replacement: ViewGroup) {
+  private fun abandonActiveSession(replacement: SourceScopedNestedScrollLifecycle.Replacement) {
     flushPendingLedger("source-replaced")
     log(
-      "TX_ABORT reason=source-replaced previous=${sourceIdentity(previous)} " +
-        "replacement=${sourceIdentity(replacement)} momentum=${momentumSource === previous} " +
+      "TX_ABORT reason=source-replaced previous=${sourceIdentity(replacement.previous)} " +
+        "replacement=${sourceIdentity(replacement.replacement)} " +
+        "momentum=${replacement.previousMomentumOwner === replacement.previous} " +
         "active=$nestedTransactionActive",
     )
-    clearActiveSession()
+    activeTopBar = null
+    activeToolbar = null
+    activeSourceCapabilities = null
+    nestedTransactionActive = false
   }
 
-  private fun finishTouch(target: View) {
-    if (activeSource !== target) {
-      log(
-        "TX_STALE_TOUCH_STOP ignored=true activeSource=${sourceIdentity(activeSource)} " +
-          targetLabel(target),
-      )
-      return
+  private fun completeStop(target: View, decision: StopDecision) {
+    when (decision) {
+      StopDecision.Stale -> Unit
+      StopDecision.DeferTouchForMomentum ->
+        log("TX_TOUCH_STOP deferred=momentum ${targetLabel(target)}")
+      StopDecision.EndTouch -> finishMovement(target, "touch-stop")
+      StopDecision.EndMomentum -> finishMovement(target, "momentum-stop")
     }
-    if (momentumSource === target) {
-      log("TX_TOUCH_STOP deferred=momentum ${targetLabel(target)}")
-      return
-    }
-    finishMovement(target, "touch-stop")
   }
 
   private fun finishMovement(target: View, reason: String) {
-    if (activeSource !== target) {
+    if (!sourceLifecycle.isActive(target as? ViewGroup)) {
       log(
         "TX_STALE_END reason=$reason ignored=true activeSource=${sourceIdentity(activeSource)} " +
           targetLabel(target),
@@ -508,10 +502,9 @@ class ExpoNestedScrollHostView(
   }
 
   private fun clearActiveSession() {
-    momentumSource = null
+    sourceLifecycle.clear()
     activeTopBar = null
     activeToolbar = null
-    activeSource = null
     activeSourceCapabilities = null
     nestedTransactionActive = false
   }
