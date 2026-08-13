@@ -2,7 +2,31 @@ package expo.modules.materialtoolbar
 
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.NestedScrollingChild2
 import java.lang.reflect.Method
+
+/** Which RN Android implementation backs a supported vertical source. */
+internal enum class ReactVerticalScrollSourceKind {
+  LegacyScrollView,
+  AndroidXNestedScrollView,
+}
+
+/**
+ * Stable capability snapshot for one supported RN vertical scroll source.
+ *
+ * Keep RN implementation details at this boundary. Transport and Material consumers should operate
+ * on [ViewGroup] plus Android contracts, not on React Native's concrete scroll-view classes.
+ *
+ * [supportsTypedNestedScrolling] means the source implements AndroidX's typed nested-scroll child
+ * contract. It deliberately does not claim that every fling is dispatched as TYPE_NON_TOUCH: that
+ * is a runtime/source-semantic property and must be proven by the transaction itself, not guessed
+ * from a class name or RN version.
+ */
+internal data class ReactVerticalScrollSourceCapabilities(
+  val view: ViewGroup,
+  val kind: ReactVerticalScrollSourceKind,
+  val supportsTypedNestedScrolling: Boolean,
+)
 
 /**
  * Compatibility boundary between the stable ReactScrollView path and the RN 0.87 generated
@@ -22,13 +46,30 @@ internal object ReactVerticalScrollSourceInterop {
   private const val MODERN_SCROLL_AWAY_METHOD = "setScrollAwayPaddingEnabledUnstable"
   private const val LEGACY_SCROLL_AWAY_METHOD = "setScrollAwayTopPaddingEnabledUnstable"
 
-  fun asSupported(source: View): ViewGroup? {
+  /** Resolve a supported source once and expose only the Android capabilities consumers may use. */
+  fun resolve(source: View): ReactVerticalScrollSourceCapabilities? {
     val group = source as? ViewGroup ?: return null
-    return group.takeIf(::isSupported)
+    val kind = when {
+      hasClassInHierarchy(source, NESTED_CLASS) ->
+        ReactVerticalScrollSourceKind.AndroidXNestedScrollView
+      hasClassInHierarchy(source, LEGACY_CLASS) ->
+        ReactVerticalScrollSourceKind.LegacyScrollView
+      else -> return null
+    }
+
+    return ReactVerticalScrollSourceCapabilities(
+      view = group,
+      kind = kind,
+      supportsTypedNestedScrolling = group is NestedScrollingChild2,
+    )
   }
 
-  fun isSupported(source: View): Boolean =
-    hasClassInHierarchy(source, LEGACY_CLASS) || hasClassInHierarchy(source, NESTED_CLASS)
+  fun asSupported(source: View): ViewGroup? = resolve(source)?.view
+
+  fun isSupported(source: View): Boolean = resolve(source) != null
+
+  fun supportsTypedNestedScrolling(source: View): Boolean =
+    resolve(source)?.supportsTypedNestedScrolling == true
 
   fun setScrollAwayPadding(source: ViewGroup, topPadding: Int, bottomPadding: Int): Boolean {
     val intType = Int::class.javaPrimitiveType ?: return false
