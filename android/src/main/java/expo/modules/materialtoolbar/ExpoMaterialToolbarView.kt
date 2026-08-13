@@ -1,4 +1,7 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(
+  androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+  androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
+)
 
 package expo.modules.materialtoolbar
 
@@ -23,7 +26,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -379,8 +382,7 @@ class ExpoMaterialToolbarView(
       val unselectedContentColor = uiState.unselectedContentArgb?.let { ComposeColor(it) }
         ?: toolbarColors.toolbarContentColor
 
-      val hideForIme = uiState.imeBehavior == "hide" &&
-        WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
+      val hideForIme = uiState.imeBehavior == "hide" && WindowInsets.isImeVisible
       val shouldRender = uiState.visible && !hideForIme
       val layoutDirection = LocalLayoutDirection.current
       val defaultContentPadding = FloatingToolbarDefaults.ContentPadding
