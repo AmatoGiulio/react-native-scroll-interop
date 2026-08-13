@@ -65,7 +65,7 @@ export default function SourceRemountScreen() {
             accessibilityLabel="Remount scroll source"
             onPress={() => setGeneration((value) => value + 1)}
           >
-            <MaterialToolbar.Text>Remount {generation}</MaterialToolbar.Text>
+            <MaterialToolbar.Text>{`Remount ${generation}`}</MaterialToolbar.Text>
           </MaterialToolbar.TextButton>
         </MaterialToolbar.Content>
       </MaterialToolbar.Root>
