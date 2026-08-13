@@ -10,6 +10,7 @@ const ROUTES = [
   { href: '/transport-flatlist-probe', label: 'Transport matrix · FlatList + TopAppBar + FloatingToolbar' },
   { href: '/transport-sectionlist-probe', label: 'Transport matrix · SectionList + TopAppBar + FloatingToolbar' },
   { href: '/transport-flashlist-probe', label: 'Transport matrix · FlashList + TopAppBar + FloatingToolbar' },
+  { href: '/transport-lifecycle-stress-probe', label: 'Stress matrix · source replacement + both chrome' },
   { href: '/(tabs)', label: 'Tabs · Gallery (legacy harness)' },
   { href: '/(tabs)/feed', label: 'Tabs · Feed (legacy harness)' },
   { href: '/(tabs)/profile', label: 'Tabs · Profile (legacy harness)' },
