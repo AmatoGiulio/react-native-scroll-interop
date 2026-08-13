@@ -6,16 +6,12 @@ import {spawnSync} from 'node:child_process';
 
 const mode = process.argv[2];
 const harness = process.argv[3] ?? 'source-only';
-if (mode !== 'snap' && mode !== 'snap-stress' && mode !== 'paging') {
-  console.error(
-    'Usage: node scripts/run-source-snap-mode.mjs snap|snap-stress|paging [source-only|multi-chrome]',
-  );
+if (mode !== 'snap' && mode !== 'paging') {
+  console.error('Usage: node scripts/run-source-snap-mode.mjs snap|paging [source-only|multi-chrome]');
   process.exit(2);
 }
 if (harness !== 'source-only' && harness !== 'multi-chrome') {
-  console.error(
-    'Usage: node scripts/run-source-snap-mode.mjs snap|snap-stress|paging [source-only|multi-chrome]',
-  );
+  console.error('Usage: node scripts/run-source-snap-mode.mjs snap|paging [source-only|multi-chrome]');
   process.exit(2);
 }
 
@@ -44,14 +40,4 @@ if (harness === 'multi-chrome') {
 }
 console.log('Capture the same Rn087NestedScroll tag, but write this mode-specific log:');
 console.log(`  adb logcat -v time -s Rn087NestedScroll:I '*:S' | tee ${logPath}`);
-if (mode === 'snap-stress') {
-  console.log('The rendered ScrollView is intentionally identical to the validated snap screen.');
-  console.log('Stress sequence:');
-  console.log('  1. Complete one clean snap in each direction.');
-  console.log('  2. Make a strong release, then put the finger back down immediately while it is still moving.');
-  console.log('  3. Without waiting, drag in the opposite direction and release. Repeat at least three times.');
-  console.log('  4. Stop logcat only after the final animation is idle.');
-  console.log('Bottom-edge coverage is intentionally a separate gate so content geometry stays unchanged.');
-} else {
-  console.log('Use clean drag/release gestures first and let each snap settle before stopping logcat.');
-}
+console.log('Use clean drag/release gestures first and let each snap settle before stopping logcat.');

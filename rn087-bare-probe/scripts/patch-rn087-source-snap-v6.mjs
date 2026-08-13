@@ -66,23 +66,6 @@ replaceOnce(
   '      startNestedDirectSnap(targetOffset, effectiveVelocityY)\n',
 );
 
-// AndroidX NestedScrollView aborts its animated scroll on ACTION_DOWN before it initializes the new
-// TOUCH drag. V6 owns an extra direct-snap active bit around the same RN OverScroller, so clear that
-// wrapper state first. Otherwise AndroidX abortAnimation() can leave currY at the old final target
-// and our next computeScroll() would apply one stale NON_TOUCH frame after the new finger is down.
-const touchAnchor =
-  '  override fun onTouchEvent(ev: MotionEvent): Boolean {\n' +
-  '    if (!scrollEnabled) return false\n';
-replaceOnce(
-  'direct snap ACTION_DOWN interruption lifecycle',
-  touchAnchor,
-  '  override fun onTouchEvent(ev: MotionEvent): Boolean {\n' +
-    '    if (ev.actionMasked == MotionEvent.ACTION_DOWN && nestedDirectSnapActive) {\n' +
-    '      finishNestedDirectSnap("touch-interrupt")\n' +
-    '    }\n' +
-    '    if (!scrollEnabled) return false\n',
-);
-
 const correctVelocityAnchor = '  private fun correctFlingVelocityY(velocityY: Int): Int {\n';
 const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: Int, sourceVelocityY: Int) {
     if (nestedDirectSnapActive) {
@@ -223,5 +206,5 @@ replaceOnce(
 
 fs.writeFileSync(sourcePath, source);
 console.log(
-  'RN 0.87 source patch V6: direct snap target-lock + ACTION_DOWN interruption parity',
+  'RN 0.87 source patch V6: direct snap ends when the RN child reaches its absolute target',
 );
