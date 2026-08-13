@@ -7,6 +7,7 @@ import { StyleSheet, Text, View } from 'react-native';
  */
 const ROUTES = [
   { href: '/transport-probe', label: 'Transport probe · ScrollView + TopAppBar + FloatingToolbar' },
+  { href: '/transport-flatlist-probe', label: 'Transport matrix · FlatList + TopAppBar + FloatingToolbar' },
   { href: '/(tabs)', label: 'Tabs · Gallery (legacy harness)' },
   { href: '/(tabs)/feed', label: 'Tabs · Feed (legacy harness)' },
   { href: '/(tabs)/profile', label: 'Tabs · Profile (legacy harness)' },
@@ -19,7 +20,7 @@ export default function DebugIndex() {
     <View style={styles.root}>
       <Text style={styles.heading}>expo-material-toolbar PoC</Text>
       <Text style={styles.note}>
-        Validate the minimal transport probe before using Tabs or FlashList as an oracle.
+        Validate the minimal ScrollView oracle first, then run the production-matrix probes without changing the native core.
       </Text>
       {ROUTES.map((route) => (
         <Link key={route.href} href={route.href as never} style={styles.link}>
