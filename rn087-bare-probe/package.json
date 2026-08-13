@@ -11,6 +11,7 @@
     "android:on-source": "node scripts/run-android.mjs on-source",
     "android:on-source-chrome": "node scripts/run-android.mjs on-source-chrome",
     "android:on-source-multi-chrome": "node scripts/run-android.mjs on-source-multi-chrome",
+    "android:on-source-multi-chrome-lifecycle": "node scripts/run-lifecycle.mjs",
     "analyze:off": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-off.log --expect off",
     "analyze:on": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on.log --expect on",
     "analyze:on-shim": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on-shim.log --expect on",
