@@ -6,9 +6,10 @@ import process from 'node:process';
 const logPath = process.argv[2];
 const expectFloating = process.argv.includes('--expect-floating');
 const expectSnap = process.argv.includes('--expect-snap');
-if (!logPath) {
+const expectPaging = process.argv.includes('--expect-paging');
+if (!logPath || (expectSnap && expectPaging)) {
   console.error(
-    'Usage: node scripts/analyze-rn087-chrome-log.mjs <log-path> [--expect-floating] [--expect-snap]',
+    'Usage: node scripts/analyze-rn087-chrome-log.mjs <log-path> [--expect-floating] [--expect-snap|--expect-paging]',
   );
   process.exit(2);
 }
@@ -29,7 +30,12 @@ const touchStops = count(/NESTED_STOP .*type=TOUCH/);
 const nonTouchStops = count(/NESTED_STOP .*type=NON_TOUCH/);
 const sourcePatchFlings = count(/SOURCE_FLING_PATCH/);
 const sourcePatchSnapStarts = count(/SOURCE_SNAP_DIRECT_START mode=post-only-target-lock/);
-const sourcePatchRuntime = expectSnap ? sourcePatchSnapStarts > 0 : sourcePatchFlings > 0;
+const sourcePatchPagingStarts = count(/SOURCE_SNAP_ANIMATOR_START/);
+const sourcePatchRuntime = expectSnap
+  ? sourcePatchSnapStarts > 0
+  : expectPaging
+    ? sourcePatchPagingStarts > 0
+    : sourcePatchFlings > 0;
 const scrollAwaySuccess = count(/CHROME_SCROLL_AWAY .*target=[1-9][0-9]* success=true/);
 const settleStarts = count(/CHROME_SETTLE_START/);
 const settleEnds = count(/CHROME_SETTLE_END/);
@@ -196,7 +202,9 @@ const gates = [
   ['NON_TOUCH session balance', nonTouchStarts > 0 && nonTouchStarts === nonTouchStops],
   ['scroll-away geometry', scrollAwaySuccess > 0],
   ['TOUCH chrome movement', touchChromeMovement > 0],
-  ['NON_TOUCH chrome movement', nonTouchChromeMovement > 0],
+  expectPaging
+    ? ['NON_TOUCH paging source movement', childNonTouchPostMovement > 0]
+    : ['NON_TOUCH chrome movement', nonTouchChromeMovement > 0],
   ['ledger conservation', ledgerConserved],
   ['Material settle', settleStarts > 0 && settleEnds > 0],
 ];
@@ -228,6 +236,7 @@ console.log(`  bootstrap true              ${bootstrapTrue}`);
 console.log(`  ReactNestedScrollView lines ${nestedClassLines}`);
 console.log(`  source patch flings         ${sourcePatchFlings}`);
 console.log(`  target-lock snap starts     ${sourcePatchSnapStarts}`);
+console.log(`  paging animator starts      ${sourcePatchPagingStarts}`);
 console.log('');
 console.log('Nested sessions');
 console.log(`  starts TOUCH / NON_TOUCH    ${touchStarts} / ${nonTouchStarts}`);
@@ -236,6 +245,9 @@ console.log('');
 console.log('Material3 TopAppBar');
 console.log(`  scroll-away success         ${scrollAwaySuccess}`);
 console.log(`  movement TOUCH / NON_TOUCH  ${touchChromeMovement} / ${nonTouchChromeMovement}`);
+if (expectPaging && nonTouchChromeMovement === 0) {
+  console.log('  paging NON_TOUCH chrome     no positional change in this capture');
+}
 console.log(`  settle start / end          ${settleStarts} / ${settleEnds}`);
 console.log(
   `  settle completed/cancelled ${settleCompleted} / ${settleCancelled}` +
