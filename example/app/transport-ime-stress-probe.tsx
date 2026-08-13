@@ -15,7 +15,7 @@ export default function TransportImeStressProbe() {
         />
       </NativeScrollHost>
       <MaterialTopAppBar title="IME hide stress" variant="large" scrollBehavior="exitUntilCollapsed" />
-      <MaterialToolbar.Root placement="bottom" insets="safe" imeBehavior="hide" scrollBehavior="exitAlways">
+      <MaterialToolbar.Root placement="bottom" insets="safe" imeBehavior="hide" scrollBehavior="none">
         <MaterialToolbar.Content>
           <MaterialToolbar.TextButton accessibilityLabel="One"><MaterialToolbar.Text>One</MaterialToolbar.Text></MaterialToolbar.TextButton>
         </MaterialToolbar.Content>
