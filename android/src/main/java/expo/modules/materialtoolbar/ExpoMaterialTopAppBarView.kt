@@ -39,13 +39,6 @@ private data class TopAppBarHostState(
   val dynamicColor: Boolean = false,
 )
 
-/**
- * Material3 TopAppBar embedded as a full-screen BOX_NONE overlay.
- *
- * The Android host owns only the fixed expanded surface geometry. Material remains responsible for
- * the app bar's intrinsic height and its collapse state; React Native remains responsible for the
- * scroll source and its physics.
- */
 class ExpoMaterialTopAppBarView(
   context: Context,
   appContext: AppContext,
@@ -54,6 +47,8 @@ class ExpoMaterialTopAppBarView(
   private val state = mutableStateOf(TopAppBarHostState())
   private var lastTopInsetPx = -1
   private var expandedChromeHeightPx = 0
+  private var intrinsicHostMeasurePending = false
+  private var intrinsicHostResolveAttempts = 0
 
   private val topAppBarScrollConsumer = TopAppBarScrollConsumer()
 
@@ -67,10 +62,6 @@ class ExpoMaterialTopAppBarView(
     }
   }
 
-  /**
-   * Insets stay owned by Android/Compose. The host only notices changes that invalidate the cached
-   * expanded height; Material resolves TopAppBarDefaults.windowInsets from the real window dispatch.
-   */
   override fun onApplyWindowInsets(insets: android.view.WindowInsets): android.view.WindowInsets {
     updateTopInset(WindowInsetsCompat.toWindowInsetsCompat(insets, this))
     return super.onApplyWindowInsets(insets)
@@ -86,6 +77,7 @@ class ExpoMaterialTopAppBarView(
     lastTopInsetPx = topInset
     resetExpandedChromeGeometry()
     scheduleHostMeasureAndLayout()
+    scheduleIntrinsicHostSizeResolution()
     composeView.requestLayout()
 
     if (BuildConfig.DEBUG) {
@@ -95,13 +87,10 @@ class ExpoMaterialTopAppBarView(
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-
-    // A screen can mount after the Activity's first inset dispatch. Seed the cache from the settled
-    // root when available and still request a normal dispatch so Compose receives the real insets.
     updateTopInset(ViewCompat.getRootWindowInsets(this))
     ViewCompat.requestApplyInsets(this)
-
     NativeNestedScrollRegistry.registerTopBar(this, topAppBarScrollConsumer)
+    scheduleIntrinsicHostSizeResolution()
   }
 
   override fun onDetachedFromWindow() {
@@ -130,32 +119,81 @@ class ExpoMaterialTopAppBarView(
   private fun updateState(transform: (TopAppBarHostState) -> TopAppBarHostState) {
     state.value = transform(state.value)
     requestLayout()
+    scheduleIntrinsicHostSizeResolution()
     composeView.requestLayout()
   }
 
-  // Let Material report its real expanded intrinsic height. The fixed Android surface is derived
-  // from the maximum measured height observed for the current geometry and never from constants.
+  private fun scheduleIntrinsicHostSizeResolution() {
+    if (intrinsicHostMeasurePending || !isAttachedToWindow || height > 0) return
+    intrinsicHostMeasurePending = true
+    post {
+      intrinsicHostMeasurePending = false
+      if (!isAttachedToWindow || width <= 0 || height > 0) return@post
+
+      val availableHeight = rootView.height
+      if (availableHeight <= 0) {
+        scheduleIntrinsicHostSizeRetry()
+        return@post
+      }
+
+      onMeasureComposeChild(width, availableHeight)
+      val targetHeightPx = expandedChromeHeightPx
+      if (targetHeightPx <= 0) {
+        scheduleIntrinsicHostSizeRetry()
+        return@post
+      }
+
+      val density = resources.displayMetrics.density
+      if (density > 0f) {
+        shadowNodeProxy.setViewSize(
+          Double.NaN,
+          targetHeightPx.toDouble() / density.toDouble(),
+        )
+        if (BuildConfig.DEBUG) {
+          android.util.Log.d(
+            NATIVE_SCROLL_LOG_TAG,
+            "topappbar publishFabricHeight px=$targetHeightPx " +
+              "dp=${targetHeightPx.toDouble() / density.toDouble()} " +
+              "host=${width}x$height root=${rootView.width}x${rootView.height} " +
+              "attempt=$intrinsicHostResolveAttempts",
+          )
+        }
+      }
+
+      if (height <= 0) {
+        scheduleIntrinsicHostSizeRetry()
+      }
+    }
+  }
+
+  private fun scheduleIntrinsicHostSizeRetry() {
+    if (intrinsicHostResolveAttempts >= 8 || !isAttachedToWindow || height > 0) return
+    intrinsicHostResolveAttempts += 1
+    ViewCompat.postOnAnimation(this) {
+      scheduleIntrinsicHostSizeResolution()
+    }
+  }
+
   override fun onMeasureComposeChild(hostWidthPx: Int, hostHeightPx: Int) {
     composeView.measure(
       View.MeasureSpec.makeMeasureSpec(hostWidthPx, View.MeasureSpec.EXACTLY),
       View.MeasureSpec.makeMeasureSpec(hostHeightPx, View.MeasureSpec.AT_MOST),
     )
 
+    if (composeView.measuredHeight > 0) {
+      expandedChromeHeightPx = maxOf(expandedChromeHeightPx, composeView.measuredHeight)
+    }
+
     if (BuildConfig.DEBUG) {
       android.util.Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "topappbar measure host=${hostWidthPx}x$hostHeightPx " +
+        "topappbar measure host=${hostWidthPx}x$hostHeightPx actualHost=${width}x$height " +
           "compose=${composeView.measuredWidth}x${composeView.measuredHeight} " +
           "expanded=$expandedChromeHeightPx",
       )
     }
   }
 
-  /**
-   * Keep the ComposeView laid out at the expanded app-bar height while Material collapses inside it.
-   * This is the geometry that was previously verified on-device: the Android parent never chases a
-   * frame-by-frame collapsing child size through Fabric.
-   */
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
     val parentWidth = right - left
     val parentHeight = bottom - top
@@ -177,9 +215,9 @@ class ExpoMaterialTopAppBarView(
     }
   }
 
-  /** Called only when the expanded app-bar geometry can legitimately change. */
   private fun resetExpandedChromeGeometry() {
     expandedChromeHeightPx = 0
+    intrinsicHostResolveAttempts = 0
     topAppBarScrollConsumer.resetExpandedChromeHeight()
     NativeNestedScrollRegistry.topBarStateChanged(this)
   }
