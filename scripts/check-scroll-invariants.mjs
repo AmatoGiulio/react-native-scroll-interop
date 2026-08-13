@@ -208,14 +208,32 @@ if (fs.existsSync(hostAbsolutePath)) {
   if (!host.includes('private val sourceLifecycle = SourceScopedNestedScrollLifecycle()')) {
     violations.push(`${hostPath}: production host must delegate lifecycle ownership to shared kernel`);
   }
-  if (!host.includes('NestedScrollConservationLedger')) {
-    violations.push(`${hostPath}: production host is not using the shared conservation ledger`);
+  if (!host.includes('VerticalNestedScrollTransactionDispatcher')) {
+    violations.push(`${hostPath}: production host is not using the shared PRE/POST dispatcher`);
   }
-  if (!host.includes('private val conservationLedger = NestedScrollConservationLedger()')) {
-    violations.push(`${hostPath}: production host must delegate conservation accounting to shared ledger`);
+  if (!host.includes('private val transactionDispatcher = VerticalNestedScrollTransactionDispatcher()')) {
+    violations.push(`${hostPath}: production host must delegate vertical dispatch to shared core`);
+  }
+  if (!host.includes('transactionDispatcher.dispatchPre(') || !host.includes('transactionDispatcher.dispatchPost(')) {
+    violations.push(`${hostPath}: production PRE/POST callbacks must route through shared dispatcher`);
+  }
+  if (host.includes('NestedScrollConservationLedger')) {
+    violations.push(`${hostPath}: production host must not own the shared ledger outside the dispatcher`);
   }
   if (/private var ledger(RequestedY|ChromePreY|Pending|Frames|Broken|Orphans|OrphanPres)/.test(host)) {
     violations.push(`${hostPath}: production host must not duplicate shared conservation state`);
+  }
+  if (!host.includes('VerticalNestedScrollTransactionDispatcher.PostObserver')) {
+    violations.push(`${hostPath}: FloatingToolbar observation must use the non-consuming POST port`);
+  }
+  if (!host.includes('postObservers = if (toolbarReady) floatingToolbarPostObservers else emptyList()')) {
+    violations.push(`${hostPath}: FloatingToolbar must bind only as a POST observer`);
+  }
+  if (!host.includes('preConsumers = if (topBarReady) topBarPreConsumers else emptyList()')) {
+    violations.push(`${hostPath}: TopAppBar PRE participation must be fixed at transaction bind`);
+  }
+  if (!host.includes('postConsumers = if (topBarReady) topBarPostConsumers else emptyList()')) {
+    violations.push(`${hostPath}: TopAppBar POST participation must be fixed at transaction bind`);
   }
   if (host.includes('private var momentumSource:')) {
     violations.push(`${hostPath}: production host must not duplicate shared momentum ownership`);
@@ -316,7 +334,9 @@ console.log('  shared conservation ledger compiled by Expo and bare RN hosts');
 console.log('  shared vertical PRE/POST dispatcher compiled by Expo and bare RN hosts');
 console.log('  bare RN 0.87 host uses shared vertical PRE/POST dispatcher');
 console.log('  production host uses shared source-scoped lifecycle ownership');
-console.log('  production host uses shared conservation accounting');
+console.log('  production host uses shared vertical PRE/POST dispatcher');
+console.log('  production host uses shared conservation accounting through dispatcher');
+console.log('  FloatingToolbar is observation-only in shared POST dispatch');
 console.log('  stale nested callbacks fail closed before parent helper mutation');
 console.log('  Compose chrome child remeasured directly from Fabric-owned bounds');
 console.log('  unresolved Material TopAppBar geometry fails closed');
