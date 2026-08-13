@@ -5,8 +5,13 @@ import process from 'node:process';
 import {spawnSync} from 'node:child_process';
 
 const variant = process.argv[2];
+const probeMode = process.argv[3] ?? 'snap';
 if (variant !== 'legacy' && variant !== 'stock' && variant !== 'patched') {
-  console.error('Usage: node scripts/run-snap-ab.mjs legacy|stock|patched');
+  console.error('Usage: node scripts/run-snap-ab.mjs legacy|stock|patched [snap|paging]');
+  process.exit(2);
+}
+if (probeMode !== 'snap' && probeMode !== 'paging') {
+  console.error('Usage: node scripts/run-snap-ab.mjs legacy|stock|patched [snap|paging]');
   process.exit(2);
 }
 
@@ -17,17 +22,21 @@ const runnerMode = variant === 'legacy' ? 'off' : variant === 'stock' ? 'on' : '
 const result = spawnSync(process.execPath, [runner, runnerMode], {
   cwd: root,
   stdio: 'inherit',
-  env: {...process.env, RN_SCROLL_PROBE_MODE: 'snap'},
+  env: {...process.env, RN_SCROLL_PROBE_MODE: probeMode},
 });
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status ?? 1);
 
-const logPath = `/tmp/rn087-bare-snap-${variant}.log`;
+const logPath = `/tmp/rn087-bare-${probeMode}-${variant}.log`;
+const props =
+  probeMode === 'snap'
+    ? 'pagingEnabled + snapToInterval'
+    : 'pagingEnabled only (RN page-size animator path)';
 console.log('');
-console.log(`RN 0.87 snap A/B variant=${variant}`);
+console.log(`RN 0.87 ${probeMode} A/B variant=${variant}`);
 console.log(`  native source: ${variant === 'legacy' ? 'ReactScrollView' : 'ReactNestedScrollView'}`);
 console.log(`  RN source patch: ${variant === 'patched' ? 'current diagnostic source patch enabled' : 'disabled'}`);
 console.log('  chrome: disabled (source-behavior A/B only)');
-console.log('  JS props: identical pagingEnabled + snapToInterval');
+console.log(`  JS props: identical ${props}`);
 console.log(`Capture: adb logcat -v time -s Rn087NestedScroll:I '*:S' | tee ${logPath}`);
 console.log('Compare the feel using the same gesture sequence for each variant.');
