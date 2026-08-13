@@ -12,8 +12,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-image",
-      "./plugins/with-rn087-nested-scroll-experiment"
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true
