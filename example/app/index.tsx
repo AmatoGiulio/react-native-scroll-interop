@@ -8,6 +8,7 @@ import { StyleSheet, Text, View } from 'react-native';
 const ROUTES = [
   { href: '/transport-probe', label: 'Transport probe · ScrollView + TopAppBar + FloatingToolbar' },
   { href: '/transport-flatlist-probe', label: 'Transport matrix · FlatList + TopAppBar + FloatingToolbar' },
+  { href: '/transport-sectionlist-probe', label: 'Transport matrix · SectionList + TopAppBar + FloatingToolbar' },
   { href: '/(tabs)', label: 'Tabs · Gallery (legacy harness)' },
   { href: '/(tabs)/feed', label: 'Tabs · Feed (legacy harness)' },
   { href: '/(tabs)/profile', label: 'Tabs · Profile (legacy harness)' },
