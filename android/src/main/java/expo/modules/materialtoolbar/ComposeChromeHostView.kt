@@ -25,9 +25,9 @@ import expo.modules.kotlin.views.ExpoView
  * the ComposeView when its intrinsic size changes therefore dies at the first React Native ancestor
  * and never reaches ViewRootImpl, so nothing measures the Compose child again after the window
  * insets, a prop or the font scale changed what it wants to be. Observing that request here and
- * completing the pass against the bounds React Native already assigned is what keeps the two in
- * sync. This is the contract [shouldUseAndroidLayout] describes, plus the guard that stops a request
- * raised before React Native has sized the host from laying it out at 0x0.
+ * completing the child pass against the bounds React Native already assigned is what keeps the two
+ * in sync. The host never asks Android to reposition itself; it only remeasures and relays out its
+ * Compose child inside the Fabric-owned rectangle.
  *
  * Subclasses describe geometry only: which measure spec the Compose child gets, and where it sits.
  */
@@ -59,17 +59,39 @@ abstract class ComposeChromeHostView(
   protected abstract fun onMeasureComposeChild(hostWidthPx: Int, hostHeightPx: Int)
 
   /**
-   * Complete a measure/layout pass on the next message, coalescing the many requests a single
-   * recomposition can raise into one. Runs against the bounds React Native already assigned, so it
-   * never fights React Native for ownership of this view's position.
+   * Complete a Compose-child measure/layout pass on the next message, coalescing the many requests a
+   * single recomposition can raise into one.
+   *
+   * Do not delegate this retry through the parent ViewGroup's requestLayout chain: Fabric owns that
+   * chain and may already consider the native host laid out. Instead use the host's current non-zero
+   * Fabric bounds directly, measure the Compose child, then dispatch this host's child-layout method.
    */
   protected fun scheduleHostMeasureAndLayout() {
     if (hostMeasurePending) return
     hostMeasurePending = true
     post {
+      if (!isAttachedToWindow || width <= 0 || height <= 0) {
+        hostMeasurePending = false
+        return@post
+      }
+
+      val hostWidth = width
+      val hostHeight = height
+      onMeasureComposeChild(hostWidth, hostHeight)
+      onLayout(
+        false,
+        left,
+        top,
+        right,
+        bottom,
+      )
       hostMeasurePending = false
-      if (!isAttachedToWindow || width <= 0 || height <= 0) return@post
-      measureAndLayout()
+
+      // A first expanded TopAppBar layout can pin its Compose surface and request one follow-up pass.
+      // Honour that request without involving the Fabric parent and without spinning while stable.
+      if (composeView.isLayoutRequested) {
+        scheduleHostMeasureAndLayout()
+      }
     }
   }
 
@@ -92,20 +114,14 @@ abstract class ComposeChromeHostView(
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-    // Fabric can attach this host before its final Yoga bounds have reached Android. The attach pass
-    // is still useful when bounds are already present; onSizeChanged below closes the complementary
-    // ordering where this post runs while width/height are still zero.
+    // Fabric can attach this host either before or after final Yoga bounds have reached Android.
+    // The posted pass handles the latter immediately; onSizeChanged closes the former ordering.
     scheduleHostMeasureAndLayout()
   }
 
   override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
     super.onSizeChanged(w, h, oldw, oldh)
     if (!isAttachedToWindow || w <= 0 || h <= 0) return
-
-    // Fabric's mount order is not guaranteed to be attach -> measured non-zero bounds. If attach
-    // happened while this host was 0x0, scheduleHostMeasureAndLayout() intentionally did nothing and
-    // the Compose child would otherwise remain unmeasured forever. Retry exactly when RN gives the
-    // host usable bounds; unchanged layouts do not re-enter this path, so there is no layout loop.
     scheduleHostMeasureAndLayout()
   }
 
@@ -116,9 +132,7 @@ abstract class ComposeChromeHostView(
 
     // AbstractComposeView creates its composition on the first measure, and creating it requires a
     // window: it resolves the recomposer from the view tree. Fabric measures a view before attaching
-    // it — reliably so when a screen is pushed rather than mounted with the surface — and measuring
-    // the child here would throw "Cannot locate windowRecomposer". Skip it while detached;
-    // onAttachedToWindow/onSizeChanged ask again once both window and usable bounds exist.
+    // it, so skip the child while detached; attach/size-change will run the child pass directly.
     if (!isAttachedToWindow) return
 
     onMeasureComposeChild(width, height)
