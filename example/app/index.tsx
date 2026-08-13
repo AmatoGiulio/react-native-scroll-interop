@@ -13,6 +13,7 @@ const ROUTES = [
   { href: '/transport-lifecycle-stress-probe', label: 'Stress matrix · source replacement + both chrome' },
   { href: '/transport-navigation-stress-probe', label: 'Stress matrix · replace whole screen during fling' },
   { href: '/transport-orientation-stress-probe', label: 'Stress matrix · rotate during drag/fling' },
+  { href: '/transport-ime-stress-probe', label: 'Stress matrix · IME resize + safe insets' },
   { href: '/(tabs)', label: 'Tabs · Gallery (legacy harness)' },
   { href: '/(tabs)/feed', label: 'Tabs · Feed (legacy harness)' },
   { href: '/(tabs)/profile', label: 'Tabs · Profile (legacy harness)' },
