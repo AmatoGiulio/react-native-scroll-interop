@@ -21,6 +21,10 @@ version = '2.0.0-alpha.25'
 android {
   namespace 'expo.modules.materialtoolbar'
 
+  sourceSets {
+    main.java.srcDirs += file("${project.projectDir}/../android-shared/src/main/java")
+  }
+
   defaultConfig {
     versionCode 25
     versionName '2.0.0-alpha.25'
