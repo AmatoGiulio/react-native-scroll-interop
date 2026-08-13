@@ -5,8 +5,10 @@ import path from 'node:path';
 import process from 'node:process';
 
 const root = process.cwd();
+const hostPath =
+  'android/src/main/java/expo/modules/materialtoolbar/ExpoNestedScrollHostView.kt';
 const files = [
-  'android/src/main/java/expo/modules/materialtoolbar/ExpoNestedScrollHostView.kt',
+  hostPath,
   'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt',
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt',
@@ -76,10 +78,62 @@ if (!fs.existsSync(adapterPath)) {
   }
 }
 
+const hostAbsolutePath = path.join(root, hostPath);
+if (fs.existsSync(hostAbsolutePath)) {
+  const host = stripComments(fs.readFileSync(hostAbsolutePath, 'utf8'));
+
+  if (host.includes('momentumSessionActive')) {
+    violations.push(`${hostPath}: momentum lifecycle must not be host-global`);
+  }
+  if (!host.includes('private var momentumSource: ViewGroup? = null')) {
+    violations.push(`${hostPath}: missing source-scoped momentum owner`);
+  }
+  if (!host.includes('TX_ABORT reason=source-replaced')) {
+    violations.push(`${hostPath}: missing source replacement abort path`);
+  }
+  if (!host.includes('TX_STALE_PRE') || !host.includes('TX_STALE_POST')) {
+    violations.push(`${hostPath}: stale PRE/POST callbacks must fail closed`);
+  }
+
+  const typedStopStart = host.indexOf(
+    'override fun onStopNestedScroll(target: View, type: Int)',
+  );
+  const typedStopEnd = host.indexOf('override fun onNestedPreScroll(', typedStopStart);
+  const typedStop =
+    typedStopStart >= 0 && typedStopEnd > typedStopStart
+      ? host.slice(typedStopStart, typedStopEnd)
+      : '';
+  const typedGuard = typedStop.indexOf('if (!activeTarget)');
+  const typedHelper = typedStop.indexOf(
+    'nestedParentHelper.onStopNestedScroll(target, type)',
+  );
+  if (typedGuard < 0 || typedHelper < 0 || typedGuard > typedHelper) {
+    violations.push(
+      `${hostPath}: typed stale STOP must be rejected before NestedScrollingParentHelper`,
+    );
+  }
+
+  const platformStopStart = host.indexOf('override fun onStopNestedScroll(target: View)');
+  const platformStopEnd = host.indexOf('override fun onNestedPreScroll(', platformStopStart);
+  const platformStop =
+    platformStopStart >= 0 && platformStopEnd > platformStopStart
+      ? host.slice(platformStopStart, platformStopEnd)
+      : '';
+  const platformGuard = platformStop.indexOf('if (!activeTarget)');
+  const platformHelper = platformStop.indexOf('nestedParentHelper.onStopNestedScroll(target)');
+  if (platformGuard < 0 || platformHelper < 0 || platformGuard > platformHelper) {
+    violations.push(
+      `${hostPath}: platform stale STOP must be rejected before NestedScrollingParentHelper`,
+    );
+  }
+}
+
 if (violations.length > 0) {
   console.error('Native scroll invariant: FAIL');
   for (const violation of violations) console.error(`  ${violation}`);
-  console.error('\nRN must remain the sole owner of scroll physics and RN source typing must stay behind the compatibility boundary.');
+  console.error(
+    '\nRN must remain the sole owner of scroll physics, source typing must stay behind the compatibility boundary, and nested lifecycle must stay scoped to the active source.',
+  );
   process.exit(1);
 }
 
@@ -90,3 +144,5 @@ console.log('  no parent-started nested session');
 console.log('  no timer-based scroll reconstruction');
 console.log('  concrete RN scroll source types confined to compatibility adapter');
 console.log('  explicit RN vertical source capability model present');
+console.log('  momentum ownership scoped to active RN source');
+console.log('  stale nested callbacks fail closed before parent helper mutation');
