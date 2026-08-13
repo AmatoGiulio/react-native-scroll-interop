@@ -14,7 +14,6 @@
     "android:on-source-snap": "node scripts/run-source-snap-mode.mjs snap",
     "android:on-source-paging": "node scripts/run-source-snap-mode.mjs paging",
     "android:on-source-multi-chrome-snap": "node scripts/run-source-snap-mode.mjs snap multi-chrome",
-    "android:on-source-multi-chrome-snap-stress": "node scripts/run-source-snap-mode.mjs snap-stress multi-chrome",
     "android:on-source-multi-chrome-paging": "node scripts/run-source-snap-mode.mjs paging multi-chrome",
     "android:snap:legacy": "node scripts/run-snap-ab.mjs legacy snap",
     "android:snap:stock": "node scripts/run-snap-ab.mjs stock snap",
@@ -31,7 +30,6 @@
     "analyze:on-source-snap": "node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-snap.log --expect direct",
     "analyze:on-source-paging": "node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-paging.log --expect paging",
     "analyze:on-source-multi-chrome-snap": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap.log --expect-floating --expect-snap && node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap.log --expect direct-chrome",
-    "analyze:on-source-multi-chrome-snap-stress": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap-stress.log --expect-floating --expect-snap && node ../scripts/analyze-rn087-snap-interruption-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap-stress.log",
     "analyze:on-source-multi-chrome-paging": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-paging.log --expect-floating --expect-paging && node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-multi-chrome-paging.log --expect paging"
   },
   "dependencies": {
@@ -46,7 +44,7 @@
     "@react-native-community/cli-platform-android": "20.2.0",
     "@react-native/babel-preset": "0.87.0",
     "@react-native/metro-config": "0.87.0",
-    "@react-native/typescript-config": "0.87.0",
+    "@react-native/typescript-config": "^6.0.3",
     "@types/react": "^19.2.0",
     "typescript": "^6.0.3"
   },
