@@ -25,7 +25,8 @@ abstract class ComposeChromeHostView(
   }
 
   private var hostMeasurePending = false
-  private var lastIncomingImeVisible: Boolean? = null
+  private var lastNativeImeVisible: Boolean? = null
+  private var lastTraceIncomingImeVisible: Boolean? = null
   private var lastRootImeVisible: Boolean? = null
 
   init {
@@ -82,11 +83,15 @@ abstract class ComposeChromeHostView(
       .toWindowInsetsCompat(applied, this)
       .isVisible(WindowInsetsCompat.Type.ime())
 
-    if (incomingImeVisible != lastIncomingImeVisible) {
+    // Let Compose consume the new inset snapshot first. On IME close this means the toolbar can be
+    // made visible only after the child has already received the non-IME geometry.
+    composeView.dispatchApplyWindowInsets(applied)
+
+    if (incomingImeVisible != lastNativeImeVisible) {
+      lastNativeImeVisible = incomingImeVisible
       onNativeImeVisibilityChanged(incomingImeVisible)
     }
 
-    composeView.dispatchApplyWindowInsets(applied)
     traceImeInsets(applied)
     scheduleHostMeasureAndLayout()
     return applied
@@ -103,13 +108,13 @@ abstract class ComposeChromeHostView(
       ?.isVisible(WindowInsetsCompat.Type.ime())
 
     if (
-      incomingImeVisible == lastIncomingImeVisible &&
+      incomingImeVisible == lastTraceIncomingImeVisible &&
       rootImeVisible == lastRootImeVisible
     ) {
       return
     }
 
-    lastIncomingImeVisible = incomingImeVisible
+    lastTraceIncomingImeVisible = incomingImeVisible
     lastRootImeVisible = rootImeVisible
     logImeSnapshot("apply", incomingImeVisible, rootImeVisible)
 
