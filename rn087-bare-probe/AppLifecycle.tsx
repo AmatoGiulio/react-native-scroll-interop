@@ -21,12 +21,6 @@ export default function AppLifecycle() {
             Scroll source generation {sourceGeneration}. The Material chrome stays mounted while
             this React Native ScrollView is destroyed and replaced.
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setSourceGeneration(value => value + 1)}
-            style={styles.button}>
-            <Text style={styles.buttonText}>Remount scroll source</Text>
-          </Pressable>
         </View>
         {ROWS.map(row => (
           <View key={`${sourceGeneration}-${row}`} style={styles.row}>
@@ -34,11 +28,17 @@ export default function AppLifecycle() {
               Source {sourceGeneration} · Row {row}
             </Text>
             <Text style={styles.rowBody}>
-              Fling normally, return to the top, remount the source, then fling again.
+              Fling normally, remount at rest or during momentum, then fling the replacement source.
             </Text>
           </View>
         ))}
       </ScrollView>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setSourceGeneration(value => value + 1)}
+        style={styles.remountButton}>
+        <Text style={styles.buttonText}>Remount · {sourceGeneration}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -46,13 +46,14 @@ export default function AppLifecycle() {
 const styles = StyleSheet.create({
   root: {flex: 1, backgroundColor: '#f7f7f7'},
   scroll: {flex: 1},
-  content: {paddingHorizontal: 16, paddingBottom: 48},
+  content: {paddingHorizontal: 16, paddingBottom: 128},
   intro: {paddingHorizontal: 4, paddingTop: 20, paddingBottom: 18},
   title: {fontSize: 22, fontWeight: '700', color: '#111111'},
   subtitle: {fontSize: 13, lineHeight: 18, color: '#555555', marginTop: 4},
-  button: {
-    alignSelf: 'flex-start',
-    marginTop: 16,
+  remountButton: {
+    position: 'absolute',
+    right: 16,
+    bottom: 88,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
