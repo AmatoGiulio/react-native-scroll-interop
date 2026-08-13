@@ -23,6 +23,11 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.rn087nestedscrollprobe"
+
+    sourceSets {
+        main.java.srcDirs += file("${project.projectDir}/../../../android-shared/src/main/java")
+    }
+
     defaultConfig {
         applicationId "com.rn087nestedscrollprobe"
         minSdkVersion rootProject.ext.minSdkVersion
