@@ -53,6 +53,7 @@ replaceOnce(
     '  private var nestedDirectSnapSessionStarted = false\n' +
     '  private var nestedDirectSnapLastScrollerY = 0\n' +
     '  private var nestedDirectSnapTargetY = 0\n' +
+    '  private var nestedDirectSnapMaximumY = 0\n' +
     '  private val nestedDirectSnapPostConsumed = IntArray(2)\n',
 );
 
@@ -63,11 +64,35 @@ replaceOnce(
 replaceOnce(
   'V5 direct snap prime',
   '      primeNestedAnimatedScroll(effectiveVelocityY, "snap-direct")\n',
-  '      startNestedDirectSnap(targetOffset, effectiveVelocityY)\n',
+  '      startNestedDirectSnap(targetOffset, maximumOffset, effectiveVelocityY)\n',
+);
+
+const touchAnchor =
+  '  override fun onTouchEvent(ev: MotionEvent): Boolean {\n' +
+  '    if (!scrollEnabled) return false\n';
+replaceOnce(
+  'ReactNestedScrollView touch diagnostic anchor',
+  touchAnchor,
+  '  override fun onTouchEvent(ev: MotionEvent): Boolean {\n' +
+    '    if (ev.actionMasked == MotionEvent.ACTION_DOWN) {\n' +
+    '      val currentScroller = scroller\n' +
+    '      android.util.Log.i(\n' +
+    '          "Rn087NestedScroll",\n' +
+    '          "SOURCE_TOUCH action=DOWN directActive=$nestedDirectSnapActive " +\n' +
+    '              "targetY=$nestedDirectSnapTargetY maximumY=$nestedDirectSnapMaximumY " +\n' +
+    '              "sourceY=$scrollY scrollerY=${currentScroller?.currY ?: scrollY} " +\n' +
+    '              "scrollerFinished=${currentScroller?.isFinished ?: true}",\n' +
+    '      )\n' +
+    '    }\n' +
+    '    if (!scrollEnabled) return false\n',
 );
 
 const correctVelocityAnchor = '  private fun correctFlingVelocityY(velocityY: Int): Int {\n';
-const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: Int, sourceVelocityY: Int) {
+const directSnapImplementation = `  private fun startNestedDirectSnap(
+      targetY: Int,
+      maximumY: Int,
+      sourceVelocityY: Int,
+  ) {
     if (nestedDirectSnapActive) {
       finishNestedDirectSnap("superseded")
     }
@@ -79,13 +104,14 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
       android.util.Log.i(
           "Rn087NestedScroll",
           "SOURCE_SNAP_DIRECT_SKIP reason=no-op targetY=$targetY sourceVelocityY=$sourceVelocityY " +
-              "sourceY=$scrollY",
+              "sourceY=$scrollY maximumY=$maximumY",
       )
       return
     }
 
     nestedDirectSnapLastScrollerY = scrollY
     nestedDirectSnapTargetY = targetY
+    nestedDirectSnapMaximumY = maximumY
     nestedDirectSnapSessionStarted =
         startNestedScroll(ViewCompat.SCROLL_AXIS_VERTICAL, ViewCompat.TYPE_NON_TOUCH)
     nestedDirectSnapActive = true
@@ -94,13 +120,14 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
         "Rn087NestedScroll",
         "SOURCE_SNAP_DIRECT_START mode=post-only-target-lock targetY=$targetY " +
             "sourceVelocityY=$sourceVelocityY baselineY=$nestedDirectSnapLastScrollerY " +
-            "started=$nestedDirectSnapSessionStarted",
+            "started=$nestedDirectSnapSessionStarted maximumY=$maximumY",
     )
   }
 
   private fun finishNestedDirectSnap(reason: String) {
     if (!nestedDirectSnapActive) return
     val targetY = nestedDirectSnapTargetY
+    val maximumY = nestedDirectSnapMaximumY
     val sourceY = scrollY
     val currentScroller = scroller
     val scrollerY = currentScroller?.currY ?: sourceY
@@ -112,7 +139,7 @@ const directSnapImplementation = `  private fun startNestedDirectSnap(targetY: I
     android.util.Log.i(
         "Rn087NestedScroll",
         "SOURCE_SNAP_DIRECT_END reason=$reason targetY=$targetY sourceY=$sourceY " +
-            "scrollerY=$scrollerY scrollerFinished=$scrollerFinished",
+            "scrollerY=$scrollerY scrollerFinished=$scrollerFinished maximumY=$maximumY",
     )
     if (sessionStarted) {
       stopNestedScroll(ViewCompat.TYPE_NON_TOUCH)
@@ -206,5 +233,5 @@ replaceOnce(
 
 fs.writeFileSync(sourcePath, source);
 console.log(
-  'RN 0.87 source patch V6: direct snap ends when the RN child reaches its absolute target',
+  'RN 0.87 source patch V6: direct snap target-lock + interruption/edge diagnostics',
 );
