@@ -8,7 +8,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "android": {
-      "package": "expo.modules.materialtoolbar.example"
+      "package": "expo.modules.materialtoolbar.example",
+      "softwareKeyboardLayoutMode": "resize"
     },
     "plugins": [
       "expo-router",
