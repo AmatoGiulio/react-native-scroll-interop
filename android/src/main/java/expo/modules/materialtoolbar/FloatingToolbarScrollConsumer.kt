@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.Velocity
+import androidx.core.graphics.Insets
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -29,6 +30,7 @@ import kotlinx.coroutines.launch
 internal class FloatingToolbarScrollConsumer(
   private val hostView: ViewGroup,
   private val composeView: ComposeView,
+  private val visibleFrameInsets: () -> Insets = { Insets.NONE },
 ) {
   private var behavior: FloatingToolbarScrollBehavior? = null
   private var scope: CoroutineScope? = null
@@ -172,19 +174,32 @@ internal class FloatingToolbarScrollConsumer(
     val currentBehavior = behavior ?: return
     if (hostView.width <= 0 || hostView.height <= 0 || composeView.width <= 0 || composeView.height <= 0) return
 
+    val insets = visibleFrameInsets()
+    val visibleLeft = insets.left
+    val visibleTop = insets.top
+    val visibleRight = hostView.width - insets.right
+    val visibleBottom = hostView.height - insets.bottom
     val isRtl = hostView.layoutDirection == View.LAYOUT_DIRECTION_RTL
+
+    // Material's offset limit is the distance from the toolbar's near edge to the edge it exits
+    // through. That edge is the current native visible frame, not necessarily the physical display
+    // edge: while an IME is shown, for example, the bottom visible edge is the IME top. The native
+    // placement still contributes its Material ScreenOffset because the child itself is laid out
+    // inside this frame by that amount.
     val distance = when (currentBehavior.exitDirection) {
-      FloatingToolbarExitDirection.Top -> composeView.bottom.toFloat()
-      FloatingToolbarExitDirection.Bottom -> (hostView.height - composeView.top).toFloat()
+      FloatingToolbarExitDirection.Top ->
+        (composeView.bottom - visibleTop).toFloat()
+      FloatingToolbarExitDirection.Bottom ->
+        (visibleBottom - composeView.top).toFloat()
       FloatingToolbarExitDirection.Start -> if (isRtl) {
-        (hostView.width - composeView.left).toFloat()
+        (visibleRight - composeView.left).toFloat()
       } else {
-        composeView.right.toFloat()
+        (composeView.right - visibleLeft).toFloat()
       }
       FloatingToolbarExitDirection.End -> if (isRtl) {
-        composeView.right.toFloat()
+        (composeView.right - visibleLeft).toFloat()
       } else {
-        (hostView.width - composeView.left).toFloat()
+        (visibleRight - composeView.left).toFloat()
       }
       else -> composeView.height.toFloat()
     }.coerceAtLeast(1f)
@@ -196,7 +211,11 @@ internal class FloatingToolbarScrollConsumer(
     if (BuildConfig.DEBUG) {
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "geometry dir=${currentBehavior.exitDirection} host=${hostView.width}x${hostView.height} compose=${composeView.width}x${composeView.height} pos=${composeView.left},${composeView.top}-${composeView.right},${composeView.bottom} limit=${currentBehavior.state.offsetLimit}",
+        "geometry dir=${currentBehavior.exitDirection} host=${hostView.width}x${hostView.height} " +
+          "visible=$visibleLeft,$visibleTop-$visibleRight,$visibleBottom " +
+          "compose=${composeView.width}x${composeView.height} " +
+          "pos=${composeView.left},${composeView.top}-${composeView.right},${composeView.bottom} " +
+          "limit=${currentBehavior.state.offsetLimit}",
       )
     }
   }
