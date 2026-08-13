@@ -7,8 +7,13 @@ import process from 'node:process';
 const root = process.cwd();
 const hostPath =
   'android/src/main/java/expo/modules/materialtoolbar/ExpoNestedScrollHostView.kt';
+const sharedLifecyclePath =
+  'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt';
+const bareHostPath =
+  'rn087-bare-probe/android/app/src/main/java/com/rn087nestedscrollprobe/NestedScrollProbeLayout.kt';
 const files = [
   hostPath,
+  sharedLifecyclePath,
   'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt',
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt',
@@ -41,7 +46,7 @@ const violations = [];
 for (const relativePath of files) {
   const absolutePath = path.join(root, relativePath);
   if (!fs.existsSync(absolutePath)) {
-    violations.push(`${relativePath}: missing production transport file`);
+    violations.push(`${relativePath}: missing production/shared transport file`);
     continue;
   }
 
@@ -75,6 +80,55 @@ if (!fs.existsSync(adapterPath)) {
   }
   if (!adapter.includes('ReactScrollView') || !adapter.includes('ReactNestedScrollView')) {
     violations.push(`${sourceAdapter}: must recognize both supported RN vertical source implementations`);
+  }
+}
+
+const sharedLifecycleAbsolutePath = path.join(root, sharedLifecyclePath);
+if (fs.existsSync(sharedLifecycleAbsolutePath)) {
+  const lifecycle = stripComments(fs.readFileSync(sharedLifecycleAbsolutePath, 'utf8'));
+  if (!lifecycle.includes('class SourceScopedNestedScrollLifecycle')) {
+    violations.push(`${sharedLifecyclePath}: missing shared source-scoped lifecycle kernel`);
+  }
+  if (!lifecycle.includes('var activeSource: ViewGroup?')) {
+    violations.push(`${sharedLifecyclePath}: missing active source ownership`);
+  }
+  if (!lifecycle.includes('var momentumSource: ViewGroup?')) {
+    violations.push(`${sharedLifecyclePath}: missing source-scoped momentum ownership`);
+  }
+  if (!lifecycle.includes('StopDecision.Stale')) {
+    violations.push(`${sharedLifecyclePath}: stale stop must fail closed`);
+  }
+}
+
+const expoGradlePath = path.join(root, 'android/build.gradle');
+const bareGradlePath = path.join(root, 'rn087-bare-probe/android/app/build.gradle');
+for (const [label, gradlePath] of [
+  ['Expo module', expoGradlePath],
+  ['bare RN 0.87 host', bareGradlePath],
+]) {
+  if (!fs.existsSync(gradlePath)) {
+    violations.push(`${label}: missing Gradle build file`);
+    continue;
+  }
+  const gradle = fs.readFileSync(gradlePath, 'utf8');
+  if (!gradle.includes('android-shared/src/main/java')) {
+    violations.push(`${label}: shared Android transport source set is not compiled`);
+  }
+}
+
+const bareHostAbsolutePath = path.join(root, bareHostPath);
+if (!fs.existsSync(bareHostAbsolutePath)) {
+  violations.push(`${bareHostPath}: missing bare RN 0.87 transport host`);
+} else {
+  const bareHost = stripComments(fs.readFileSync(bareHostAbsolutePath, 'utf8'));
+  if (!bareHost.includes('SourceScopedNestedScrollLifecycle')) {
+    violations.push(`${bareHostPath}: bare RN 0.87 host is not using the shared lifecycle kernel`);
+  }
+  if (bareHost.includes('private var momentumSource:')) {
+    violations.push(`${bareHostPath}: bare host must not duplicate shared momentum ownership`);
+  }
+  if (bareHost.includes('private var activeSource:')) {
+    violations.push(`${bareHostPath}: bare host must not duplicate shared active-source ownership`);
   }
 }
 
@@ -146,3 +200,5 @@ console.log('  concrete RN scroll source types confined to compatibility adapter
 console.log('  explicit RN vertical source capability model present');
 console.log('  momentum ownership scoped to active RN source');
 console.log('  stale nested callbacks fail closed before parent helper mutation');
+console.log('  shared Android lifecycle kernel compiled by Expo and bare RN hosts');
+console.log('  bare RN 0.87 host uses shared source-scoped lifecycle ownership');
