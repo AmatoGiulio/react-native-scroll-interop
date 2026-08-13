@@ -10,12 +10,12 @@ export default function TransportImeStressProbe() {
         <FlatList
           data={rows}
           keyExtractor={(item) => item}
-          ListHeaderComponent={<TextInput style={styles.input} placeholder="Focus input" />}
+          ListHeaderComponent={<TextInput style={styles.input} placeholder="Focus input - toolbar must hide" />}
           renderItem={({ item }) => <Text style={styles.row}>Row {item}</Text>}
         />
       </NativeScrollHost>
-      <MaterialTopAppBar title="IME stress" variant="large" scrollBehavior="exitUntilCollapsed" />
-      <MaterialToolbar.Root placement="bottom" insets="safe" imeBehavior="none" scrollBehavior="exitAlways">
+      <MaterialTopAppBar title="IME hide stress" variant="large" scrollBehavior="exitUntilCollapsed" />
+      <MaterialToolbar.Root placement="bottom" insets="safe" imeBehavior="hide" scrollBehavior="exitAlways">
         <MaterialToolbar.Content>
           <MaterialToolbar.TextButton accessibilityLabel="One"><MaterialToolbar.Text>One</MaterialToolbar.Text></MaterialToolbar.TextButton>
         </MaterialToolbar.Content>
