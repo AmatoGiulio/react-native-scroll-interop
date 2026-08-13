@@ -9,7 +9,12 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
 
-  override fun getMainComponentName(): String = "RN087NestedScrollProbe"
+  override fun getMainComponentName(): String =
+    if (BuildConfig.RN_LIFECYCLE_PROBE) {
+      "RN087NestedScrollLifecycleProbe"
+    } else {
+      "RN087NestedScrollProbe"
+    }
 
   override fun createReactActivityDelegate(): ReactActivityDelegate =
     object : DefaultReactActivityDelegate(this, mainComponentName) {
@@ -40,7 +45,8 @@ class MainActivity : ReactActivity() {
 
     Log.i(
       "Rn087NestedScroll",
-      "PROBE_HOST attached root=${reactRoot.javaClass.name}#${Integer.toHexString(System.identityHashCode(reactRoot))}",
+      "PROBE_HOST attached lifecycle=${BuildConfig.RN_LIFECYCLE_PROBE} " +
+        "root=${reactRoot.javaClass.name}#${Integer.toHexString(System.identityHashCode(reactRoot))}",
     )
   }
 }
