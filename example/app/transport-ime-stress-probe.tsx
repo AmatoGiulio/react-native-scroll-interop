@@ -13,6 +13,7 @@ export default function TransportImeStressProbe() {
         <FlatList
           data={rows}
           keyExtractor={(item) => item}
+          contentContainerStyle={styles.content}
           ListHeaderComponent={<TextInput style={styles.input} placeholder="Focus input - toolbar must hide" />}
           renderItem={({ item }) => <Text style={styles.row}>Row {item}</Text>}
         />
@@ -32,7 +33,7 @@ export default function TransportImeStressProbe() {
         placement="bottom"
         insets="safe"
         imeBehavior={bypassImeHide ? 'none' : 'hide'}
-        scrollBehavior="none"
+        scrollBehavior="exitAlways"
       >
         <MaterialToolbar.Content>
           <MaterialToolbar.TextButton accessibilityLabel="One"><MaterialToolbar.Text>One</MaterialToolbar.Text></MaterialToolbar.TextButton>
@@ -45,7 +46,8 @@ export default function TransportImeStressProbe() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#12141a' },
   host: { flex: 1 },
-  input: { minHeight: 52, marginTop: 220, margin: 20, padding: 12, backgroundColor: '#ffffff', color: '#111111' },
+  content: { paddingTop: 152, paddingBottom: 160 },
+  input: { minHeight: 52, marginHorizontal: 20, marginBottom: 20, padding: 12, backgroundColor: '#ffffff', color: '#111111' },
   row: { minHeight: 64, padding: 20, color: '#eceff4' },
   oracle: {
     position: 'absolute',
