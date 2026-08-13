@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -131,6 +130,7 @@ class ExpoMaterialToolbarView(
   internal val onFabPress by EventDispatcher()
 
   private val state = mutableStateOf(ToolbarState())
+  private val nativeImeVisible = mutableStateOf(false)
 
   private val floatingToolbarScrollConsumer = FloatingToolbarScrollConsumer(this, composeView)
 
@@ -142,6 +142,13 @@ class ExpoMaterialToolbarView(
     composeView.setContent {
       MaterialToolbarContent(state.value)
     }
+  }
+
+  override fun onNativeImeVisibilityChanged(visible: Boolean) {
+    if (nativeImeVisible.value == visible) return
+    nativeImeVisible.value = visible
+    requestLayout()
+    composeView.requestLayout()
   }
 
   override fun onAttachedToWindow() {
@@ -174,8 +181,6 @@ class ExpoMaterialToolbarView(
     composeView.requestLayout()
   }
 
-  // The toolbar is wrap-content in both axes: Material sizes it from its own content, and only that
-  // rectangle is interactive.
   override fun onMeasureComposeChild(hostWidthPx: Int, hostHeightPx: Int) {
     composeView.measure(
       View.MeasureSpec.makeMeasureSpec(hostWidthPx, View.MeasureSpec.AT_MOST),
@@ -382,7 +387,7 @@ class ExpoMaterialToolbarView(
       val unselectedContentColor = uiState.unselectedContentArgb?.let { ComposeColor(it) }
         ?: toolbarColors.toolbarContentColor
 
-      val hideForIme = uiState.imeBehavior == "hide" && WindowInsets.isImeVisible
+      val hideForIme = uiState.imeBehavior == "hide" && nativeImeVisible.value
       val shouldRender = uiState.visible && !hideForIme
       val layoutDirection = LocalLayoutDirection.current
       val defaultContentPadding = FloatingToolbarDefaults.ContentPadding
@@ -433,9 +438,6 @@ class ExpoMaterialToolbarView(
           uiState = uiState,
           contentPadding = contentPadding,
           toolbarColors = toolbarColors,
-          // RN scroll lives in a sibling Android hierarchy. Keep Material3's behavior as the
-          // state/snap engine, but move the WRAP_CONTENT Android ComposeView itself so the visual
-          // translation is not clipped by the Compose surface.
           scrollBehavior = null,
           selectedContainerColor = selectedContainerColor,
           selectedContentColor = selectedContentColor,

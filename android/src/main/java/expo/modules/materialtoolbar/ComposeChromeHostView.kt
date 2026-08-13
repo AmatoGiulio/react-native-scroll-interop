@@ -36,6 +36,8 @@ abstract class ComposeChromeHostView(
 
   protected abstract fun onMeasureComposeChild(hostWidthPx: Int, hostHeightPx: Int)
 
+  protected open fun onNativeImeVisibilityChanged(visible: Boolean) = Unit
+
   protected fun scheduleHostMeasureAndLayout() {
     if (hostMeasurePending) return
     hostMeasurePending = true
@@ -48,13 +50,7 @@ abstract class ComposeChromeHostView(
       val hostWidth = width
       val hostHeight = height
       onMeasureComposeChild(hostWidth, hostHeight)
-      onLayout(
-        false,
-        left,
-        top,
-        right,
-        bottom,
-      )
+      onLayout(false, left, top, right, bottom)
       hostMeasurePending = false
 
       if (composeView.isLayoutRequested) {
@@ -82,9 +78,15 @@ abstract class ComposeChromeHostView(
 
   override fun onApplyWindowInsets(insets: android.view.WindowInsets): android.view.WindowInsets {
     val applied = super.onApplyWindowInsets(insets)
+    val incomingImeVisible = WindowInsetsCompat
+      .toWindowInsetsCompat(applied, this)
+      .isVisible(WindowInsetsCompat.Type.ime())
+
+    if (incomingImeVisible != lastIncomingImeVisible) {
+      onNativeImeVisibilityChanged(incomingImeVisible)
+    }
 
     composeView.dispatchApplyWindowInsets(applied)
-
     traceImeInsets(applied)
     scheduleHostMeasureAndLayout()
     return applied
@@ -140,7 +142,7 @@ abstract class ComposeChromeHostView(
         "composeMeasured=${composeView.measuredWidth}x${composeView.measuredHeight} " +
         "composeBounds=${composeView.left},${composeView.top},${composeView.right},${composeView.bottom} " +
         "composeVisibility=$visibility layoutRequested=${composeView.isLayoutRequested}",
-     )
+    )
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -149,7 +151,6 @@ abstract class ComposeChromeHostView(
     setMeasuredDimension(width, height)
 
     if (!isAttachedToWindow) return
-
     onMeasureComposeChild(width, height)
   }
 }
