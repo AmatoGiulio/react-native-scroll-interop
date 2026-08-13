@@ -9,12 +9,14 @@ import android.widget.FrameLayout
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
+import com.material3scroll.transport.NestedScrollConservationLedger
 import com.material3scroll.transport.SourceScopedNestedScrollLifecycle
 
 class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedScrollingParent3 {
   private val parentHelper = NestedScrollingParentHelper(this)
   private val throwawayConsumed = IntArray(2)
   private val lifecycle = SourceScopedNestedScrollLifecycle()
+  private val ledger = NestedScrollConservationLedger()
 
   private val chromeController =
     if (BuildConfig.RN_CHROME_PROBE) {
@@ -28,13 +30,6 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     }
 
   private var waitingForSourceLayout = false
-
-  private var ledgerRequestedY = 0
-  private var ledgerChromePreY = 0
-  private var ledgerPending = false
-  private var ledgerFrames = 0L
-  private var ledgerBroken = 0L
-  private var ledgerOrphans = 0L
 
   private val sourceLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
     if (!isAttachedToWindow) {
@@ -116,10 +111,11 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     val source = target as? ViewGroup
     val activeTarget = lifecycle.isActive(source)
     val momentumOwner = lifecycle.isMomentumOwner(source)
+    val snapshot = ledger.snapshot()
     log(
       "NESTED_STOP contract=androidx type=${typeName(type)} activeTarget=$activeTarget " +
-        "momentumOwner=$momentumOwner ledgerFrames=$ledgerFrames broken=$ledgerBroken " +
-        "orphan=$ledgerOrphans target=${targetName(target)}",
+        "momentumOwner=$momentumOwner ledgerFrames=${snapshot.frames} " +
+        "broken=${snapshot.brokenFrames} orphan=${snapshot.orphanPres} target=${targetName(target)}",
     )
 
     if (!activeTarget || source == null) {
@@ -210,15 +206,7 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     type: Int,
   ) {
     throwawayConsumed.fill(0)
-    onNestedScroll(
-      target,
-      dxConsumed,
-      dyConsumed,
-      dxUnconsumed,
-      dyUnconsumed,
-      type,
-      throwawayConsumed,
-    )
+    onNestedScroll(target, dxConsumed, dyConsumed, dxUnconsumed, dyUnconsumed, type, throwawayConsumed)
   }
 
   override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean =
@@ -278,12 +266,11 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     )
 
     if (BuildConfig.RN_NESTED_SCROLL_FLING_SHIM && lifecycle.isActive(target as? ViewGroup)) {
-      val started =
-        ViewCompat.startNestedScroll(
-          target,
-          ViewCompat.SCROLL_AXIS_VERTICAL,
-          ViewCompat.TYPE_NON_TOUCH,
-        )
+      val started = ViewCompat.startNestedScroll(
+        target,
+        ViewCompat.SCROLL_AXIS_VERTICAL,
+        ViewCompat.TYPE_NON_TOUCH,
+      )
       log("PROBE_FLING_SESSION_SHIM started=$started target=${targetName(target)}")
     }
 
@@ -333,13 +320,9 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   }
 
   private fun collectReactVerticalSources(view: View, output: MutableList<ViewGroup>) {
-    if (view !== this) {
-      asReactVerticalSource(view)?.let(output::add)
-    }
+    if (view !== this) asReactVerticalSource(view)?.let(output::add)
     if (view !is ViewGroup) return
-    for (index in 0 until view.childCount) {
-      collectReactVerticalSources(view.getChildAt(index), output)
-    }
+    for (index in 0 until view.childCount) collectReactVerticalSources(view.getChildAt(index), output)
   }
 
   private fun asReactVerticalSource(view: View): ViewGroup? {
@@ -376,12 +359,17 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
 
   private fun recordLedgerPre(requestedY: Int, chromePreY: Int, type: Int) {
     if (chromeController == null || requestedY == 0) return
-    flushPendingLedger("next-pre")
-    ledgerRequestedY = requestedY
-    ledgerChromePreY = chromePreY
-    ledgerPending = true
+
+    val result = ledger.beginFrame(requestedY, chromePreY)
+    result.orphanBeforePre?.let { orphan ->
+      log(
+        "CHROME_LEDGER_ORPHAN n=${orphan.index} reason=next-pre requested=${orphan.requestedY} " +
+          "chromePre=${orphan.chromePreY}",
+      )
+    }
     log(
-      "CHROME_LEDGER_PRE type=${typeName(type)} requested=$requestedY chromePre=$chromePreY",
+      "CHROME_LEDGER_PRE type=${typeName(type)} requested=${result.pre.requestedY} " +
+        "chromePre=${result.pre.chromePreY}",
     )
   }
 
@@ -391,27 +379,20 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     chromePostY: Int,
     type: Int,
   ) {
-    if (!ledgerPending) return
-    ledgerFrames += 1
-    val remaining = dyUnconsumed - chromePostY
-    val sum = ledgerChromePreY + childConsumedY + chromePostY + remaining
-    val balanced = sum == ledgerRequestedY
-    if (!balanced) ledgerBroken += 1
+    val frame = ledger.completeFrame(childConsumedY, dyUnconsumed, chromePostY) ?: return
     log(
-      "CHROME_LEDGER type=${typeName(type)} n=$ledgerFrames requested=$ledgerRequestedY " +
-        "chromePre=$ledgerChromePreY child=$childConsumedY chromePost=$chromePostY " +
-        "remaining=$remaining sum=$sum balanced=$balanced broken=$ledgerBroken orphan=$ledgerOrphans",
+      "CHROME_LEDGER type=${typeName(type)} n=${frame.index} requested=${frame.requestedY} " +
+        "chromePre=${frame.chromePreY} child=${frame.childConsumedY} chromePost=${frame.chromePostY} " +
+        "remaining=${frame.remainingY} sum=${frame.sumY} balanced=${frame.balanced} " +
+        "broken=${frame.brokenFrames} orphan=${frame.orphanPres}",
     )
-    ledgerPending = false
   }
 
   private fun flushPendingLedger(reason: String) {
-    if (!ledgerPending) return
-    ledgerOrphans += 1
+    val orphan = ledger.flushPending() ?: return
     log(
-      "CHROME_LEDGER_ORPHAN n=$ledgerOrphans reason=$reason requested=$ledgerRequestedY " +
-        "chromePre=$ledgerChromePreY",
+      "CHROME_LEDGER_ORPHAN n=${orphan.index} reason=$reason requested=${orphan.requestedY} " +
+        "chromePre=${orphan.chromePreY}",
     )
-    ledgerPending = false
   }
 }
