@@ -11,6 +11,7 @@ const ROUTES = [
   { href: '/(tabs)/profile', label: 'Tabs · Profile' },
   { href: '/solo', label: 'Solo · root stack (large, exitUntilCollapsed)' },
   { href: '/ref', label: 'Ref · host-app copy (large, exitUntilCollapsed)' },
+  { href: '/source-remount', label: 'Lifecycle · remount real NativeScrollHost source' },
 ] as const;
 
 export default function DebugIndex() {
