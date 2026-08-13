@@ -5,6 +5,7 @@ package expo.modules.materialtoolbar
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.FloatingToolbarExitDirection
 import androidx.compose.material3.FloatingToolbarScrollBehavior
 import androidx.compose.runtime.snapshotFlow
@@ -13,20 +14,18 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.Velocity
 import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsAnimationCompat
+import androidx.core.view.WindowInsetsCompat
+import java.util.WeakHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlin.math.max
+import kotlin.math.roundToInt
 
-/**
- * Material-specific consumer, driven by the nested-scroll transaction the source itself reports.
- *
- * A floating toolbar takes nothing away from the list: it slides out of the way of movement that
- * already happened. So it joins the transaction in its post-scroll phase, which is also the phase
- * Material's own `FloatingToolbarScrollBehavior` expects, and never withholds a pixel from the
- * child.
- */
 internal class FloatingToolbarScrollConsumer(
   private val hostView: ViewGroup,
   private val composeView: ComposeView,
@@ -40,40 +39,30 @@ internal class FloatingToolbarScrollConsumer(
   private var debugFrameCounter = 0
   private var lastInputDeltaY = 0
 
-  /** Whether this toolbar can take part in a transaction at all. */
-  val isBound: Boolean
-    get() = behavior != null && scope != null
+  val isBound: Boolean get() = behavior != null && scope != null
 
   fun bind(newBehavior: FloatingToolbarScrollBehavior?, newScope: CoroutineScope?) {
     if (behavior === newBehavior && scope === newScope) return
     cancelSettle()
     offsetObserverJob?.cancel()
-    offsetObserverJob = null
     behavior = newBehavior
     scope = newScope
-
     if (newBehavior == null || newScope == null) {
+      offsetObserverJob = null
       resetTranslation()
       return
     }
-
     offsetObserverJob = newScope.launch {
       snapshotFlow { newBehavior.state.offset }.collect(::applyOffset)
     }
-    hostView.post {
-      syncGeometry()
-      applyOffset(newBehavior.state.offset)
-    }
+    hostView.post { syncGeometry(); applyOffset(newBehavior.state.offset) }
   }
 
   fun unbind(expectedBehavior: FloatingToolbarScrollBehavior?) {
-    if (behavior !== expectedBehavior) return
-    bind(null, null)
+    if (behavior === expectedBehavior) bind(null, null)
   }
 
-  fun onHostDetached() {
-    cancelSettle()
-  }
+  fun onHostDetached() = cancelSettle()
 
   fun beginNestedTransaction(source: ViewGroup): Boolean {
     if (!isBound) return false
@@ -83,172 +72,94 @@ internal class FloatingToolbarScrollConsumer(
     syncGeometry()
     val current = behavior?.state?.offset ?: 0f
     applyOffset(current)
-    if (BuildConfig.DEBUG) {
-      Log.d(
-        NATIVE_SCROLL_LOG_TAG,
-        "FLOAT_TX_BEGIN view=${source.id} scrollY=${source.scrollY} compose=${composeView.measuredWidth}x${composeView.measuredHeight} offset=$current limit=${behavior?.state?.offsetLimit}",
-      )
-    }
+    if (BuildConfig.DEBUG) Log.d(
+      NATIVE_SCROLL_LOG_TAG,
+      "FLOAT_TX_BEGIN view=${source.id} scrollY=${source.scrollY} compose=${composeView.measuredWidth}x${composeView.measuredHeight} offset=$current limit=${behavior?.state?.offsetLimit}",
+    )
     return true
   }
 
-  /**
-   * The post-scroll phase of one nested transaction.
-   *
-   * [childConsumedY] is what the list actually moved, in Android's sign convention, and
-   * [inputType] carries whether it came from a finger or from the source's own momentum — the same
-   * distinction Compose draws between `UserInput` and `SideEffect`, which Material's behaviors read.
-   */
   fun nestedPostScroll(childConsumedY: Int, inputType: NativeNestedInputType) {
     if (childConsumedY == 0) return
-    val currentBehavior = behavior ?: return
+    val current = behavior ?: return
     lastInputDeltaY = childConsumedY
-    currentBehavior.onPostScroll(
+    current.onPostScroll(
       consumed = Offset(0f, -childConsumedY.toFloat()),
       available = Offset.Zero,
-      source = when (inputType) {
-        NativeNestedInputType.Touch -> NestedScrollSource.UserInput
-        NativeNestedInputType.NonTouch -> NestedScrollSource.SideEffect
+      source = if (inputType == NativeNestedInputType.Touch) {
+        NestedScrollSource.UserInput
+      } else {
+        NestedScrollSource.SideEffect
       },
     )
-    applyOffset(currentBehavior.state.offset)
-    if (BuildConfig.DEBUG) {
-      debugFrameCounter += 1
-      if (debugFrameCounter % 8 == 1) {
-        Log.d(
-          NATIVE_SCROLL_LOG_TAG,
-          "material dy=$childConsumedY type=$inputType offset=${currentBehavior.state.offset} limit=${currentBehavior.state.offsetLimit} tx=${composeView.translationX} ty=${composeView.translationY}",
-        )
-      }
-    }
+    applyOffset(current.state.offset)
+    if (BuildConfig.DEBUG && ++debugFrameCounter % 8 == 1) Log.d(
+      NATIVE_SCROLL_LOG_TAG,
+      "material dy=$childConsumedY type=$inputType offset=${current.state.offset} limit=${current.state.offsetLimit} tx=${composeView.translationX} ty=${composeView.translationY}",
+    )
   }
 
   fun endNestedTransaction() {
-    val currentBehavior = behavior ?: return
+    val current = behavior ?: return
     val currentScope = scope ?: return
     cancelSettle()
     val generation = settleGeneration
-
-    if (BuildConfig.DEBUG) {
-      val limit = currentBehavior.state.offsetLimit
-      val fraction = if (limit != 0f) currentBehavior.state.offset / limit else 0f
-      Log.d(
-        NATIVE_SCROLL_LOG_TAG,
-        "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction",
-      )
-    }
-
+    if (BuildConfig.DEBUG) Log.d(
+      NATIVE_SCROLL_LOG_TAG,
+      "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY offset=${current.state.offset} limit=${current.state.offsetLimit}",
+    )
     settleJob = currentScope.launch(start = CoroutineStart.UNDISPATCHED) {
-      var completedNormally = false
+      var completed = false
       try {
-        // Zero, deliberately, and for the same reason the TopAppBar passes zero: every frame of the
-        // fling already reached this consumer as a scroll delta, so the movement is in the offset.
-        // Handing Material the velocity on top of that decays a second time over motion already
-        // applied — the toolbar overshoots what the content did.
-        //
-        // Compose passes the velocity the child could NOT consume; ours is the velocity the child
-        // did consume, which is not the same number and not interchangeable with it. With the real
-        // source transaction delivering every frame, there is no longer a transport-drift repair
-        // here: Material owns the terminal snap from the offset it actually observed.
-        currentBehavior.onPostFling(consumed = Velocity.Zero, available = Velocity.Zero)
-        completedNormally = true
-        applyOffset(currentBehavior.state.offset)
+        current.onPostFling(Velocity.Zero, Velocity.Zero)
+        completed = true
+        applyOffset(current.state.offset)
       } finally {
-        if (BuildConfig.DEBUG) {
-          val limit = currentBehavior.state.offsetLimit
-          val fraction = if (limit != 0f) currentBehavior.state.offset / limit else 0f
-          Log.d(
-            NATIVE_SCROLL_LOG_TAG,
-            "FLOAT_SETTLE_END gen=$generation completed=$completedNormally currentGen=$settleGeneration offset=${currentBehavior.state.offset} limit=$limit fraction=$fraction",
-          )
-        }
-        // A canceled/older settle must never clear the Job reference of a newer transaction.
-        if (generation == settleGeneration) {
-          settleJob = null
-        }
+        if (BuildConfig.DEBUG) Log.d(
+          NATIVE_SCROLL_LOG_TAG,
+          "FLOAT_SETTLE_END gen=$generation completed=$completed currentGen=$settleGeneration offset=${current.state.offset} limit=${current.state.offsetLimit}",
+        )
+        if (generation == settleGeneration) settleJob = null
       }
     }
   }
 
   fun syncGeometry() {
-    val currentBehavior = behavior ?: return
+    val current = behavior ?: return
     if (hostView.width <= 0 || hostView.height <= 0 || composeView.width <= 0 || composeView.height <= 0) return
-
-    val insets = visibleFrameInsets()
-    val visibleLeft = insets.left
-    val visibleTop = insets.top
-    val visibleRight = hostView.width - insets.right
-    val visibleBottom = hostView.height - insets.bottom
-    val isRtl = hostView.layoutDirection == View.LAYOUT_DIRECTION_RTL
-
-    // Material's offset limit is the distance from the toolbar's near edge to the edge it exits
-    // through. That edge is the current native visible frame, not necessarily the physical display
-    // edge: while an IME is shown, for example, the bottom visible edge is the IME top. The native
-    // placement still contributes its Material ScreenOffset because the child itself is laid out
-    // inside this frame by that amount.
-    val distance = when (currentBehavior.exitDirection) {
-      FloatingToolbarExitDirection.Top ->
-        (composeView.bottom - visibleTop).toFloat()
-      FloatingToolbarExitDirection.Bottom ->
-        (visibleBottom - composeView.top).toFloat()
-      FloatingToolbarExitDirection.Start -> if (isRtl) {
-        (visibleRight - composeView.left).toFloat()
-      } else {
-        (composeView.right - visibleLeft).toFloat()
-      }
-      FloatingToolbarExitDirection.End -> if (isRtl) {
-        (composeView.right - visibleLeft).toFloat()
-      } else {
-        (visibleRight - composeView.left).toFloat()
-      }
-      else -> composeView.height.toFloat()
-    }.coerceAtLeast(1f)
-
-    val currentOffset = currentBehavior.state.offset
-    currentBehavior.state.offsetLimit = -distance
-    currentBehavior.state.offset = currentOffset
-
-    if (BuildConfig.DEBUG) {
-      Log.d(
-        NATIVE_SCROLL_LOG_TAG,
-        "geometry dir=${currentBehavior.exitDirection} host=${hostView.width}x${hostView.height} " +
-          "visible=$visibleLeft,$visibleTop-$visibleRight,$visibleBottom " +
-          "compose=${composeView.width}x${composeView.height} " +
-          "pos=${composeView.left},${composeView.top}-${composeView.right},${composeView.bottom} " +
-          "limit=${currentBehavior.state.offsetLimit}",
-      )
-    }
+    val insets = NativeFloatingToolbarPlacement.apply(hostView, composeView) ?: visibleFrameInsets()
+    val left = insets.left
+    val top = insets.top
+    val right = hostView.width - insets.right
+    val bottom = hostView.height - insets.bottom
+    val rtl = hostView.layoutDirection == View.LAYOUT_DIRECTION_RTL
+    val distance = when (current.exitDirection) {
+      FloatingToolbarExitDirection.Top -> composeView.bottom - top
+      FloatingToolbarExitDirection.Bottom -> bottom - composeView.top
+      FloatingToolbarExitDirection.Start -> if (rtl) right - composeView.left else composeView.right - left
+      FloatingToolbarExitDirection.End -> if (rtl) composeView.right - left else right - composeView.left
+      else -> composeView.height
+    }.coerceAtLeast(1).toFloat()
+    val offset = current.state.offset
+    current.state.offsetLimit = -distance
+    current.state.offset = offset
+    if (BuildConfig.DEBUG) Log.d(
+      NATIVE_SCROLL_LOG_TAG,
+      "geometry dir=${current.exitDirection} host=${hostView.width}x${hostView.height} visible=$left,$top-$right,$bottom compose=${composeView.width}x${composeView.height} pos=${composeView.left},${composeView.top}-${composeView.right},${composeView.bottom} limit=${current.state.offsetLimit}",
+    )
   }
 
   fun applyCurrentOffset() = applyOffset(behavior?.state?.offset ?: 0f)
 
   private fun applyOffset(offset: Float) {
-    val currentBehavior = behavior ?: run {
-      resetTranslation()
-      return
-    }
-    val isRtl = hostView.layoutDirection == View.LAYOUT_DIRECTION_RTL
-    when (currentBehavior.exitDirection) {
-      FloatingToolbarExitDirection.Top -> {
-        composeView.translationX = 0f
-        composeView.translationY = offset
-      }
-      FloatingToolbarExitDirection.Bottom -> {
-        composeView.translationX = 0f
-        composeView.translationY = -offset
-      }
-      FloatingToolbarExitDirection.Start -> {
-        composeView.translationY = 0f
-        composeView.translationX = if (isRtl) -offset else offset
-      }
-      FloatingToolbarExitDirection.End -> {
-        composeView.translationY = 0f
-        composeView.translationX = if (isRtl) offset else -offset
-      }
-      else -> {
-        composeView.translationX = 0f
-        composeView.translationY = -offset
-      }
+    val current = behavior ?: return resetTranslation()
+    val rtl = hostView.layoutDirection == View.LAYOUT_DIRECTION_RTL
+    when (current.exitDirection) {
+      FloatingToolbarExitDirection.Top -> { composeView.translationX = 0f; composeView.translationY = offset }
+      FloatingToolbarExitDirection.Bottom -> { composeView.translationX = 0f; composeView.translationY = -offset }
+      FloatingToolbarExitDirection.Start -> { composeView.translationY = 0f; composeView.translationX = if (rtl) -offset else offset }
+      FloatingToolbarExitDirection.End -> { composeView.translationY = 0f; composeView.translationX = if (rtl) offset else -offset }
+      else -> { composeView.translationX = 0f; composeView.translationY = -offset }
     }
   }
 
@@ -258,8 +169,87 @@ internal class FloatingToolbarScrollConsumer(
     settleJob = null
   }
 
-  private fun resetTranslation() {
-    composeView.translationX = 0f
-    composeView.translationY = 0f
+  private fun resetTranslation() { composeView.translationX = 0f; composeView.translationY = 0f }
+}
+
+internal object NativeFloatingToolbarPlacement {
+  private data class State(
+    var alignment: String = "bottomCenter",
+    var insets: String = "safe",
+    var edgeDp: Float? = null,
+    var ime: String = "none",
+    var system: Insets = Insets.NONE,
+    var keyboard: Insets = Insets.NONE,
+    var callback: Boolean = false,
+  )
+  private val states = WeakHashMap<ExpoMaterialToolbarView, State>()
+
+  fun alignment(v: ExpoMaterialToolbarView, x: String) { state(v).alignment = x; apply(v) }
+  fun insets(v: ExpoMaterialToolbarView, x: String) { state(v).insets = if (x == "none") "none" else "safe"; apply(v) }
+  fun edge(v: ExpoMaterialToolbarView, x: Float?) { state(v).edgeDp = x?.coerceAtLeast(0f); apply(v) }
+  fun ime(v: ExpoMaterialToolbarView, x: String) { state(v).ime = if (x == "hide") "hide" else "none"; apply(v) }
+
+  fun windowInsets(host: ViewGroup, x: WindowInsetsCompat) {
+    val v = host as? ExpoMaterialToolbarView ?: return
+    update(v, state(v), x)
+  }
+
+  fun afterLayout(host: ViewGroup, child: ComposeView) {
+    if (host is ExpoMaterialToolbarView) apply(host, child)
+  }
+
+  fun apply(host: ViewGroup, childOverride: ComposeView? = null): Insets? {
+    val v = host as? ExpoMaterialToolbarView ?: return null
+    val s = state(v)
+    val i = resolved(s)
+    val child = childOverride ?: (v.getChildAt(0) as? ComposeView) ?: return i
+    if (v.width <= 0 || v.height <= 0 || child.measuredWidth <= 0 || child.measuredHeight <= 0) return i
+    val w = v.width
+    val h = v.height
+    val cw = child.measuredWidth.coerceAtMost(w)
+    val ch = child.measuredHeight.coerceAtMost(h)
+    val edge = (((s.edgeDp ?: FloatingToolbarDefaults.ScreenOffset.value) * v.resources.displayMetrics.density).roundToInt()).coerceAtLeast(0)
+    val rtl = v.layoutDirection == View.LAYOUT_DIRECTION_RTL
+    val x = when {
+      s.alignment.endsWith("Start") -> if (rtl) w - i.right - edge - cw else i.left + edge
+      s.alignment.endsWith("End") -> if (rtl) i.left + edge else w - i.right - edge - cw
+      else -> (w - cw) / 2
+    }.coerceIn(0, (w - cw).coerceAtLeast(0))
+    val y = when {
+      s.alignment.startsWith("top") -> i.top + edge
+      s.alignment.startsWith("bottom") -> h - i.bottom - edge - ch
+      else -> (h - ch) / 2
+    }.coerceIn(0, (h - ch).coerceAtLeast(0))
+    child.layout(x, y, x + cw, y + ch)
+    if (NativeScrollTracing.enabled) Log.d(NATIVE_SCROLL_LOG_TAG, "TOOLBAR_LAYOUT alignment=${s.alignment} host=${w}x$h visible=${i.left},${i.top},${i.right},${i.bottom} edge=$edge compose=${cw}x$ch pos=$x,$y-${x + cw},${y + ch}")
+    return i
+  }
+
+  private fun state(v: ExpoMaterialToolbarView): State {
+    val s = states.getOrPut(v) { State() }
+    if (!s.callback) {
+      s.callback = true
+      ViewCompat.setWindowInsetsAnimationCallback(v, object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+        override fun onProgress(x: WindowInsetsCompat, a: MutableList<WindowInsetsAnimationCompat>): WindowInsetsCompat { update(v, s, x); return x }
+      })
+      ViewCompat.getRootWindowInsets(v)?.let { update(v, s, it) }
+    }
+    return s
+  }
+
+  private fun update(v: ExpoMaterialToolbarView, s: State, x: WindowInsetsCompat) {
+    val system = x.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+    val keyboard = x.getInsets(WindowInsetsCompat.Type.ime())
+    if (system == s.system && keyboard == s.keyboard) return
+    s.system = system
+    s.keyboard = keyboard
+    apply(v)
+    if (NativeScrollTracing.enabled) Log.d(NATIVE_SCROLL_LOG_TAG, "TOOLBAR_INSETS system=${system.left},${system.top},${system.right},${system.bottom} ime=${keyboard.left},${keyboard.top},${keyboard.right},${keyboard.bottom}")
+  }
+
+  private fun resolved(s: State): Insets {
+    if (s.insets != "safe") return Insets.NONE
+    if (s.ime == "hide") return s.system
+    return Insets.of(max(s.system.left, s.keyboard.left), max(s.system.top, s.keyboard.top), max(s.system.right, s.keyboard.right), max(s.system.bottom, s.keyboard.bottom))
   }
 }
