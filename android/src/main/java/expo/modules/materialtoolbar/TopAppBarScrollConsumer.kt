@@ -41,6 +41,7 @@ internal class TopAppBarScrollConsumer {
   private var mode: TopAppBarInteropMode? = null
   private var settleJob: Job? = null
   private var settleGeneration = 0L
+  private var transactionActive = false
 
   private var expandedChromeHeightPx = 0
   private var scrollAwaySource: ViewGroup? = null
@@ -57,8 +58,20 @@ internal class TopAppBarScrollConsumer {
   private val isBound: Boolean
     get() = behavior != null && scope != null && mode != null
 
+  /**
+   * Material initializes TopAppBarState.heightOffsetLimit to -Float.MAX_VALUE and replaces it only
+   * after the app bar has participated in a real layout. Feeding nested-scroll deltas to that
+   * sentinel state makes the bar consume effectively unbounded distance. Fail closed until Compose
+   * has resolved a finite Material range.
+   */
+  private val hasResolvedHeightOffsetLimit: Boolean
+    get() {
+      val limit = behavior?.state?.heightOffsetLimit ?: return false
+      return limit.isFinite() && limit > -Float.MAX_VALUE
+    }
+
   val isNestedDirectCapable: Boolean
-    get() = isBound
+    get() = isBound && hasResolvedHeightOffsetLimit
 
   fun prepareNestedSource(source: ViewGroup): Boolean {
     if (!hasChrome) return false
@@ -68,10 +81,23 @@ internal class TopAppBarScrollConsumer {
   }
 
   fun beginNestedTransaction(source: ViewGroup): Boolean {
-    if (!isNestedDirectCapable) return false
+    transactionActive = false
+    if (!isNestedDirectCapable) {
+      if (BuildConfig.DEBUG && isBound) {
+        val state = behavior?.state
+        Log.d(
+          NATIVE_SCROLL_LOG_TAG,
+          "TX_TOP_BEGIN rejected=geometry-unresolved view=${source.id} " +
+            "heightOffset=${state?.heightOffset} limit=${state?.heightOffsetLimit} " +
+            "expanded=$expandedChromeHeightPx scrollAway=$appliedScrollAwayPaddingPx",
+        )
+      }
+      return false
+    }
     val supported = ReactVerticalScrollSourceInterop.asSupported(source) ?: return false
     cancelSettle()
     ensureScrollAwaySource(supported)
+    transactionActive = true
     if (BuildConfig.DEBUG) {
       val state = behavior?.state
       Log.d(
@@ -86,7 +112,7 @@ internal class TopAppBarScrollConsumer {
 
   fun nestedPreScroll(deltaY: Int, inputType: NativeNestedInputType): NativeNestedPreResult {
     val currentBehavior = behavior ?: return NativeNestedPreResult(0, 0)
-    if (!isNestedDirectCapable || deltaY == 0) return NativeNestedPreResult(0, 0)
+    if (!transactionActive || !isNestedDirectCapable || deltaY == 0) return NativeNestedPreResult(0, 0)
 
     val state = currentBehavior.state
     val oldHeightOffset = state.heightOffset
@@ -111,7 +137,7 @@ internal class TopAppBarScrollConsumer {
     inputType: NativeNestedInputType,
   ): NativeNestedPostResult {
     val currentBehavior = behavior ?: return NativeNestedPostResult(0, 0)
-    if (!isNestedDirectCapable) return NativeNestedPostResult(0, 0)
+    if (!transactionActive || !isNestedDirectCapable) return NativeNestedPostResult(0, 0)
 
     val state = currentBehavior.state
     val oldHeightOffset = state.heightOffset
@@ -132,6 +158,8 @@ internal class TopAppBarScrollConsumer {
     behavior?.state?.heightOffset?.let { (-it).coerceAtLeast(0f) } ?: 0f
 
   fun endNestedTransaction(source: ViewGroup, reason: String) {
+    if (!transactionActive) return
+    transactionActive = false
     val currentBehavior = behavior ?: return
     val currentScope = scope ?: return
     if (!isNestedDirectCapable || !source.isAttachedToWindow) return
@@ -188,6 +216,7 @@ internal class TopAppBarScrollConsumer {
     newMode: TopAppBarInteropMode?,
   ) {
     if (behavior === newBehavior && scope === newScope && mode == newMode) return
+    transactionActive = false
     cancelSettle()
     behavior = newBehavior
     scope = newScope
@@ -222,6 +251,7 @@ internal class TopAppBarScrollConsumer {
   }
 
   fun onHostDetached() {
+    transactionActive = false
     cancelSettle()
     clearScrollAwaySource()
   }
