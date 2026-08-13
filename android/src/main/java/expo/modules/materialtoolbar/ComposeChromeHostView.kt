@@ -1,9 +1,12 @@
 package expo.modules.materialtoolbar
 
 import android.content.Context
+import android.util.Log
 import android.view.View
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
 import expo.modules.kotlin.AppContext
@@ -44,6 +47,8 @@ abstract class ComposeChromeHostView(
   }
 
   private var hostMeasurePending = false
+  private var lastIncomingImeVisible: Boolean? = null
+  private var lastRootImeVisible: Boolean? = null
 
   init {
     isClickable = false
@@ -123,6 +128,68 @@ abstract class ComposeChromeHostView(
     super.onSizeChanged(w, h, oldw, oldh)
     if (!isAttachedToWindow || w <= 0 || h <= 0) return
     scheduleHostMeasureAndLayout()
+  }
+
+  override fun onApplyWindowInsets(insets: android.view.WindowInsets): android.view.WindowInsets {
+    val applied = super.onApplyWindowInsets(insets)
+    traceImeInsets(insets)
+    return applied
+  }
+
+  private fun traceImeInsets(insets: android.view.WindowInsets) {
+    if (!NativeScrollTracing.enabled) return
+
+    val incomingImeVisible = WindowInsetsCompat
+      .toWindowInsetsCompat(insets, this)
+      .isVisible(WindowInsetsCompat.Type.ime())
+    val rootImeVisible = ViewCompat
+      .getRootWindowInsets(this)
+      ?.isVisible(WindowInsetsCompat.Type.ime())
+
+    if (
+      incomingImeVisible == lastIncomingImeVisible &&
+      rootImeVisible == lastRootImeVisible
+    ) {
+      return
+    }
+
+    lastIncomingImeVisible = incomingImeVisible
+    lastRootImeVisible = rootImeVisible
+    logImeSnapshot("apply", incomingImeVisible, rootImeVisible)
+
+    // The immediate callback runs before the Compose child has consumed this insets dispatch. The
+    // posted snapshot tells us whether the wrap-content ComposeView recovered its geometry after the
+    // same transition, without changing layout from the diagnostic itself.
+    post {
+      if (!isAttachedToWindow || !NativeScrollTracing.enabled) return@post
+      val postedRootImeVisible = ViewCompat
+        .getRootWindowInsets(this)
+        ?.isVisible(WindowInsetsCompat.Type.ime())
+      logImeSnapshot("post", incomingImeVisible, postedRootImeVisible)
+    }
+  }
+
+  private fun logImeSnapshot(
+    phase: String,
+    incomingImeVisible: Boolean,
+    rootImeVisible: Boolean?,
+  ) {
+    val visibility = when (composeView.visibility) {
+      View.VISIBLE -> "VISIBLE"
+      View.INVISIBLE -> "INVISIBLE"
+      View.GONE -> "GONE"
+      else -> composeView.visibility.toString()
+    }
+
+    Log.d(
+      NATIVE_SCROLL_LOG_TAG,
+      "CHROME_IME phase=$phase hostClass=${javaClass.simpleName} " +
+        "incoming=$incomingImeVisible root=$rootImeVisible " +
+        "host=${width}x${height} " +
+        "composeMeasured=${composeView.measuredWidth}x${composeView.measuredHeight} " +
+        "composeBounds=${composeView.left},${composeView.top},${composeView.right},${composeView.bottom} " +
+        "composeVisibility=$visibility layoutRequested=${composeView.isLayoutRequested}",
+    )
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
