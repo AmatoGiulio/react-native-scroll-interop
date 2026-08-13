@@ -9,14 +9,13 @@ import android.widget.FrameLayout
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
-import com.material3scroll.transport.NestedScrollConservationLedger
 import com.material3scroll.transport.SourceScopedNestedScrollLifecycle
+import com.material3scroll.transport.VerticalNestedScrollTransactionDispatcher
 
 class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedScrollingParent3 {
   private val parentHelper = NestedScrollingParentHelper(this)
   private val throwawayConsumed = IntArray(2)
   private val lifecycle = SourceScopedNestedScrollLifecycle()
-  private val ledger = NestedScrollConservationLedger()
 
   private val chromeController =
     if (BuildConfig.RN_CHROME_PROBE) {
@@ -28,6 +27,18 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     } else {
       null
     }
+
+  private val chromePreConsumer =
+    VerticalNestedScrollTransactionDispatcher.PreConsumer { availableY, inputType ->
+      chromeController?.nestedPreScroll(availableY, inputType) ?: 0
+    }
+  private val chromePostConsumer =
+    VerticalNestedScrollTransactionDispatcher.PostConsumer { childConsumedY, availableY, inputType ->
+      chromeController?.nestedPostScroll(childConsumedY, availableY, inputType) ?: 0
+    }
+  private val chromePreConsumers = listOf(chromePreConsumer)
+  private val chromePostConsumers = listOf(chromePostConsumer)
+  private val dispatcher = VerticalNestedScrollTransactionDispatcher()
 
   private var waitingForSourceLayout = false
 
@@ -52,6 +63,7 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   override fun onDetachedFromWindow() {
     stopWaitingForSourceLayout()
     flushPendingLedger("detach")
+    dispatcher.clearParticipants()
     lifecycle.clear()
     chromeController?.onDetached()
     super.onDetachedFromWindow()
@@ -86,7 +98,12 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
         flushPendingLedger("session-rebind")
       }
 
-      chromeController?.beginNestedTransaction(source)
+      val chromeReady = chromeController?.beginNestedTransaction(source) == true
+      dispatcher.bind(
+        preConsumers = if (chromeReady) chromePreConsumers else emptyList(),
+        postConsumers = if (chromeReady) chromePostConsumers else emptyList(),
+        postObservers = emptyList(),
+      )
     }
     log(
       "NESTED_START contract=androidx type=${typeName(type)} axes=$axes accepted=$accepted " +
@@ -111,7 +128,7 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     val source = target as? ViewGroup
     val activeTarget = lifecycle.isActive(source)
     val momentumOwner = lifecycle.isMomentumOwner(source)
-    val snapshot = ledger.snapshot()
+    val snapshot = dispatcher.snapshot()
     log(
       "NESTED_STOP contract=androidx type=${typeName(type)} activeTarget=$activeTarget " +
         "momentumOwner=$momentumOwner ledgerFrames=${snapshot.frames} " +
@@ -141,12 +158,14 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
       SourceScopedNestedScrollLifecycle.StopDecision.EndMomentum -> {
         flushPendingLedger("momentum-stop")
         chromeController?.endNestedTransaction("momentum-stop")
+        dispatcher.clearParticipants()
       }
       SourceScopedNestedScrollLifecycle.StopDecision.DeferTouchForMomentum ->
         log("CHROME_TOUCH_STOP deferred=momentum target=${targetName(target)}")
       SourceScopedNestedScrollLifecycle.StopDecision.EndTouch -> {
         flushPendingLedger("touch-stop")
         chromeController?.endNestedTransaction("touch-stop")
+        dispatcher.clearParticipants()
       }
       SourceScopedNestedScrollLifecycle.StopDecision.Stale -> Unit
     }
@@ -161,12 +180,16 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
       return
     }
 
-    val chromeConsumed = chromeController?.nestedPreScroll(dy, type) ?: 0
-    consumed[1] += chromeConsumed
-    recordLedgerPre(dy, chromeConsumed, type)
+    val dispatch = dispatcher.dispatchPre(
+      requestedY = dy,
+      inputType = type,
+      trackConservation = chromeController != null,
+    )
+    consumed[1] += dispatch.consumedY
+    recordLedgerPre(dispatch, type)
     log(
       "NESTED_PRE type=${typeName(type)} dx=$dx dy=$dy consumedX=${consumed[0]} " +
-        "consumedY=${consumed[1]} chrome=$chromeConsumed target=${targetName(target)}",
+        "consumedY=${consumed[1]} chrome=${dispatch.consumedY} target=${targetName(target)}",
     )
   }
 
@@ -187,13 +210,17 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
       return
     }
 
-    val chromeConsumed =
-      chromeController?.nestedPostScroll(dyConsumed, dyUnconsumed, type) ?: 0
-    consumed[1] += chromeConsumed
-    recordLedgerPost(dyConsumed, dyUnconsumed, chromeConsumed, type)
+    val dispatch = dispatcher.dispatchPost(
+      childConsumedY = dyConsumed,
+      availableY = dyUnconsumed,
+      inputType = type,
+      trackConservation = chromeController != null,
+    )
+    consumed[1] += dispatch.consumedY
+    recordLedgerPost(dispatch, type)
     log(
       "NESTED_POST type=${typeName(type)} childConsumedY=$dyConsumed remainingY=$dyUnconsumed " +
-        "parentConsumedY=${consumed[1]} chrome=$chromeConsumed target=${targetName(target)}",
+        "parentConsumedY=${consumed[1]} chrome=${dispatch.consumedY} target=${targetName(target)}",
     )
   }
 
@@ -304,6 +331,7 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     val source = sources.single()
     lifecycle.invalidateForDiscoveredReplacement(source)?.let { replacement ->
       flushPendingLedger("source-invalidated")
+      dispatcher.clearParticipants()
       log(
         "LIFECYCLE_SOURCE_INVALIDATED old=${sourceName(replacement.previous)} " +
           "discovered=${targetName(replacement.replacement)} " +
@@ -357,10 +385,11 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     log("CHROME_SOURCE_WAIT armed=false")
   }
 
-  private fun recordLedgerPre(requestedY: Int, chromePreY: Int, type: Int) {
-    if (chromeController == null || requestedY == 0) return
-
-    val result = ledger.beginFrame(requestedY, chromePreY)
+  private fun recordLedgerPre(
+    dispatch: VerticalNestedScrollTransactionDispatcher.PreDispatch,
+    type: Int,
+  ) {
+    val result = dispatch.ledgerResult ?: return
     result.orphanBeforePre?.let { orphan ->
       log(
         "CHROME_LEDGER_ORPHAN n=${orphan.index} reason=next-pre requested=${orphan.requestedY} " +
@@ -374,12 +403,10 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   }
 
   private fun recordLedgerPost(
-    childConsumedY: Int,
-    dyUnconsumed: Int,
-    chromePostY: Int,
+    dispatch: VerticalNestedScrollTransactionDispatcher.PostDispatch,
     type: Int,
   ) {
-    val frame = ledger.completeFrame(childConsumedY, dyUnconsumed, chromePostY) ?: return
+    val frame = dispatch.ledgerFrame ?: return
     log(
       "CHROME_LEDGER type=${typeName(type)} n=${frame.index} requested=${frame.requestedY} " +
         "chromePre=${frame.chromePreY} child=${frame.childConsumedY} chromePost=${frame.chromePostY} " +
@@ -389,7 +416,7 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   }
 
   private fun flushPendingLedger(reason: String) {
-    val orphan = ledger.flushPending() ?: return
+    val orphan = dispatcher.flushPending() ?: return
     log(
       "CHROME_LEDGER_ORPHAN n=${orphan.index} reason=$reason requested=${orphan.requestedY} " +
         "chromePre=${orphan.chromePreY}",
