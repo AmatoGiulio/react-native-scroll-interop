@@ -7,38 +7,17 @@ import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
 
 class ToolbarActionRecord : Record {
-  @Field
-  val id: String = ""
-
-  @Field
-  val presentation: String = "icon"
-
-  @Field
-  val label: String = ""
-
-  @Field
-  val enabled: Boolean = true
-
-  @Field
-  val accessibilityLabel: String? = null
-
-  @Field
-  val iconPresent: Boolean = false
-
-  @Field
-  val iconUri: String? = null
-
-  @Field
-  val iconTintable: Boolean = true
-
-  @Field
-  val iconSize: Double = 24.0
-
-  @Field
-  val iconFallback: String = "none"
-
-  @Field
-  val selected: Boolean = false
+  @Field val id: String = ""
+  @Field val presentation: String = "icon"
+  @Field val label: String = ""
+  @Field val enabled: Boolean = true
+  @Field val accessibilityLabel: String? = null
+  @Field val iconPresent: Boolean = false
+  @Field val iconUri: String? = null
+  @Field val iconTintable: Boolean = true
+  @Field val iconSize: Double = 24.0
+  @Field val iconFallback: String = "none"
+  @Field val selected: Boolean = false
 }
 
 class ExpoMaterialToolbarModule : Module() {
@@ -48,166 +27,62 @@ class ExpoMaterialToolbarModule : Module() {
     View(ExpoMaterialToolbarView::class) {
       Events("onActionPress", "onFabPress")
 
-      Prop("content") { view: ExpoMaterialToolbarView, actions: List<ToolbarActionRecord> ->
-        view.setContent(actions)
+      Prop("content") { view: ExpoMaterialToolbarView, value: List<ToolbarActionRecord> -> view.setContent(value) }
+      Prop("leadingContent") { view: ExpoMaterialToolbarView, value: List<ToolbarActionRecord> -> view.setLeadingContent(value) }
+      Prop("trailingContent") { view: ExpoMaterialToolbarView, value: List<ToolbarActionRecord> -> view.setTrailingContent(value) }
+      Prop("visible") { view: ExpoMaterialToolbarView, value: Boolean -> view.setVisibleState(value) }
+      Prop("expanded") { view: ExpoMaterialToolbarView, value: Boolean -> view.setExpanded(value) }
+      Prop("scrollBehavior") { view: ExpoMaterialToolbarView, value: String -> view.setScrollBehavior(value) }
+      Prop("scrollExitDirection") { view: ExpoMaterialToolbarView, value: String -> view.setScrollExitDirection(value) }
+      Prop("orientation") { view: ExpoMaterialToolbarView, value: String -> view.setOrientation(value) }
+      Prop("variant") { view: ExpoMaterialToolbarView, value: String -> view.setVariant(value) }
+      Prop("fabPresent") { view: ExpoMaterialToolbarView, value: Boolean -> view.setFabPresent(value) }
+      Prop("fabPosition") { view: ExpoMaterialToolbarView, value: String -> view.setFabPosition(value) }
+      Prop("fabIconUri") { view: ExpoMaterialToolbarView, value: String? -> view.setFabIconUri(value) }
+      Prop("fabIconTintable") { view: ExpoMaterialToolbarView, value: Boolean -> view.setFabIconTintable(value) }
+      Prop("fabIconSize") { view: ExpoMaterialToolbarView, value: Double -> view.setFabIconSize(value.toFloat()) }
+      Prop("fabIconFallback") { view: ExpoMaterialToolbarView, value: String -> view.setFabIconFallback(value) }
+      Prop("fabAccessibilityLabel") { view: ExpoMaterialToolbarView, value: String? -> view.setFabAccessibilityLabel(value) }
+      Prop("fabShape") { view: ExpoMaterialToolbarView, value: String -> view.setFabShape(value) }
+      Prop("themeMode") { view: ExpoMaterialToolbarView, value: String -> view.setThemeMode(value) }
+      Prop("dynamicColor") { view: ExpoMaterialToolbarView, value: Boolean -> view.setDynamicColor(value) }
+
+      Prop("imeBehavior") { view: ExpoMaterialToolbarView, value: String ->
+        view.setImeBehavior(value)
+        NativeFloatingToolbarPlacement.ime(view, value)
+      }
+      Prop("alignment") { view: ExpoMaterialToolbarView, value: String ->
+        view.setAlignment(value)
+        NativeFloatingToolbarPlacement.alignment(view, value)
+      }
+      Prop("insets") { view: ExpoMaterialToolbarView, value: String ->
+        NativeFloatingToolbarPlacement.insets(view, value)
+        view.setInsets("none")
+        view.setEdgeOffset(0f)
+      }
+      Prop("edgeOffset") { view: ExpoMaterialToolbarView, value: Double? ->
+        NativeFloatingToolbarPlacement.edge(view, value?.toFloat())
+        view.setEdgeOffset(0f)
       }
 
-      Prop("leadingContent") { view: ExpoMaterialToolbarView, actions: List<ToolbarActionRecord> ->
-        view.setLeadingContent(actions)
-      }
+      Prop("contentPaddingStart") { view: ExpoMaterialToolbarView, value: Double? -> view.setContentPaddingStart(value?.toFloat()) }
+      Prop("contentPaddingTop") { view: ExpoMaterialToolbarView, value: Double? -> view.setContentPaddingTop(value?.toFloat()) }
+      Prop("contentPaddingEnd") { view: ExpoMaterialToolbarView, value: Double? -> view.setContentPaddingEnd(value?.toFloat()) }
+      Prop("contentPaddingBottom") { view: ExpoMaterialToolbarView, value: Double? -> view.setContentPaddingBottom(value?.toFloat()) }
+      Prop("expandedShadowElevation") { view: ExpoMaterialToolbarView, value: Double? -> view.setExpandedShadowElevation(value?.toFloat()) }
+      Prop("collapsedShadowElevation") { view: ExpoMaterialToolbarView, value: Double? -> view.setCollapsedShadowElevation(value?.toFloat()) }
+      Prop("toolbarContainerColor") { view: ExpoMaterialToolbarView, value: Color? -> view.setToolbarContainerColor(value) }
+      Prop("toolbarContentColor") { view: ExpoMaterialToolbarView, value: Color? -> view.setToolbarContentColor(value) }
+      Prop("fabContainerColor") { view: ExpoMaterialToolbarView, value: Color? -> view.setFabContainerColor(value) }
+      Prop("fabContentColor") { view: ExpoMaterialToolbarView, value: Color? -> view.setFabContentColor(value) }
+      Prop("selectedContainerColor") { view: ExpoMaterialToolbarView, value: Color? -> view.setSelectedContainerColor(value) }
+      Prop("selectedContentColor") { view: ExpoMaterialToolbarView, value: Color? -> view.setSelectedContentColor(value) }
+      Prop("unselectedContentColor") { view: ExpoMaterialToolbarView, value: Color? -> view.setUnselectedContentColor(value) }
 
-      Prop("trailingContent") { view: ExpoMaterialToolbarView, actions: List<ToolbarActionRecord> ->
-        view.setTrailingContent(actions)
-      }
-
-      Prop("visible") { view: ExpoMaterialToolbarView, visible: Boolean ->
-        view.setVisibleState(visible)
-      }
-
-      Prop("expanded") { view: ExpoMaterialToolbarView, expanded: Boolean ->
-        view.setExpanded(expanded)
-      }
-
-      Prop("scrollBehavior") { view: ExpoMaterialToolbarView, behavior: String ->
-        view.setScrollBehavior(behavior)
-      }
-
-      Prop("scrollExitDirection") { view: ExpoMaterialToolbarView, direction: String ->
-        view.setScrollExitDirection(direction)
-      }
-
-      Prop("orientation") { view: ExpoMaterialToolbarView, orientation: String ->
-        view.setOrientation(orientation)
-      }
-
-      Prop("variant") { view: ExpoMaterialToolbarView, variant: String ->
-        view.setVariant(variant)
-      }
-
-      Prop("fabPresent") { view: ExpoMaterialToolbarView, present: Boolean ->
-        view.setFabPresent(present)
-      }
-
-      Prop("fabPosition") { view: ExpoMaterialToolbarView, position: String ->
-        view.setFabPosition(position)
-      }
-
-      Prop("fabIconUri") { view: ExpoMaterialToolbarView, uri: String? ->
-        view.setFabIconUri(uri)
-      }
-
-      Prop("fabIconTintable") { view: ExpoMaterialToolbarView, tintable: Boolean ->
-        view.setFabIconTintable(tintable)
-      }
-
-      Prop("fabIconSize") { view: ExpoMaterialToolbarView, size: Double ->
-        view.setFabIconSize(size.toFloat())
-      }
-
-      Prop("fabIconFallback") { view: ExpoMaterialToolbarView, fallback: String ->
-        view.setFabIconFallback(fallback)
-      }
-
-      Prop("fabAccessibilityLabel") { view: ExpoMaterialToolbarView, label: String? ->
-        view.setFabAccessibilityLabel(label)
-      }
-
-      Prop("fabShape") { view: ExpoMaterialToolbarView, shape: String ->
-        view.setFabShape(shape)
-      }
-
-      Prop("themeMode") { view: ExpoMaterialToolbarView, mode: String ->
-        view.setThemeMode(mode)
-      }
-
-      Prop("dynamicColor") { view: ExpoMaterialToolbarView, dynamic: Boolean ->
-        view.setDynamicColor(dynamic)
-      }
-
-      Prop("imeBehavior") { view: ExpoMaterialToolbarView, behavior: String ->
-        view.setImeBehavior(behavior)
-      }
-
-      Prop("alignment") { view: ExpoMaterialToolbarView, alignment: String ->
-        view.setAlignment(alignment)
-      }
-
-      Prop("insets") { view: ExpoMaterialToolbarView, insets: String ->
-        view.setInsets(insets)
-      }
-
-      Prop("edgeOffset") { view: ExpoMaterialToolbarView, offset: Double? ->
-        view.setEdgeOffset(offset?.toFloat())
-      }
-
-      Prop("contentPaddingStart") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setContentPaddingStart(value?.toFloat())
-      }
-
-      Prop("contentPaddingTop") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setContentPaddingTop(value?.toFloat())
-      }
-
-      Prop("contentPaddingEnd") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setContentPaddingEnd(value?.toFloat())
-      }
-
-      Prop("contentPaddingBottom") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setContentPaddingBottom(value?.toFloat())
-      }
-
-      Prop("expandedShadowElevation") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setExpandedShadowElevation(value?.toFloat())
-      }
-
-      Prop("collapsedShadowElevation") { view: ExpoMaterialToolbarView, value: Double? ->
-        view.setCollapsedShadowElevation(value?.toFloat())
-      }
-
-      Prop("toolbarContainerColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setToolbarContainerColor(color)
-      }
-
-      Prop("toolbarContentColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setToolbarContentColor(color)
-      }
-
-      Prop("fabContainerColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setFabContainerColor(color)
-      }
-
-      Prop("fabContentColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setFabContentColor(color)
-      }
-
-      Prop("selectedContainerColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setSelectedContainerColor(color)
-      }
-
-      Prop("selectedContentColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setSelectedContentColor(color)
-      }
-
-      Prop("unselectedContentColor") { view: ExpoMaterialToolbarView, color: Color? ->
-        view.setUnselectedContentColor(color)
-      }
-
-      AsyncFunction("show") { view: ExpoMaterialToolbarView ->
-        view.setVisibleState(true)
-      }
-
-      AsyncFunction("hide") { view: ExpoMaterialToolbarView ->
-        view.setVisibleState(false)
-      }
-
-      AsyncFunction("expand") { view: ExpoMaterialToolbarView ->
-        view.setExpanded(true)
-      }
-
-      AsyncFunction("collapse") { view: ExpoMaterialToolbarView ->
-        view.setExpanded(false)
-      }
-
+      AsyncFunction("show") { view: ExpoMaterialToolbarView -> view.setVisibleState(true) }
+      AsyncFunction("hide") { view: ExpoMaterialToolbarView -> view.setVisibleState(false) }
+      AsyncFunction("expand") { view: ExpoMaterialToolbarView -> view.setExpanded(true) }
+      AsyncFunction("collapse") { view: ExpoMaterialToolbarView -> view.setExpanded(false) }
     }
   }
 }
