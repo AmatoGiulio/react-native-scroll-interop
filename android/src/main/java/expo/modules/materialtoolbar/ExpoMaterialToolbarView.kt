@@ -8,18 +8,15 @@ package expo.modules.materialtoolbar
 import android.content.Context
 import android.graphics.Color
 import android.os.Build
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -130,7 +127,7 @@ class ExpoMaterialToolbarView(
   internal val onFabPress by EventDispatcher()
 
   private val state = mutableStateOf(ToolbarState())
-  private val nativeImeVisible = mutableStateOf(false)
+  private var nativeImeVisible = false
 
   private val floatingToolbarScrollConsumer = FloatingToolbarScrollConsumer(this, composeView)
 
@@ -145,15 +142,15 @@ class ExpoMaterialToolbarView(
   }
 
   override fun onNativeImeVisibilityChanged(visible: Boolean) {
-    if (nativeImeVisible.value == visible) return
-    nativeImeVisible.value = visible
-    requestLayout()
-    composeView.requestLayout()
+    if (nativeImeVisible == visible) return
+    nativeImeVisible = visible
+    syncNativeVisibility("ime")
   }
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     NativeNestedScrollRegistry.registerToolbar(this, floatingToolbarScrollConsumer)
+    syncNativeVisibility("attach")
   }
 
   override fun onDetachedFromWindow() {
@@ -179,6 +176,34 @@ class ExpoMaterialToolbarView(
     state.value = transform(state.value)
     requestLayout()
     composeView.requestLayout()
+  }
+
+  private fun syncNativeVisibility(reason: String) {
+    val uiState = state.value
+    val hiddenForIme = uiState.imeBehavior == "hide" && nativeImeVisible
+    val shouldBeVisible = uiState.visible && !hiddenForIme
+    val targetVisibility = if (shouldBeVisible) View.VISIBLE else View.INVISIBLE
+    val changed = composeView.visibility != targetVisibility
+
+    if (changed) {
+      composeView.visibility = targetVisibility
+    }
+
+    // INVISIBLE intentionally keeps this WRAP_CONTENT ComposeView measured. The scroll consumer
+    // therefore retains a real geometry while IME/visible hides the pixels, and showing it again
+    // cannot get stuck behind a 0x0 root measurement.
+    composeView.requestLayout()
+    requestLayout()
+
+    if (NativeScrollTracing.enabled) {
+      Log.d(
+        NATIVE_SCROLL_LOG_TAG,
+        "TOOLBAR_VIS reason=$reason ime=$nativeImeVisible imeBehavior=${uiState.imeBehavior} " +
+          "propVisible=${uiState.visible} target=${if (shouldBeVisible) "VISIBLE" else "INVISIBLE"} " +
+          "changed=$changed measured=${composeView.measuredWidth}x${composeView.measuredHeight} " +
+          "bounds=${composeView.left},${composeView.top},${composeView.right},${composeView.bottom}",
+      )
+    }
   }
 
   override fun onMeasureComposeChild(hostWidthPx: Int, hostHeightPx: Int) {
@@ -247,7 +272,11 @@ class ExpoMaterialToolbarView(
   fun setTrailingContent(records: List<ToolbarActionRecord>) =
     updateState { it.copy(trailingContent = recordsToActions(records)) }
 
-  fun setVisibleState(visible: Boolean) = updateState { it.copy(visible = visible) }
+  fun setVisibleState(visible: Boolean) {
+    updateState { it.copy(visible = visible) }
+    syncNativeVisibility("prop-visible")
+  }
+
   fun setExpanded(expanded: Boolean) = updateState { it.copy(expanded = expanded) }
   fun setScrollBehavior(behavior: String) = updateState {
     it.copy(scrollBehavior = if (behavior == "exitAlways") "exitAlways" else "none")
@@ -296,9 +325,12 @@ class ExpoMaterialToolbarView(
     )
   }
   fun setDynamicColor(dynamic: Boolean) = updateState { it.copy(dynamicColor = dynamic) }
-  fun setImeBehavior(behavior: String) = updateState {
-    it.copy(imeBehavior = if (behavior == "hide") "hide" else "none")
+
+  fun setImeBehavior(behavior: String) {
+    updateState { it.copy(imeBehavior = if (behavior == "hide") "hide" else "none") }
+    syncNativeVisibility("prop-ime")
   }
+
   fun setAlignment(alignment: String) = updateState {
     it.copy(
       alignment = when (alignment) {
@@ -387,8 +419,6 @@ class ExpoMaterialToolbarView(
       val unselectedContentColor = uiState.unselectedContentArgb?.let { ComposeColor(it) }
         ?: toolbarColors.toolbarContentColor
 
-      val hideForIme = uiState.imeBehavior == "hide" && nativeImeVisible.value
-      val shouldRender = uiState.visible && !hideForIme
       val layoutDirection = LocalLayoutDirection.current
       val defaultContentPadding = FloatingToolbarDefaults.ContentPadding
       val contentPadding = PaddingValues(
@@ -428,12 +458,10 @@ class ExpoMaterialToolbarView(
         onDispose { unbindComposeScrollBehavior(materialScrollBehavior) }
       }
 
-      AnimatedVisibility(
-        visible = shouldRender,
-        modifier = Modifier.padding(hostPadding),
-        enter = fadeIn() + scaleIn(initialScale = 0.92f),
-        exit = fadeOut() + scaleOut(targetScale = 0.92f),
-      ) {
+      // Keep a real layout node alive even when Android hides the ComposeView. A root
+      // AnimatedVisibility in a WRAP_CONTENT ComposeView can legitimately measure 0x0 while hidden,
+      // which strands the native host with no geometry to recover on IME close.
+      Box(modifier = Modifier.padding(hostPadding)) {
         FloatingToolbar(
           uiState = uiState,
           contentPadding = contentPadding,
