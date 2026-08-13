@@ -133,6 +133,8 @@ class VerticalNestedScrollTransactionDispatcher(
 
   fun flushPending(): NestedScrollConservationLedger.OrphanPre? = ledger.flushPending()
 
+  fun discardPending() = ledger.discardPending()
+
   fun snapshot(): NestedScrollConservationLedger.Snapshot = ledger.snapshot()
 
   private fun clampSignedConsumption(availableY: Int, consumedY: Int): Int {
