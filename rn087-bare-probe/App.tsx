@@ -3,17 +3,12 @@ import {ScrollView, StatusBar, StyleSheet, Text, View} from 'react-native';
 
 const ROWS = Array.from({length: 120}, (_, index) => index + 1);
 
-type ProbeMode = 'ordinary' | 'snap' | 'snap-stress' | 'paging';
+type ProbeMode = 'ordinary' | 'snap' | 'paging';
 type AppProps = {probeMode?: ProbeMode};
 
 export default function App({probeMode = 'ordinary'}: AppProps) {
-  const directSnap = probeMode === 'snap' || probeMode === 'snap-stress';
-  const pagingEnabled = directSnap || probeMode === 'paging';
-  const snapToInterval = directSnap ? 184 : undefined;
-  // snap-stress must be behaviorally identical to the already validated snap screen. Stress
-  // coverage comes only from the gesture sequence and passive native diagnostics, never from a
-  // different content geometry or a different React Native scroll prop.
-  const renderedMode = probeMode === 'snap-stress' ? 'snap' : probeMode;
+  const pagingEnabled = probeMode === 'snap' || probeMode === 'paging';
+  const snapToInterval = probeMode === 'snap' ? 184 : undefined;
 
   return (
     <View style={styles.root}>
@@ -27,7 +22,7 @@ export default function App({probeMode = 'ordinary'}: AppProps) {
         showsVerticalScrollIndicator>
         <View style={styles.intro}>
           <Text style={styles.title}>RN 0.87 nested-scroll probe</Text>
-          <Text style={styles.subtitle}>mode={renderedMode}</Text>
+          <Text style={styles.subtitle}>mode={probeMode}</Text>
           <Text style={styles.subtitle}>
             The native source owns all movement. Snap/paging modes keep React Native's own animation
             path while exposing it as a TYPE_NON_TOUCH nested-scroll transaction.
