@@ -25,7 +25,10 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
       null
     }
 
-  private var momentumSessionActive = false
+  // The nested-scroll callback target is transaction authority. Tree discovery may prepare a
+  // replacement source, but it never grants that source authority before Android starts a session.
+  private var activeSource: ViewGroup? = null
+  private var momentumSource: ViewGroup? = null
   private var waitingForSourceLayout = false
 
   private var ledgerRequestedY = 0
@@ -56,7 +59,8 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   override fun onDetachedFromWindow() {
     stopWaitingForSourceLayout()
     flushPendingLedger("detach")
-    momentumSessionActive = false
+    momentumSource = null
+    activeSource = null
     chromeController?.onDetached()
     super.onDetachedFromWindow()
   }
@@ -67,6 +71,9 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   private fun targetName(target: View): String =
     "${target.javaClass.name}#${Integer.toHexString(System.identityHashCode(target))}"
 
+  private fun sourceName(source: ViewGroup?): String =
+    source?.let(::targetName) ?: "none"
+
   private fun log(message: String) {
     Log.i("Rn087NestedScroll", message)
   }
@@ -74,34 +81,64 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
     val source = asReactVerticalSource(target)
     val accepted = axes and ViewCompat.SCROLL_AXIS_VERTICAL != 0 && source != null
-    if (accepted && type == ViewCompat.TYPE_NON_TOUCH) momentumSessionActive = true
     if (accepted && source != null) {
-      flushPendingLedger("session-rebind")
+      if (activeSource != null && activeSource !== source) {
+        flushPendingLedger("source-replaced")
+        log(
+          "LIFECYCLE_SOURCE_REPLACED old=${sourceName(activeSource)} new=${targetName(source)} " +
+            "oldMomentum=${sourceName(momentumSource)}",
+        )
+        momentumSource = null
+      } else {
+        flushPendingLedger("session-rebind")
+      }
+
+      activeSource = source
+      if (type == ViewCompat.TYPE_NON_TOUCH) momentumSource = source
       chromeController?.beginNestedTransaction(source)
     }
     log(
       "NESTED_START contract=androidx type=${typeName(type)} axes=$axes accepted=$accepted " +
-        "chrome=${chromeController != null} target=${targetName(target)}",
+        "chrome=${chromeController != null} activeSource=${sourceName(activeSource)} " +
+        "momentumOwner=${sourceName(momentumSource)} target=${targetName(target)}",
     )
     return accepted
   }
 
   override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) {
+    if (activeSource !== target) {
+      log(
+        "LIFECYCLE_STALE_ACCEPT type=${typeName(type)} ignored=true " +
+          "activeSource=${sourceName(activeSource)} target=${targetName(target)}",
+      )
+      return
+    }
     parentHelper.onNestedScrollAccepted(child, target, axes, type)
   }
 
   override fun onStopNestedScroll(target: View, type: Int) {
+    val activeTarget = activeSource === target
     log(
-      "NESTED_STOP contract=androidx type=${typeName(type)} momentum=$momentumSessionActive " +
-        "ledgerFrames=$ledgerFrames broken=$ledgerBroken orphan=$ledgerOrphans target=${targetName(target)}",
+      "NESTED_STOP contract=androidx type=${typeName(type)} activeTarget=$activeTarget " +
+        "momentumOwner=${momentumSource === target} ledgerFrames=$ledgerFrames broken=$ledgerBroken " +
+        "orphan=$ledgerOrphans target=${targetName(target)}",
     )
+
+    if (!activeTarget) {
+      log(
+        "LIFECYCLE_STALE_STOP type=${typeName(type)} ignored=true " +
+          "activeSource=${sourceName(activeSource)} target=${targetName(target)}",
+      )
+      return
+    }
+
     parentHelper.onStopNestedScroll(target, type)
 
     if (type == ViewCompat.TYPE_NON_TOUCH) {
-      momentumSessionActive = false
+      if (momentumSource === target) momentumSource = null
       flushPendingLedger("momentum-stop")
       chromeController?.endNestedTransaction("momentum-stop")
-    } else if (momentumSessionActive) {
+    } else if (momentumSource === target) {
       log("CHROME_TOUCH_STOP deferred=momentum target=${targetName(target)}")
     } else {
       flushPendingLedger("touch-stop")
@@ -110,6 +147,14 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
   }
 
   override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray, type: Int) {
+    if (activeSource !== target) {
+      log(
+        "LIFECYCLE_STALE_PRE type=${typeName(type)} dy=$dy ignored=true " +
+          "activeSource=${sourceName(activeSource)} target=${targetName(target)}",
+      )
+      return
+    }
+
     val chromeConsumed = chromeController?.nestedPreScroll(dy, type) ?: 0
     consumed[1] += chromeConsumed
     recordLedgerPre(dy, chromeConsumed, type)
@@ -128,6 +173,14 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     type: Int,
     consumed: IntArray,
   ) {
+    if (activeSource !== target) {
+      log(
+        "LIFECYCLE_STALE_POST type=${typeName(type)} child=$dyConsumed unconsumed=$dyUnconsumed " +
+          "ignored=true activeSource=${sourceName(activeSource)} target=${targetName(target)}",
+      )
+      return
+    }
+
     val chromeConsumed =
       chromeController?.nestedPostScroll(dyConsumed, dyUnconsumed, type) ?: 0
     consumed[1] += chromeConsumed
@@ -162,6 +215,13 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     onStartNestedScroll(child, target, axes, ViewCompat.TYPE_TOUCH)
 
   override fun onNestedScrollAccepted(child: View, target: View, axes: Int) {
+    if (activeSource !== target) {
+      log(
+        "LIFECYCLE_STALE_ACCEPT type=TOUCH ignored=true activeSource=${sourceName(activeSource)} " +
+          "target=${targetName(target)}",
+      )
+      return
+    }
     parentHelper.onNestedScrollAccepted(child, target, axes)
   }
 
@@ -207,7 +267,7 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
       "NESTED_FLING vx=$velocityX vy=$velocityY childConsumed=$consumed target=${targetName(target)}",
     )
 
-    if (BuildConfig.RN_NESTED_SCROLL_FLING_SHIM) {
+    if (BuildConfig.RN_NESTED_SCROLL_FLING_SHIM && activeSource === target) {
       val started =
         ViewCompat.startNestedScroll(
           target,
@@ -245,6 +305,16 @@ class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedSc
     }
 
     val source = sources.single()
+    if (activeSource != null && activeSource !== source) {
+      flushPendingLedger("source-invalidated")
+      log(
+        "LIFECYCLE_SOURCE_INVALIDATED old=${sourceName(activeSource)} discovered=${targetName(source)} " +
+          "oldMomentum=${sourceName(momentumSource)}",
+      )
+      activeSource = null
+      momentumSource = null
+    }
+
     val prepared = controller.prepareSource(source)
     log(
       "CHROME_SOURCE_TREE source=${targetName(source)} nested=${ViewCompat.isNestedScrollingEnabled(source)} " +
