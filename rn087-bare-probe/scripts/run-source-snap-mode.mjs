@@ -45,12 +45,13 @@ if (harness === 'multi-chrome') {
 console.log('Capture the same Rn087NestedScroll tag, but write this mode-specific log:');
 console.log(`  adb logcat -v time -s Rn087NestedScroll:I '*:S' | tee ${logPath}`);
 if (mode === 'snap-stress') {
+  console.log('The rendered ScrollView is intentionally identical to the validated snap screen.');
   console.log('Stress sequence:');
   console.log('  1. Complete one clean snap in each direction.');
-  console.log('  2. Release into a snap, touch again before it settles, then reverse and release. Repeat twice.');
-  console.log('  3. Reach the top edge and complete a snap into it.');
-  console.log('  4. Reach the bottom edge and complete a snap into it.');
-  console.log('  5. Stop logcat only after the final animation is idle.');
+  console.log('  2. Make a strong release, then put the finger back down immediately while it is still moving.');
+  console.log('  3. Without waiting, drag in the opposite direction and release. Repeat at least three times.');
+  console.log('  4. Stop logcat only after the final animation is idle.');
+  console.log('Bottom-edge coverage is intentionally a separate gate so content geometry stays unchanged.');
 } else {
   console.log('Use clean drag/release gestures first and let each snap settle before stopping logcat.');
 }
