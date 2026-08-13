@@ -3,7 +3,7 @@
     "name": "Material Toolbar Example",
     "slug": "expo-material-toolbar-example",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "scheme": "materialtoolbarexample",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
