@@ -15,9 +15,12 @@
     "android:on-source-paging": "node scripts/run-source-snap-mode.mjs paging",
     "android:on-source-multi-chrome-snap": "node scripts/run-source-snap-mode.mjs snap multi-chrome",
     "android:on-source-multi-chrome-paging": "node scripts/run-source-snap-mode.mjs paging multi-chrome",
-    "android:snap:legacy": "node scripts/run-snap-ab.mjs legacy",
-    "android:snap:stock": "node scripts/run-snap-ab.mjs stock",
-    "android:snap:patched": "node scripts/run-snap-ab.mjs patched",
+    "android:snap:legacy": "node scripts/run-snap-ab.mjs legacy snap",
+    "android:snap:stock": "node scripts/run-snap-ab.mjs stock snap",
+    "android:snap:patched": "node scripts/run-snap-ab.mjs patched snap",
+    "android:paging:legacy": "node scripts/run-snap-ab.mjs legacy paging",
+    "android:paging:stock": "node scripts/run-snap-ab.mjs stock paging",
+    "android:paging:patched": "node scripts/run-snap-ab.mjs patched paging",
     "analyze:off": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-off.log --expect off",
     "analyze:on": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on.log --expect on",
     "analyze:on-shim": "node ../scripts/analyze-rn087-source-log.mjs /tmp/rn087-bare-on-shim.log --expect on",
@@ -27,7 +30,7 @@
     "analyze:on-source-snap": "node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-snap.log --expect direct",
     "analyze:on-source-paging": "node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-paging.log --expect paging",
     "analyze:on-source-multi-chrome-snap": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap.log --expect-floating --expect-snap && node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-multi-chrome-snap.log --expect direct-chrome",
-    "analyze:on-source-multi-chrome-paging": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-paging.log --expect-floating && node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-multi-chrome-paging.log --expect paging"
+    "analyze:on-source-multi-chrome-paging": "node ../scripts/analyze-rn087-chrome-log.mjs /tmp/rn087-bare-on-source-multi-chrome-paging.log --expect-floating --expect-paging && node ../scripts/analyze-rn087-snap-log.mjs /tmp/rn087-bare-on-source-multi-chrome-paging.log --expect paging"
   },
   "dependencies": {
     "react": "19.2.3",
