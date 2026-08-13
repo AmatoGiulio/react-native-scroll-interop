@@ -10,9 +10,9 @@ import android.view.ViewTreeObserver
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
-import com.material3scroll.transport.NestedScrollConservationLedger
 import com.material3scroll.transport.SourceScopedNestedScrollLifecycle
 import com.material3scroll.transport.SourceScopedNestedScrollLifecycle.StopDecision
+import com.material3scroll.transport.VerticalNestedScrollTransactionDispatcher
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 
@@ -34,7 +34,7 @@ class ExpoNestedScrollHostView(
 
   private val nestedParentHelper = NestedScrollingParentHelper(this)
   private val sourceLifecycle = SourceScopedNestedScrollLifecycle()
-  private val conservationLedger = NestedScrollConservationLedger()
+  private val transactionDispatcher = VerticalNestedScrollTransactionDispatcher()
 
   private var eventSequence = 0L
   private var preCount = 0L
@@ -44,6 +44,35 @@ class ExpoNestedScrollHostView(
   private var activeToolbar: FloatingToolbarScrollConsumer? = null
   private var activeSourceCapabilities: ReactVerticalScrollSourceCapabilities? = null
   private var nestedTransactionActive = false
+
+  private val topBarPreConsumer =
+    VerticalNestedScrollTransactionDispatcher.PreConsumer { availableY, inputType ->
+      activeTopBar
+        ?.takeIf { nestedTransactionActive && it.isNestedDirectCapable }
+        ?.nestedPreScroll(availableY, inputType.toInputType())
+        ?.reportedConsumedY
+        ?: 0
+    }
+
+  private val topBarPostConsumer =
+    VerticalNestedScrollTransactionDispatcher.PostConsumer { childConsumedY, availableY, inputType ->
+      activeTopBar
+        ?.takeIf { nestedTransactionActive && it.isNestedDirectCapable }
+        ?.nestedPostScroll(childConsumedY, availableY, inputType.toInputType())
+        ?.availableConsumedY
+        ?: 0
+    }
+
+  private val floatingToolbarPostObserver =
+    VerticalNestedScrollTransactionDispatcher.PostObserver { childConsumedY, inputType ->
+      activeToolbar
+        ?.takeIf { nestedTransactionActive }
+        ?.nestedPostScroll(childConsumedY, inputType.toInputType())
+    }
+
+  private val topBarPreConsumers = listOf(topBarPreConsumer)
+  private val topBarPostConsumers = listOf(topBarPostConsumer)
+  private val floatingToolbarPostObservers = listOf(floatingToolbarPostObserver)
 
   private val activeSource: ViewGroup?
     get() = sourceLifecycle.activeSource
@@ -330,8 +359,15 @@ class ExpoNestedScrollHostView(
     }
 
     preCount += 1
-    val topBar = activeTopBar?.takeIf { nestedTransactionActive && it.isNestedDirectCapable }
-    if (topBar == null || dy == 0) {
+    val dispatch = transactionDispatcher.dispatchPre(
+      requestedY = dy,
+      inputType = type,
+      trackConservation = NativeScrollTracing.enabled,
+    )
+    consumed[1] += dispatch.consumedY
+    recordLedgerPre(dispatch, type)
+
+    if (!dispatch.dispatched) {
       log(
         "NESTED_PRE type=${typeLabel(type)} n=$preCount dy=$dy consumedY=${consumed[1]} " +
           targetLabel(target),
@@ -339,13 +375,9 @@ class ExpoNestedScrollHostView(
       return
     }
 
-    val pre = topBar.nestedPreScroll(dy, type.toInputType())
-    consumed[1] += pre.reportedConsumedY
-    recordLedgerPre(dy, pre.reportedConsumedY, type)
-
     log(
-      "TX_PRE type=${typeLabel(type)} n=$preCount dy=$dy chrome=${pre.reportedConsumedY} " +
-        "collapse=${topBar.currentCollapseAmountPx()} sourceY=${target.scrollY}",
+      "TX_PRE type=${typeLabel(type)} n=$preCount dy=$dy chrome=${dispatch.consumedY} " +
+        "collapse=${activeTopBar?.currentCollapseAmountPx()} sourceY=${target.scrollY}",
     )
   }
 
@@ -389,19 +421,18 @@ class ExpoNestedScrollHostView(
     postCount += 1
     if (!nestedTransactionActive) return
 
-    val inputType = type.toInputType()
-    val post = activeTopBar
-      ?.takeIf { it.isNestedDirectCapable }
-      ?.nestedPostScroll(dyConsumed, dyUnconsumed, inputType)
-    if (post != null) consumed[1] += post.availableConsumedY
-    activeToolbar?.nestedPostScroll(dyConsumed, inputType)
-
-    val chromePost = post?.availableConsumedY ?: 0
-    recordLedgerPost(dyConsumed, dyUnconsumed, chromePost, type)
+    val dispatch = transactionDispatcher.dispatchPost(
+      childConsumedY = dyConsumed,
+      availableY = dyUnconsumed,
+      inputType = type,
+      trackConservation = NativeScrollTracing.enabled,
+    )
+    consumed[1] += dispatch.consumedY
+    recordLedgerPost(dispatch, type)
 
     log(
       "TX_POST type=${typeLabel(type)} n=$postCount child=$dyConsumed unconsumed=$dyUnconsumed " +
-        "chrome=$chromePost collapse=${activeTopBar?.currentCollapseAmountPx()} " +
+        "chrome=${dispatch.consumedY} collapse=${activeTopBar?.currentCollapseAmountPx()} " +
         "sourceY=${target.scrollY}",
     )
   }
@@ -437,7 +468,12 @@ class ExpoNestedScrollHostView(
 
     val topBarReady = topBar?.beginNestedTransaction(source) == true
     val toolbarReady = toolbar?.beginNestedTransaction(source) == true
-    nestedTransactionActive = topBarReady || toolbarReady
+    transactionDispatcher.bind(
+      preConsumers = if (topBarReady) topBarPreConsumers else emptyList(),
+      postConsumers = if (topBarReady) topBarPostConsumers else emptyList(),
+      postObservers = if (toolbarReady) floatingToolbarPostObservers else emptyList(),
+    )
+    nestedTransactionActive = transactionDispatcher.hasParticipants
 
     log(
       "TX_BIND source=${source.id} sourceIdentity=${sourceIdentity(source)} " +
@@ -456,6 +492,7 @@ class ExpoNestedScrollHostView(
         "momentum=${replacement.previousMomentumOwner === replacement.previous} " +
         "active=$nestedTransactionActive",
     )
+    transactionDispatcher.clearParticipants()
     activeTopBar = null
     activeToolbar = null
     activeSourceCapabilities = null
@@ -487,7 +524,7 @@ class ExpoNestedScrollHostView(
       activeTopBar?.endNestedTransaction(source, reason)
       activeToolbar?.endNestedTransaction()
     }
-    val ledger = conservationLedger.snapshot()
+    val ledger = transactionDispatcher.snapshot()
     log(
       "TX_END reason=$reason sourceY=${source.scrollY} ledgerFrames=${ledger.frames} " +
         "broken=${ledger.brokenFrames} orphanPre=${ledger.orphanPres}",
@@ -496,6 +533,7 @@ class ExpoNestedScrollHostView(
   }
 
   private fun clearActiveSession() {
+    transactionDispatcher.clearParticipants()
     sourceLifecycle.clear()
     activeTopBar = null
     activeToolbar = null
@@ -507,30 +545,30 @@ class ExpoNestedScrollHostView(
   // Transaction diagnostics.
   // ---------------------------------------------------------------------------
 
-  private fun recordLedgerPre(requestedY: Int, chromePreY: Int, type: Int) {
-    if (!NativeScrollTracing.enabled) {
-      conservationLedger.discardPending()
-      return
-    }
-
-    val begin = conservationLedger.beginFrame(requestedY, chromePreY)
+  private fun recordLedgerPre(
+    dispatch: VerticalNestedScrollTransactionDispatcher.PreDispatch,
+    type: Int,
+  ) {
+    if (!NativeScrollTracing.enabled) return
+    val begin = dispatch.ledgerResult ?: return
     begin.orphanBeforePre?.let { orphan ->
       log(
         "TX_LEDGER orphanPre n=${orphan.index} reason=next-pre requested=${orphan.requestedY} " +
           "chromePre=${orphan.chromePreY}",
       )
     }
-    log("TX_LEDGER_PRE type=${typeLabel(type)} requested=$requestedY chromePre=$chromePreY")
+    log(
+      "TX_LEDGER_PRE type=${typeLabel(type)} requested=${begin.pre.requestedY} " +
+        "chromePre=${begin.pre.chromePreY}",
+    )
   }
 
   private fun recordLedgerPost(
-    childConsumedY: Int,
-    dyUnconsumed: Int,
-    chromePostY: Int,
+    dispatch: VerticalNestedScrollTransactionDispatcher.PostDispatch,
     type: Int,
   ) {
     if (!NativeScrollTracing.enabled) return
-    val frame = conservationLedger.completeFrame(childConsumedY, dyUnconsumed, chromePostY) ?: return
+    val frame = dispatch.ledgerFrame ?: return
 
     log(
       "TX_LEDGER type=${typeLabel(type)} n=${frame.index} requested=${frame.requestedY} " +
@@ -541,13 +579,12 @@ class ExpoNestedScrollHostView(
   }
 
   private fun flushPendingLedger(reason: String) {
-    if (!conservationLedger.hasPendingPre) return
     if (!NativeScrollTracing.enabled) {
-      conservationLedger.discardPending()
+      transactionDispatcher.discardPending()
       return
     }
 
-    val orphan = conservationLedger.flushPending() ?: return
+    val orphan = transactionDispatcher.flushPending() ?: return
     log(
       "TX_LEDGER orphanPre n=${orphan.index} reason=$reason requested=${orphan.requestedY} " +
         "chromePre=${orphan.chromePreY}",
