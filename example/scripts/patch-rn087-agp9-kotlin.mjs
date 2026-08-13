@@ -28,28 +28,46 @@ const legacyKotlinPlugin =
 if (!legacyKotlinPlugin) {
   fail(
     'Expo prebuild no longer applies the legacy Kotlin Android plugin. ' +
-      'Do not disable AGP built-in Kotlin blindly; update this compatibility gate instead.',
+      'Do not opt out of AGP built-in Kotlin/new DSL blindly; update this compatibility gate instead.',
   );
 }
 
 let properties = fs.readFileSync(gradleProperties, 'utf8');
-const propertyPattern = /^android\.builtInKotlin=.*$/m;
-if (propertyPattern.test(properties)) {
-  properties = properties.replace(propertyPattern, 'android.builtInKotlin=false');
-} else {
+
+function setGradleProperty(name, value) {
+  const pattern = new RegExp(`^${name.replace(/\./g, '\\.')}=.*$`, 'm');
+  const line = `${name}=${value}`;
+  if (pattern.test(properties)) {
+    properties = properties.replace(pattern, line);
+    return;
+  }
   if (!properties.endsWith('\n')) properties += '\n';
-  properties += '\n# RN 0.87 + Expo 57 compatibility: Expo still applies kotlin-android while AGP 9\n';
-  properties += '# enables built-in Kotlin by default. Keep the generated Expo plugin path authoritative.\n';
-  properties += 'android.builtInKotlin=false\n';
+  properties += `${line}\n`;
 }
+
+if (!properties.includes('# RN 0.87 + Expo 57 compatibility:')) {
+  if (!properties.endsWith('\n')) properties += '\n';
+  properties +=
+    '\n# RN 0.87 + Expo 57 compatibility: generated Expo build still applies kotlin-android.\n' +
+    '# AGP 9 requires opting out of both built-in Kotlin and the new DSL for that legacy plugin.\n';
+}
+
+setGradleProperty('android.builtInKotlin', 'false');
+setGradleProperty('android.newDsl', 'false');
 
 fs.writeFileSync(gradleProperties, properties);
 
 const verified = fs.readFileSync(gradleProperties, 'utf8');
-if (!/^android\.builtInKotlin=false$/m.test(verified)) {
-  fail('android.builtInKotlin=false was not persisted to android/gradle.properties.');
+const builtInKotlinDisabled = /^android\.builtInKotlin=false$/m.test(verified);
+const newDslDisabled = /^android\.newDsl=false$/m.test(verified);
+
+if (!builtInKotlinDisabled || !newDslDisabled) {
+  fail(
+    'Expected android.builtInKotlin=false and android.newDsl=false in android/gradle.properties.',
+  );
 }
 
 console.log('RN 0.87 AGP 9 Kotlin: generated Expo kotlin-android plugin detected');
 console.log('RN 0.87 AGP 9 Kotlin: android.builtInKotlin=false');
+console.log('RN 0.87 AGP 9 Kotlin: android.newDsl=false');
 console.log('RN 0.87 AGP 9 Kotlin compatibility gate: PASS');
