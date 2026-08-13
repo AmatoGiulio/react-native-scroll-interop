@@ -13,7 +13,9 @@ def nestedScrollExperiment = (project.findProperty('rnNestedScrollAndroid') ?: '
 def nestedScrollFlingShim = (project.findProperty('rnNestedScrollFlingShim') ?: 'false').toBoolean()
 def chromeProbe = (project.findProperty('rnChromeProbe') ?: 'false').toBoolean()
 def floatingToolbarProbe = (project.findProperty('rnFloatingToolbarProbe') ?: 'false').toBoolean()
-def lifecycleProbe = (project.findProperty('rnLifecycleProbe') ?: 'false').toBoolean()
+def lifecycleProbe = (
+    project.findProperty('rnLifecycleProbe') ?: System.getenv('RN_LIFECYCLE_PROBE') ?: 'false'
+).toBoolean()
 
 android {
     ndkVersion rootProject.ext.ndkVersion
