@@ -18,10 +18,11 @@ for (const file of [pkgPath, scrollPath, packagePath]) {
 }
 
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-if (pkg.version !== '0.86.0') {
-  console.error(`RN 0.86 AndroidX experiment: expected react-native 0.86.0, found ${pkg.version}`);
+if (!/^0\.86\.\d+(?:[-+].*)?$/.test(pkg.version)) {
+  console.error(`RN 0.86 AndroidX experiment: expected react-native 0.86.x, found ${pkg.version}`);
   process.exit(1);
 }
+console.log(`RN 0.86 AndroidX experiment: source version ${pkg.version}`);
 
 const flingMarker = 'RN086_ANDROIDX_FLING_SOURCE_PATCH';
 let scroll = fs.readFileSync(scrollPath, 'utf8');
