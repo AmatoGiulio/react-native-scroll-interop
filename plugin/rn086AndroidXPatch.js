@@ -6,6 +6,10 @@ const MANAGER_MARKER = 'EXPO_MATERIAL_TOOLBAR_RN086_ANDROIDX_MANAGER';
 const EXPERIMENT_FLING_MARKER = 'RN086_ANDROIDX_FLING_SOURCE_PATCH';
 const EXPERIMENT_MANAGER_MARKER = 'RN086_ANDROIDX_MANAGER_PATCH';
 
+function countOccurrences(contents, token) {
+  return contents.split(token).length - 1;
+}
+
 function assertSupportedReactNativeVersion(version) {
   if (!/^0\.86\.\d+(?:[-+].*)?$/.test(version)) {
     throw new Error(
@@ -20,13 +24,37 @@ function ensureReactNativeSourceBuildSettings(contents) {
     throw new TypeError('[expo-material-toolbar] Expected android/settings.gradle contents.');
   }
 
+  const hasIncludeBuild = contents.includes('includeBuild(expoAutolinking.reactNative)');
+  const hasReactAndroidSubstitution = contents.includes(
+    'substitute(module("com.facebook.react:react-android"))'
+  );
+  const hasHermesAndroidSubstitution = contents.includes(
+    'substitute(module("com.facebook.react:hermes-android"))'
+  );
+  const sourceBuildMarkerCount = countOccurrences(contents, SOURCE_BUILD_MARKER);
   const alreadyConfigured =
-    contents.includes('includeBuild(expoAutolinking.reactNative)') &&
-    contents.includes('substitute(module("com.facebook.react:react-android"))') &&
-    contents.includes('substitute(module("com.facebook.react:hermes-android"))');
+    hasIncludeBuild && hasReactAndroidSubstitution && hasHermesAndroidSubstitution;
 
   if (alreadyConfigured) {
+    if (sourceBuildMarkerCount > 1) {
+      throw new Error(
+        '[expo-material-toolbar] Found duplicate RN 0.86 source-build markers in settings.gradle. ' +
+          'Refusing to normalize an ambiguous configuration.'
+      );
+    }
     return contents;
+  }
+
+  const hasPartialSourceBuildConfiguration =
+    sourceBuildMarkerCount > 0 ||
+    hasIncludeBuild ||
+    hasReactAndroidSubstitution ||
+    hasHermesAndroidSubstitution;
+  if (hasPartialSourceBuildConfiguration) {
+    throw new Error(
+      '[expo-material-toolbar] Found a partial or unexpected React Native source-build configuration ' +
+        'in settings.gradle. Refusing to add a second includeBuild block.'
+    );
   }
 
   if (!contents.includes('expoAutolinking')) {
@@ -57,11 +85,7 @@ function productionFlingReplacement() {
   return `  @Override\n  public void fling(int velocityY) {\n    final int correctedVelocityY = correctFlingVelocityY(velocityY);\n\n    if (mPagingEnabled) {\n      flingAndSnap(correctedVelocityY);\n    } else {\n      // ${FLING_MARKER}: enter AndroidX TYPE_NON_TOUCH while RN remains the fling owner.\n      super.fling(correctedVelocityY);\n    }\n    handlePostTouchScrolling(0, correctedVelocityY);\n  }\n`;
 }
 
-function patchReactNestedScrollView(contents) {
-  if (contents.includes(FLING_MARKER)) {
-    return contents;
-  }
-
+function locateReactNestedScrollViewFling(contents) {
   const startToken = '  @Override\n  public void fling(int velocityY) {';
   const endToken = '\n  private int correctFlingVelocityY';
   const start = contents.indexOf(startToken);
@@ -73,7 +97,36 @@ function patchReactNestedScrollView(contents) {
     );
   }
 
-  const original = contents.slice(start, end);
+  return { start, end, original: contents.slice(start, end) };
+}
+
+function isProductionFlingShape(original) {
+  return (
+    countOccurrences(original, FLING_MARKER) === 1 &&
+    original.includes('if (mPagingEnabled)') &&
+    original.includes('flingAndSnap(correctedVelocityY);') &&
+    original.includes('super.fling(correctedVelocityY);') &&
+    original.includes('handlePostTouchScrolling(0, correctedVelocityY);') &&
+    !original.includes('mScroller.fling(') &&
+    !original.includes(EXPERIMENT_FLING_MARKER) &&
+    !original.includes('SOURCE_FLING_PATCH velocityY=')
+  );
+}
+
+function patchReactNestedScrollView(contents) {
+  const { start, end, original } = locateReactNestedScrollViewFling(contents);
+  const productionMarkerCount = countOccurrences(contents, FLING_MARKER);
+
+  if (productionMarkerCount > 0) {
+    if (productionMarkerCount !== 1 || !isProductionFlingShape(original)) {
+      throw new Error(
+        '[expo-material-toolbar] Found the RN 0.86 production fling marker with an unexpected shape. ' +
+          'Refusing to trust a partial or modified patch.'
+      );
+    }
+    return contents;
+  }
+
   const commonShape =
     original.includes('if (mPagingEnabled)') &&
     original.includes('super.fling(correctedVelocityY);') &&
@@ -100,7 +153,19 @@ function productionManagerSelection() {
 }
 
 function patchMainReactPackage(contents) {
-  if (contents.includes(MANAGER_MARKER)) {
+  const productionMarkerCount = countOccurrences(contents, MANAGER_MARKER);
+  if (productionMarkerCount > 0) {
+    const productionPattern = new RegExp(
+      `/\\* ${MANAGER_MARKER}: select the existing RN 0\\.86 AndroidX vertical ScrollView source\\. \\*/\\s+ReactNestedScrollViewManager\\(\\)`,
+      'g'
+    );
+    const productionMatches = [...contents.matchAll(productionPattern)];
+    if (productionMarkerCount !== 1 || productionMatches.length !== 1) {
+      throw new Error(
+        '[expo-material-toolbar] Found the RN 0.86 production manager marker with an unexpected shape. ' +
+          'Refusing to trust a partial or modified patch.'
+      );
+    }
     return contents;
   }
 
