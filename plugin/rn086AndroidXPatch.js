@@ -153,47 +153,82 @@ function productionManagerSelection() {
 }
 
 function patchMainReactPackage(contents) {
-  const productionMarkerCount = countOccurrences(contents, MANAGER_MARKER);
-  if (productionMarkerCount > 0) {
-    const productionPattern = new RegExp(
-      `/\\* ${MANAGER_MARKER}: select the existing RN 0\\.86 AndroidX vertical ScrollView source\\. \\*/\\s+ReactNestedScrollViewManager\\(\\)`,
-      'g'
+  if (
+    !contents.includes('override fun createViewManagers') ||
+    !contents.includes('ReactScrollViewManager.REACT_CLASS to')
+  ) {
+    throw new Error(
+      '[expo-material-toolbar] MainReactPackage.kt is missing the expected RN 0.86 ScrollView manager entry points. ' +
+        'Refusing to patch an unvalidated React Native source.'
     );
-    const productionMatches = [...contents.matchAll(productionPattern)];
-    if (productionMarkerCount !== 1 || productionMatches.length !== 1) {
-      throw new Error(
-        '[expo-material-toolbar] Found the RN 0.86 production manager marker with an unexpected shape. ' +
-          'Refusing to trust a partial or modified patch.'
-      );
-    }
-    return contents;
   }
 
-  if (contents.includes(EXPERIMENT_MANAGER_MARKER)) {
-    const experimentPattern =
-      /\/\* RN086_ANDROIDX_MANAGER_PATCH: experiment branch always selects the existing RN 0\.86 AndroidX source\. \*\/\s+ReactNestedScrollViewManager\(\)/g;
+  const productionPattern = new RegExp(
+    `/\\* ${MANAGER_MARKER}: select the existing RN 0\\.86 AndroidX vertical ScrollView source\\. \\*/\\s+ReactNestedScrollViewManager\\(\\)`,
+    'g'
+  );
+  const experimentPattern =
+    /\/\* RN086_ANDROIDX_MANAGER_PATCH: experiment branch always selects the existing RN 0\.86 AndroidX source\. \*\/\s+ReactNestedScrollViewManager\(\)/g;
+  const gatePattern =
+    /if \(ReactNativeFeatureFlags\.useNestedScrollViewAndroid\(\)\)\s+ReactNestedScrollViewManager\(\)\s+else ReactScrollViewManager\(\)/g;
+
+  let productionMarkerCount = countOccurrences(contents, MANAGER_MARKER);
+  let productionMatches = [...contents.matchAll(productionPattern)];
+  if (productionMarkerCount > 2 || productionMatches.length !== productionMarkerCount) {
+    throw new Error(
+      '[expo-material-toolbar] Found the RN 0.86 production manager marker with an unexpected shape. ' +
+        'Refusing to trust a partial or modified patch.'
+    );
+  }
+
+  const experimentMarkerCount = countOccurrences(contents, EXPERIMENT_MANAGER_MARKER);
+  if (experimentMarkerCount > 0) {
     const experimentMatches = [...contents.matchAll(experimentPattern)];
-    if (experimentMatches.length !== 1) {
+    if (
+      experimentMarkerCount !== 1 ||
+      experimentMatches.length !== 1 ||
+      productionMarkerCount > 1
+    ) {
       throw new Error(
         '[expo-material-toolbar] Found the RN 0.86 experiment manager marker with an unexpected shape. ' +
           'Refusing to normalize an unknown patch.'
       );
     }
-    return contents.replace(experimentPattern, productionManagerSelection());
+    contents = contents.replace(experimentPattern, productionManagerSelection());
   }
 
-  const gatePattern =
-    /if \(ReactNativeFeatureFlags\.useNestedScrollViewAndroid\(\)\)\s+ReactNestedScrollViewManager\(\)\s+else ReactScrollViewManager\(\)/g;
-  const matches = [...contents.matchAll(gatePattern)];
-
-  if (matches.length !== 1) {
+  productionMarkerCount = countOccurrences(contents, MANAGER_MARKER);
+  productionMatches = [...contents.matchAll(productionPattern)];
+  if (productionMarkerCount > 2 || productionMatches.length !== productionMarkerCount) {
     throw new Error(
-      `[expo-material-toolbar] Expected exactly one RN 0.86 ScrollView manager feature gate; found ${matches.length}. ` +
+      '[expo-material-toolbar] Found the RN 0.86 production manager marker with an unexpected shape. ' +
+        'Refusing to trust a partial or modified patch.'
+    );
+  }
+
+  const gateMatches = [...contents.matchAll(gatePattern)];
+  const expectedRemainingGates = 2 - productionMarkerCount;
+  if (gateMatches.length !== expectedRemainingGates) {
+    throw new Error(
+      `[expo-material-toolbar] Expected ${expectedRemainingGates} remaining RN 0.86 ScrollView manager feature gate(s) after ${productionMarkerCount} validated production selection(s); found ${gateMatches.length}. ` +
         'Refusing to patch an unvalidated React Native source.'
     );
   }
 
-  return contents.replace(gatePattern, productionManagerSelection());
+  if (expectedRemainingGates === 0) {
+    return contents;
+  }
+
+  const patched = contents.replace(gatePattern, productionManagerSelection());
+  const finalMarkerCount = countOccurrences(patched, MANAGER_MARKER);
+  const finalMatches = [...patched.matchAll(productionPattern)];
+  if (finalMarkerCount !== 2 || finalMatches.length !== 2) {
+    throw new Error(
+      '[expo-material-toolbar] Failed to normalize both RN 0.86 vertical ScrollView manager entry points.'
+    );
+  }
+
+  return patched;
 }
 
 module.exports = {
