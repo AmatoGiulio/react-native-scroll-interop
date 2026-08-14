@@ -14,6 +14,8 @@ const {
   patchReactNestedScrollView,
 } = require('../plugin/rn086AndroidXPatch.js');
 
+const count = (contents, token) => contents.split(token).length - 1;
+
 assert.doesNotThrow(() => assertSupportedReactNativeVersion('0.86.0'));
 assert.doesNotThrow(() => assertSupportedReactNativeVersion('0.86.2'));
 assert.doesNotThrow(() => assertSupportedReactNativeVersion('0.86.3-rc.0'));
@@ -83,11 +85,20 @@ assert.throws(
   /Could not locate ReactNestedScrollView\.fling/
 );
 
-const managerFixture = `ReactScrollViewManager.REACT_CLASS to\n    ModuleSpec.viewManagerSpec {\n      if (ReactNativeFeatureFlags.useNestedScrollViewAndroid())\n          ReactNestedScrollViewManager()\n      else ReactScrollViewManager()\n    },\n`;
+// RN 0.86.0 and 0.86.2 expose the vertical ScrollView manager through two creation paths:
+// createViewManagers() and viewManagersMap. A clean consumer has both feature gates, while the
+// original proof runner had already replaced only the viewManagersMap gate.
+const listManagerGate = `if (ReactNativeFeatureFlags.useNestedScrollViewAndroid()) ReactNestedScrollViewManager()\n          else ReactScrollViewManager()`;
+const mapManagerGate = `if (ReactNativeFeatureFlags.useNestedScrollViewAndroid())\n                    ReactNestedScrollViewManager()\n                else ReactScrollViewManager()`;
+const productionManagerSelection = `/* ${MANAGER_MARKER}: select the existing RN 0.86 AndroidX vertical ScrollView source. */\n                ReactNestedScrollViewManager()`;
+const experimentManagerSelection = `/* RN086_ANDROIDX_MANAGER_PATCH: experiment branch always selects the existing RN 0.86 AndroidX source. */\n                ReactNestedScrollViewManager()`;
+
+const managerFixture = `override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =\n      listOf(\n          ReactProgressBarViewManager(),\n          ${listManagerGate},\n          ReactSwitchManager(),\n      )\n\n  public val viewManagersMap: Map<String, ModuleSpec> =\n      mapOf(\n          ReactScrollViewManager.REACT_CLASS to\n              ModuleSpec.viewManagerSpec {\n                ${mapManagerGate}\n              },\n      )\n`;
+
 const patchedManager = patchMainReactPackage(managerFixture);
-assert.match(patchedManager, new RegExp(MANAGER_MARKER));
+assert.equal(count(patchedManager, MANAGER_MARKER), 2);
 assert.doesNotMatch(patchedManager, /useNestedScrollViewAndroid/);
-assert.match(patchedManager, /ReactNestedScrollViewManager\(\)/);
+assert.equal(count(patchedManager, 'ReactNestedScrollViewManager()'), 2);
 assert.equal(patchMainReactPackage(patchedManager), patchedManager);
 assert.throws(
   () =>
@@ -101,17 +112,35 @@ assert.throws(
   /production manager marker with an unexpected shape/
 );
 
-const experimentManagerFixture = `ReactScrollViewManager.REACT_CLASS to\n    ModuleSpec.viewManagerSpec {\n      /* RN086_ANDROIDX_MANAGER_PATCH: experiment branch always selects the existing RN 0.86 AndroidX source. */\n      ReactNestedScrollViewManager()\n    },\n`;
+const experimentManagerFixture = managerFixture.replace(mapManagerGate, experimentManagerSelection);
 const normalizedExperimentManager = patchMainReactPackage(experimentManagerFixture);
-assert.match(normalizedExperimentManager, new RegExp(MANAGER_MARKER));
+assert.equal(count(normalizedExperimentManager, MANAGER_MARKER), 2);
 assert.doesNotMatch(normalizedExperimentManager, /RN086_ANDROIDX_MANAGER_PATCH/);
+assert.doesNotMatch(normalizedExperimentManager, /useNestedScrollViewAndroid/);
+
+const legacyProductionPartialFixture = managerFixture.replace(
+  mapManagerGate,
+  productionManagerSelection
+);
+const normalizedLegacyProduction = patchMainReactPackage(legacyProductionPartialFixture);
+assert.equal(count(normalizedLegacyProduction, MANAGER_MARKER), 2);
+assert.doesNotMatch(normalizedLegacyProduction, /useNestedScrollViewAndroid/);
+assert.equal(patchMainReactPackage(normalizedLegacyProduction), normalizedLegacyProduction);
+
 assert.throws(
-  () => patchMainReactPackage('ReactScrollViewManager.REACT_CLASS\n'),
-  /Expected exactly one RN 0\.86 ScrollView manager feature gate/
+  () => patchMainReactPackage('ReactScrollViewManager.REACT_CLASS to\n'),
+  /missing the expected RN 0\.86 ScrollView manager entry points/
 );
 assert.throws(
-  () => patchMainReactPackage(`${managerFixture}\n${managerFixture}`),
-  /Expected exactly one RN 0\.86 ScrollView manager feature gate; found 2/
+  () =>
+    patchMainReactPackage(
+      managerFixture.replace(mapManagerGate, 'ReactScrollViewManager()')
+    ),
+  /Expected 2 remaining RN 0\.86 ScrollView manager feature gate\(s\).*found 1/
+);
+assert.throws(
+  () => patchMainReactPackage(`${managerFixture}\n${listManagerGate}\n`),
+  /Expected 2 remaining RN 0\.86 ScrollView manager feature gate\(s\).*found 3/
 );
 
 console.log('RN 0.86 AndroidX config-plugin hardening checks passed.');
