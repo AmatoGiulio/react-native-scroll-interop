@@ -13,7 +13,15 @@
     },
     "plugins": [
       "expo-router",
-      "expo-image"
+      "expo-image",
+      [
+        "expo-material-toolbar",
+        {
+          "android": {
+            "rn086AndroidXScroll": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

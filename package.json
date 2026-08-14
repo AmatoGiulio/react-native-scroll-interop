@@ -6,7 +6,8 @@
   "scripts": {
     "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
     "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs",
-    "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs"
+    "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs",
+    "check:rn086-androidx-plugin": "node scripts/check-rn086-androidx-plugin.mjs"
   },
   "peerDependencies": {
     "expo": "*",
