@@ -1,6 +1,8 @@
 # Roadmap
 
-## Current alpha.19 checkpoint
+> **Historical planning document.** This file contains earlier product and scroll-transport directions and is not the source of truth for current development status. For current work, read [`docs/HANDOFF_CURRENT.md`](docs/HANDOFF_CURRENT.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), and [`docs/CHECKPOINTS.md`](docs/CHECKPOINTS.md). In particular, the event-dispatch/sampled-scroll direction described below has been superseded by the source-owned synchronous native nested-scroll architecture.
+
+## Historical alpha.19 checkpoint
 
 - [x] FloatingToolbar native RN scroll consumer
 - [x] Generic `NativeScrollConsumer` boundary
