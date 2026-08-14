@@ -44,6 +44,12 @@ assert.doesNotMatch(patchedFling, /mScroller\.fling\(/);
 assert.match(patchedFling, /super\.fling\(correctedVelocityY\);/);
 assert.match(patchedFling, /if \(mPagingEnabled\)/);
 assert.equal(patchReactNestedScrollView(patchedFling), patchedFling);
+
+const experimentFlingFixture = `class ReactNestedScrollView {\n  @Override\n  public void fling(int velocityY) {\n    final int correctedVelocityY = correctFlingVelocityY(velocityY);\n\n    if (mPagingEnabled) {\n      flingAndSnap(correctedVelocityY);\n    } else {\n      // RN086_ANDROIDX_FLING_SOURCE_PATCH: keep RN physics but enter AndroidX TYPE_NON_TOUCH nested scrolling.\n      android.util.Log.i("ExpoRn086AndroidX", "SOURCE_FLING_PATCH velocityY=" + correctedVelocityY);\n      super.fling(correctedVelocityY);\n    }\n    handlePostTouchScrolling(0, correctedVelocityY);\n  }\n\n  private int correctFlingVelocityY(int velocityY) {\n    return velocityY;\n  }\n}\n`;
+const normalizedExperimentFling = patchReactNestedScrollView(experimentFlingFixture);
+assert.match(normalizedExperimentFling, new RegExp(FLING_MARKER));
+assert.doesNotMatch(normalizedExperimentFling, /ExpoRn086AndroidX/);
+assert.doesNotMatch(normalizedExperimentFling, /RN086_ANDROIDX_FLING_SOURCE_PATCH/);
 assert.throws(
   () => patchReactNestedScrollView('class ReactNestedScrollView {}\n'),
   /Could not locate ReactNestedScrollView\.fling/
@@ -55,6 +61,11 @@ assert.match(patchedManager, new RegExp(MANAGER_MARKER));
 assert.doesNotMatch(patchedManager, /useNestedScrollViewAndroid/);
 assert.match(patchedManager, /ReactNestedScrollViewManager\(\)/);
 assert.equal(patchMainReactPackage(patchedManager), patchedManager);
+
+const experimentManagerFixture = `ReactScrollViewManager.REACT_CLASS to\n    ModuleSpec.viewManagerSpec {\n      /* RN086_ANDROIDX_MANAGER_PATCH: experiment branch always selects the existing RN 0.86 AndroidX source. */\n      ReactNestedScrollViewManager()\n    },\n`;
+const normalizedExperimentManager = patchMainReactPackage(experimentManagerFixture);
+assert.match(normalizedExperimentManager, new RegExp(MANAGER_MARKER));
+assert.doesNotMatch(normalizedExperimentManager, /RN086_ANDROIDX_MANAGER_PATCH/);
 assert.throws(
   () => patchMainReactPackage('ReactScrollViewManager.REACT_CLASS\n'),
   /Expected exactly one RN 0\.86 ScrollView manager feature gate/

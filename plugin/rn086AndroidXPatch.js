@@ -3,6 +3,8 @@
 const SOURCE_BUILD_MARKER = 'EXPO_MATERIAL_TOOLBAR_RN086_ANDROIDX_SOURCE_BUILD';
 const FLING_MARKER = 'EXPO_MATERIAL_TOOLBAR_RN086_ANDROIDX_FLING';
 const MANAGER_MARKER = 'EXPO_MATERIAL_TOOLBAR_RN086_ANDROIDX_MANAGER';
+const EXPERIMENT_FLING_MARKER = 'RN086_ANDROIDX_FLING_SOURCE_PATCH';
+const EXPERIMENT_MANAGER_MARKER = 'RN086_ANDROIDX_MANAGER_PATCH';
 
 function assertSupportedReactNativeVersion(version) {
   if (!/^0\.86\.\d+(?:[-+].*)?$/.test(version)) {
@@ -51,6 +53,10 @@ function ensureReactNativeSourceBuildSettings(contents) {
   return contents.replace(/\s*$/, '\n') + block;
 }
 
+function productionFlingReplacement() {
+  return `  @Override\n  public void fling(int velocityY) {\n    final int correctedVelocityY = correctFlingVelocityY(velocityY);\n\n    if (mPagingEnabled) {\n      flingAndSnap(correctedVelocityY);\n    } else {\n      // ${FLING_MARKER}: enter AndroidX TYPE_NON_TOUCH while RN remains the fling owner.\n      super.fling(correctedVelocityY);\n    }\n    handlePostTouchScrolling(0, correctedVelocityY);\n  }\n`;
+}
+
 function patchReactNestedScrollView(contents) {
   if (contents.includes(FLING_MARKER)) {
     return contents;
@@ -68,26 +74,47 @@ function patchReactNestedScrollView(contents) {
   }
 
   const original = contents.slice(start, end);
-  if (
-    !original.includes('if (mPagingEnabled)') ||
-    !original.includes('mScroller.fling(') ||
-    !original.includes('super.fling(correctedVelocityY);') ||
-    !original.includes('handlePostTouchScrolling(0, correctedVelocityY);')
-  ) {
+  const commonShape =
+    original.includes('if (mPagingEnabled)') &&
+    original.includes('super.fling(correctedVelocityY);') &&
+    original.includes('handlePostTouchScrolling(0, correctedVelocityY);');
+  const stockShape = commonShape && original.includes('mScroller.fling(');
+  const validatedExperimentShape =
+    commonShape &&
+    original.includes(EXPERIMENT_FLING_MARKER) &&
+    original.includes('SOURCE_FLING_PATCH velocityY=') &&
+    !original.includes('mScroller.fling(');
+
+  if (!stockShape && !validatedExperimentShape) {
     throw new Error(
       '[expo-material-toolbar] ReactNestedScrollView.fling() has an unexpected shape. ' +
         'Refusing to patch an unvalidated React Native source.'
     );
   }
 
-  const replacement = `  @Override\n  public void fling(int velocityY) {\n    final int correctedVelocityY = correctFlingVelocityY(velocityY);\n\n    if (mPagingEnabled) {\n      flingAndSnap(correctedVelocityY);\n    } else {\n      // ${FLING_MARKER}: enter AndroidX TYPE_NON_TOUCH while RN remains the fling owner.\n      super.fling(correctedVelocityY);\n    }\n    handlePostTouchScrolling(0, correctedVelocityY);\n  }\n`;
+  return contents.slice(0, start) + productionFlingReplacement() + contents.slice(end);
+}
 
-  return contents.slice(0, start) + replacement + contents.slice(end);
+function productionManagerSelection() {
+  return `/* ${MANAGER_MARKER}: select the existing RN 0.86 AndroidX vertical ScrollView source. */\n                ReactNestedScrollViewManager()`;
 }
 
 function patchMainReactPackage(contents) {
   if (contents.includes(MANAGER_MARKER)) {
     return contents;
+  }
+
+  if (contents.includes(EXPERIMENT_MANAGER_MARKER)) {
+    const experimentPattern =
+      /\/\* RN086_ANDROIDX_MANAGER_PATCH: experiment branch always selects the existing RN 0\.86 AndroidX source\. \*\/\s+ReactNestedScrollViewManager\(\)/g;
+    const experimentMatches = [...contents.matchAll(experimentPattern)];
+    if (experimentMatches.length !== 1) {
+      throw new Error(
+        '[expo-material-toolbar] Found the RN 0.86 experiment manager marker with an unexpected shape. ' +
+          'Refusing to normalize an unknown patch.'
+      );
+    }
+    return contents.replace(experimentPattern, productionManagerSelection());
   }
 
   const gatePattern =
@@ -101,13 +128,12 @@ function patchMainReactPackage(contents) {
     );
   }
 
-  return contents.replace(
-    gatePattern,
-    `/* ${MANAGER_MARKER}: select the existing RN 0.86 AndroidX vertical ScrollView source. */\n                ReactNestedScrollViewManager()`
-  );
+  return contents.replace(gatePattern, productionManagerSelection());
 }
 
 module.exports = {
+  EXPERIMENT_FLING_MARKER,
+  EXPERIMENT_MANAGER_MARKER,
   FLING_MARKER,
   MANAGER_MARKER,
   SOURCE_BUILD_MARKER,
