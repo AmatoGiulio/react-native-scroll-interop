@@ -33,40 +33,98 @@ No runtime or test behavior depends on these files.
 
 ## Documentation normalization
 
-`docs/HANDOFF_CURRENT.md` was updated to:
+The cleanup branch updates documentation to match the current state:
 
-- use status date 2026-08-16;
-- record React Native PR `#57972` as open;
-- record that the Meta CLA is accepted;
-- freeze the upstream branch except for maintainer-requested or demonstrated correctness changes;
-- retain the RN 0.86 clean-remote-machine gate as pending;
-- keep the RN-owned single-physics invariant explicit.
+- `docs/HANDOFF_CURRENT.md` uses status date 2026-08-16 and records upstream PR `#57972`, accepted CLA and the still-separate RN 0.86 clean-remote gate;
+- `docs/production-readiness-rn087.md` no longer describes the source fix as pre-upstream: the PR is already open and its explicit regression matrix is separated from remaining production gaps;
+- the root `README.md` no longer presents the repository as merely an Expo 55 compatibility branch and points readers to the handoff/checkpoint source of truth;
+- the stale GitHub default branch is identified as legacy rather than silently treated as current.
 
-## Branch policy
+## Current GitHub default branch
 
-Branches should be treated in three categories.
+The repository default branch is currently:
 
-### Evidence / immutable
+```text
+topappbar-inset-and-host-unification
+```
 
-Checkpoint, `*-pass`, baseline and explicitly frozen branches are evidence. Do not force-push, retarget or reuse them for new work.
+It is a historical development branch, not the current source of truth. Compared with `rn086-eas-ci-gate`, the current gate line is 216 commits ahead and 0 behind.
 
-### Active
+Do not casually fast-forward or force-move the default branch while the cleanup PR is under review. Changing the default branch is a repository-level operation with consequences for clones, links and future PR bases; it should happen as an explicit normalization step after the documentation/cleanup diff is accepted.
 
-Current integration/gate branches may advance, but behavioral changes must originate from a demonstrated defect and must be revalidated against the relevant frozen checkpoint.
+Until then, the canonical orientation documents are:
 
-### Historical / WIP
+- `docs/HANDOFF_CURRENT.md` for active state;
+- `docs/CHECKPOINTS.md` for immutable evidence;
+- this audit for cleanup/branch policy.
 
-Old research and WIP branches may eventually be pruned only after confirming that:
+## Branch classification
 
-1. their unique finding is documented elsewhere;
-2. no current documentation or automation relies on the branch;
-3. no useful bisect/reference value would be lost.
+Branches are treated in four operational categories.
 
-This audit intentionally does not delete branches.
+### 1. Evidence / immutable
+
+These must be preserved and not retargeted or force-pushed:
+
+- every documented `*-pass` branch;
+- `rn087-multi-consumer-baseline`;
+- `rn-087-nested-scroll` where it is used as a recorded reference;
+- `rn087-production-hardening-clean`;
+- `rn087-production-hardening` and `alpha-prep` as documented production-hardening references;
+- RN 0.86 frozen compatibility checkpoints listed in `docs/CHECKPOINTS.md`.
+
+Several focused Expo 0.86 pass branches are also useful evidence even when superseded by the fresh-consumer proof, including list-type, visual, dispatcher, ledger, navigation/orientation and source-replacement passes. Superseded does not mean disposable.
+
+### 2. Active / current work
+
+Current work branches may advance, but should not be rewritten casually:
+
+- `rn086-eas-ci-gate` — RN 0.86 clean-remote reproducibility gate;
+- `cleanup/state-consolidation-2026-08-16` — documentation/repository hygiene only;
+- `rn087-upstream-react-native-pr` / `rn087-upstream-regression-matrix` / `rn086-upstream-prep` where still useful as local upstream preparation/evidence branches.
+
+The actual public React Native PR branch lives in `react/react-native` and must remain narrow during upstream review.
+
+### 3. Legacy / historical development lines
+
+These are not candidates for immediate deletion. They may retain unique bisect or architecture history, but they should not be treated as current development heads merely because they exist:
+
+- `topappbar-inset-and-host-unification` — currently the GitHub default, but materially stale relative to the current gate line;
+- `rn-owned-scroll-transaction` and other older architecture/prototype lines not listed as pass checkpoints;
+- non-pass stress `base`, `ready`, `tree` and `wip` branches whose validated outcomes are preserved in corresponding pass/log-pass branches.
+
+Pruning requires proof that each branch has no unique finding or useful reference value not captured elsewhere.
+
+### 4. Temporary / prune candidates
+
+A branch name alone is not enough to delete it. `tmp-noop` was inspected specifically because it looks disposable.
+
+`tmp-noop` points at commit:
+
+```text
+15c94a9fbb613aca5645b4c39cf9b2c58db68638
+Preserve RN fling parameters while priming AndroidX nesting
+```
+
+`rn086-eas-ci-gate` is 165 commits ahead and 0 behind that branch, so its tip is already contained in the current history. This makes `tmp-noop` a strong future prune candidate.
+
+It is intentionally **not deleted in this cleanup PR**. Branch deletion is separated from documentation/file cleanup so that history removal remains an explicit operation after review.
+
+## Branch deletion rule
+
+Before deleting any branch, verify all of the following:
+
+1. the branch tip is contained in a preserved branch or its unique commits are intentionally archived elsewhere;
+2. it is not listed in `docs/CHECKPOINTS.md` as evidence;
+3. no current documentation, automation, PR or reproducibility workflow relies on its name;
+4. it is not the current default branch;
+5. deletion does not remove the only convenient reference for a measured validation run.
+
+No branch deletion is performed by this cleanup PR.
 
 ## Deferred cleanup
 
-The following work is intentionally deferred because it is higher risk or requires a release decision rather than simple cleanup:
+The following work is intentionally deferred because it is higher risk or requires a release/repository decision rather than simple cleanup:
 
 - changing the repository default branch;
 - deleting historical/WIP branches;
@@ -75,6 +133,18 @@ The following work is intentionally deferred because it is higher risk or requir
 - changing package publication boundaries (`private`, `files`, npm contents, alpha versioning);
 - modifying the RN 0.86 source patch while its remaining gate is remote reproducibility;
 - modifying upstream PR `#57972` without review feedback or a demonstrated correctness issue.
+
+## Packaging status
+
+The root package currently remains:
+
+```text
+name:    expo-material-toolbar
+version: 2.0.0-alpha.25
+private: true
+```
+
+There is no reason to mix npm publication cleanup into this repository hygiene PR. When publication work begins, it should be treated as a separate gate with an explicit package file set, `npm pack` inspection and a fresh-consumer install/build/runtime test.
 
 ## Current invariant
 
