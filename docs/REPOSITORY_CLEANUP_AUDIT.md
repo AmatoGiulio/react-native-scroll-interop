@@ -91,24 +91,41 @@ These are not candidates for immediate deletion. They may retain unique bisect o
 
 - `topappbar-inset-and-host-unification` — currently the GitHub default, but materially stale relative to the current gate line;
 - `rn-owned-scroll-transaction` and other older architecture/prototype lines not listed as pass checkpoints;
-- non-pass stress `base`, `ready`, `tree` and `wip` branches whose validated outcomes are preserved in corresponding pass/log-pass branches.
+- non-pass stress `tree` branches until unique commits are classified.
 
 Pruning requires proof that each branch has no unique finding or useful reference value not captured elsewhere.
 
-### 4. Temporary / prune candidates
+### 4. Verified prune candidates
 
-A branch name alone is not enough to delete it. `tmp-noop` was inspected specifically because it looks disposable.
+The following branch names have now been checked against preserved descendants/checkpoints and repository references. This classification concerns the branch ref only; the commits remain reachable from preserved history.
 
-`tmp-noop` points at commit:
+| Branch | Verification | Classification |
+| --- | --- | --- |
+| `tmp-noop` | tip `15c94a9f...`; `rn086-eas-ci-gate` is 165 commits ahead / 0 behind; no repository reference found | PRUNE CANDIDATE |
+| `expo86-navigation-stress-base` | tip `ed23bea9...`; final `expo86-navigation-replacement-stress-log-pass` is 3 commits ahead / 0 behind | PRUNE CANDIDATE |
+| `expo86-navigation-stress-ready` | same tip `ed23bea9...`; final log-pass is 3 commits ahead / 0 behind | PRUNE CANDIDATE |
+| `expo86-navigation-stress-wip` | same tip `ed23bea9...`; final log-pass is 3 commits ahead / 0 behind | PRUNE CANDIDATE |
+| `expo86-orientation-stress-wip` | identical tip to `expo86-orientation-stress-log-pass` at `33342460...`; no repository reference found | PRUNE CANDIDATE |
+| `rn086-androidx-plugin-hardening` | identical to frozen `expo86-androidx-fresh-consumer-pass` at `5db757d6...`; no repository reference found | PRUNE CANDIDATE |
 
-```text
-15c94a9fbb613aca5645b4c39cf9b2c58db68638
-Preserve RN fling parameters while priming AndroidX nesting
-```
+The three navigation stress aliases (`base`, `ready`, `wip`) all point at the same commit. Their validated descendant is the preserved `expo86-navigation-replacement-stress-log-pass`, so deleting those aliases would not remove the measured pass branch.
 
-`rn086-eas-ci-gate` is 165 commits ahead and 0 behind that branch, so its tip is already contained in the current history. This makes `tmp-noop` a strong future prune candidate.
+`expo86-orientation-stress-wip` is exactly the same commit as the preserved orientation log-pass, so the WIP alias carries no additional history.
 
-It is intentionally **not deleted in this cleanup PR**. Branch deletion is separated from documentation/file cleanup so that history removal remains an explicit operation after review.
+`rn086-androidx-plugin-hardening` is exactly the same commit as the frozen fresh-consumer proof. The evidence branch that must remain is `expo86-androidx-fresh-consumer-pass`; the non-checkpoint alias adds no unique commit.
+
+Repository code/document search found no references to the verified prune-candidate names above.
+
+## Explicit non-prune findings from the second pass
+
+The audit also found branches that look old but must **not** be deleted in the same sweep:
+
+- `expo86-orientation-stress-tree` diverges from `expo86-orientation-stress-log-pass` and retains two commits not present in the log-pass line. Keep/review until those commits are understood or intentionally archived.
+- `rn086-upstream-prep` retains six commits beyond the current RN 0.86 gate comparison. Keep while the upstream/source-fix work is active.
+- `rn087-upstream-react-native-pr` retains unique upstream-preparation history relative to the RN 0.86 gate. Keep during PR review.
+- `rn087-upstream-regression-matrix` has substantial unique regression-work history relative to the RN 0.86 gate. Keep as upstream evidence.
+- `rn-owned-scroll-transaction` is fully contained in later history and has no repository-name reference, but its tip records an important architectural correction in the RFC history. It remains REVIEW rather than immediate prune so branch-label value can be judged separately from commit reachability.
+- `topappbar-inset-and-host-unification` is the current GitHub default branch and cannot be treated as an ordinary stale branch until default-branch normalization is performed explicitly.
 
 ## Branch deletion rule
 
@@ -120,14 +137,14 @@ Before deleting any branch, verify all of the following:
 4. it is not the current default branch;
 5. deletion does not remove the only convenient reference for a measured validation run.
 
-No branch deletion is performed by this cleanup PR.
+Branch deletion is intentionally separated from file/document cleanup so that removing refs remains an explicit repository operation.
 
 ## Deferred cleanup
 
 The following work is intentionally deferred because it is higher risk or requires a release/repository decision rather than simple cleanup:
 
 - changing the repository default branch;
-- deleting historical/WIP branches;
+- pruning anything outside the verified candidate set above;
 - restructuring the Kotlin transport solely to reduce file size;
 - reducing diagnostic probe coverage;
 - changing package publication boundaries (`private`, `files`, npm contents, alpha versioning);
