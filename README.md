@@ -1,12 +1,28 @@
 # expo-material-toolbar
 
-Android-only Expo native module that bridges Material 3 Compose floating toolbars to React Native.
+Android-only Expo native module bridging Material 3 Compose chrome to React Native, with native scroll interop designed around React Native-owned gesture/fling physics and Android's real synchronous nested-scroll transaction.
 
-This Expo 55 compatibility branch targets `androidx.compose.material3:material3:1.5.0-alpha17` and intentionally follows the current Compose toolbar model instead of implementing a tab/navigation component inside the toolbar.
+> Repository status (2026-08-16): this repository contains both historical prototype material and the current RN 0.86 compatibility / RN 0.87+ architecture line. The GitHub default branch is currently legacy and is not the source of truth for current development. Use [`docs/HANDOFF_CURRENT.md`](docs/HANDOFF_CURRENT.md) for the active handoff and [`docs/CHECKPOINTS.md`](docs/CHECKPOINTS.md) for frozen evidence branches.
 
-## What is native Compose
+Current invariant:
 
-`Root` hosts one Compose view. The actual toolbar is one of:
+```text
+one React Native scroll physics
+one synchronous native nested-scroll transaction
+N native chrome consumers
+```
+
+Current compatibility state:
+
+- RN 0.86.2 / Expo SDK 57 fresh external consumer: validated locally through package install, config plugin, clean prebuild, ReactAndroid source build, install/runtime, TopAppBar, FloatingToolbar and NON_TOUCH behavior. The clean remote CI/EAS reproducibility gate remains separate.
+- RN 0.87+: multi-consumer source-owned architecture and hardening checkpoints are already validated.
+- React Native source-boundary fix: upstream PR `react/react-native#57972` is open. It preserves the ordinary `ReactNestedScrollView` NON_TOUCH nested-scroll lifecycle by delegating the generated non-paging fling path to AndroidX while keeping React Native as the sole owner of fling initiation/physics.
+
+The package remains an internal alpha workspace (`private: true`). Publication boundaries and npm contents are intentionally not treated as repository-cleanup work.
+
+## Material toolbar API
+
+The native toolbar is one of:
 
 - `HorizontalFloatingToolbar`
 - `VerticalFloatingToolbar`
@@ -223,31 +239,65 @@ The module can still be used as the visual control that changes React Navigation
 
 ## Native scroll interop
 
-`MaterialToolbar.Root scrollBehavior="exitAlways"` uses a native RN scroll coordinator. Standard React Native Android `ScrollView` and FlashList 2's default RN scroller can drive the real Material3 FloatingToolbar state without adding a toolbar-specific JS `onScroll`, list ref, or per-screen wrapper.
+The current architecture is source-owned. React Native owns touch handling, fling physics, source movement and content position. Native Material chrome participates in the actual Android nested-scroll transaction; the parent does not run a second scroller and does not reconstruct momentum from sampled `scrollY`.
 
-Alpha.17 also includes a deliberately minimal second consumer, `MaterialTopAppBar`, to prove that the transport is not FloatingToolbar-specific:
+A movement follows the real transaction:
+
+```text
+source asks dy
+ -> parent pre-scroll
+ -> source scrolls its remainder itself
+ -> parent post-scroll receives real childConsumed / dyUnconsumed
+```
+
+Accounting remains:
+
+```text
+requested = chromePre + childConsumed + chromePost + remaining
+```
+
+`MaterialTopAppBar` is a real pre/post consumer. `MaterialToolbar` / FloatingToolbar observes the same transaction and consumes zero list distance for its own behavior.
+
+The production host intentionally fails closed if it cannot identify exactly one supported RN vertical source for the screen/transaction.
+
+## TopAppBar
+
+The package includes `MaterialTopAppBar` as a second native Material consumer:
 
 ```tsx
 import { MaterialTopAppBar } from 'expo-material-toolbar';
 
 <MaterialTopAppBar
-  title="Native scroll PoC"
+  title="Native scroll"
   variant="medium"
   scrollBehavior="exitUntilCollapsed"
   themeMode="system"
 />
 ```
 
-Available PoC variants are `small | medium | large`; scroll behaviors are `none | enterAlways | exitUntilCollapsed`. The TopAppBar itself is the real Material3 Compose component. The React API is intentionally small in alpha.24 because its purpose is to validate the shared native-scroll primitive before expanding the component surface.
+Available variants are `small | medium | large`; scroll behaviors are `none | enterAlways | exitUntilCollapsed`.
 
-### TopAppBar PoC content inset
+## RN 0.86 compatibility
 
-For `enterAlways` / `exitUntilCollapsed`, alpha.24 measures the real expanded Compose TopAppBar host and applies that value through React Native 0.83's native scroll-away top-padding path on the selected `ReactScrollView`. The embedded Compose host reads the Android root-window `systemBars + displayCutout` geometry and passes those physical insets explicitly to Material3, avoiding the missing-status-bar case that can occur when React Native has already consumed Compose's default inset chain. Do not add a duplicated `contentContainerStyle.paddingTop` such as `safeAreaTop + 112` for this PoC. The RN content translation and Material collapse range share the same native scroll coordinate so the list rises with the app bar and continues normally once the collapse limit is reached. RN's required scroll-range padding remains non-clipping, so it does not appear as a blank strip at the bottom.
+The RN 0.86 compatibility layer is intentionally narrow and implemented through the Expo config plugin documented in [`docs/RN086_ANDROIDX_COMPAT.md`](docs/RN086_ANDROIDX_COMPAT.md).
 
-The React Native API used here is explicitly unstable and assumes the library has control of the ScrollView content translation. It is isolated inside the RN source adapter; it is evidence for the required screen/scroll geometry primitive, not the intended long-term public API.
+It does three relevant things:
 
+1. enables the required ReactAndroid/Hermes source-build substitutions for the supported Expo consumer path;
+2. selects RN 0.86's existing `ReactNestedScrollViewManager` for vertical `RCTScrollView` through both `MainReactPackage.kt` manager creation paths;
+3. changes only the ordinary non-paging `ReactNestedScrollView.fling()` path from direct reflected-scroller invocation to `super.fling(correctedVelocityY)`.
 
-The RN transport is now shared between mounted consumers. When a visible FloatingToolbar and TopAppBar belong to the same Fabric surface, one sampled native scroll source is fanned out to both Material consumers.
+The plugin is RN 0.86.x-only, validates expected source shape, is idempotent and fails closed. It does not implement the shared transport, consumers, chrome behavior or a second momentum model.
+
+The validated RN 0.86 behavioral claim is standard non-paging vertical scrolling. See the handoff/checkpoint documents for the exact proven matrix.
+
+## RN 0.87+ and upstream
+
+RN 0.87+ is the established architecture line rather than a from-scratch next step. The repository contains frozen multi-consumer, source-boundary, shared-ledger, dispatcher and lifecycle checkpoints.
+
+The narrow React Native source issue is upstream PR `react/react-native#57972`: the generated nested ScrollView inherits AndroidX nested-scroll machinery but its ordinary fling override bypasses `NestedScrollView.fling()`. The proposal changes the generator and regenerated nested class so ordinary nested flings enter AndroidX's NON_TOUCH lifecycle without changing `ReactScrollView` or the specialized paging/snap branch.
+
+See [`docs/production-readiness-rn087.md`](docs/production-readiness-rn087.md) for covered versus remaining regression gates.
 
 ## Android dependency
 
@@ -261,48 +311,11 @@ Kotlin/Gradle changes require a new development build:
 npx expo run:android
 ```
 
-### Automatic overlay host
-
-`MaterialToolbar.Root` is an overlay by default. If you do not pass `style`, the React wrapper uses an absolute fill host so Compose receives the full screen bounds needed by Material placement and `WindowInsets.safeDrawing`. You therefore do not need `useSafeAreaInsets()` just to position the toolbar.
-
-The Android host only accepts touch sequences that start inside the measured floating toolbar/FAB bounds; touches elsewhere fall through to the React Native screen underneath. Pass an explicit `style` only when you intentionally want custom host bounds.
-
-
-
-## IconButton labels and circular FABs
-
-`MaterialToolbar.IconButton` maps to Material3 `IconButton`. The `<MaterialToolbar.Text>`
-child is useful as an accessibility/fallback label but is not drawn as a navigation label.
-For an action that visibly contains both icon and text, use `TextButton`:
-
-```tsx
-<MaterialToolbar.TextButton id="home" onPress={openHome}>
-  <MaterialToolbar.Icon source={require('./home.png')} />
-  <MaterialToolbar.Text>Home</MaterialToolbar.Text>
-</MaterialToolbar.TextButton>
-```
-
-The attached FAB can keep the Material3 default shape or be explicitly circular:
-
-```tsx
-<MaterialToolbar.Fab shape="circle" onPress={openSearch}>
-  <MaterialToolbar.Icon source={require('./search.png')} />
-</MaterialToolbar.Fab>
-```
-
-The `circle` option maps directly to Compose `CircleShape`; the default maps to
-`FloatingActionButtonDefaults.shape`.
-
 ## Overlay touch routing
 
-With the default root style the React host fills its parent so native placement and
-window insets can be automatic. The Android Compose child itself is wrap-content. On
-Android the native Expo host also implements React Native `ReactPointerEventsView` and
-exposes `pointerEvents = PointerEvents.BOX_NONE`; this is required for RN/Fabric hit-testing of custom
-native ViewGroups. The JS host still sets `pointerEvents="box-none"` as a declarative
-hint, but native BOX_NONE semantics are the authoritative path. As a result, only the
-toolbar/FAB child bounds are interactive and touches elsewhere continue to lower RN
-siblings.
+`MaterialToolbar.Root` is an overlay by default. If you do not pass `style`, the React wrapper uses an absolute fill host so Compose receives the full screen bounds needed by Material placement and `WindowInsets.safeDrawing`.
+
+The Android host implements React Native `ReactPointerEventsView` and exposes BOX_NONE semantics for the overlay host. Only toolbar/FAB child bounds are interactive; touches elsewhere continue to lower React Native siblings.
 
 ## Navigation-style selected action
 
@@ -330,28 +343,3 @@ siblings.
 ```
 
 The selected `TextButton` remains a real Material3 Compose `TextButton`; its native container color becomes the active indicator.
-
-## Native React Native scroll interop
-
-On Android/RN 0.83, enable the real Material3 exit-always behavior directly on the toolbar:
-
-```tsx
-<MaterialToolbar.Root
-  placement="bottom"
-  expanded
-  scrollBehavior="exitAlways"
->
-  {/* content */}
-</MaterialToolbar.Root>
-```
-
-No `onScroll`, list ref, or wrapper is required for React Native `ScrollView` and FlashList 2.0.2's default scroller. The module registers a native `ReactScrollViewHelper.ScrollListener` and forwards native scroll deltas into Material3's `FloatingToolbarScrollBehavior`. Use `scrollExitDirection` only when you do not want the direction inferred from `placement`/`alignment`. A custom FlashList `renderScrollComponent` that does not use React Native's Android `ReactScrollView` is outside this automatic path.
-
-### Native scroll geometry note
-
-Alpha.14 attempted to give Material3 a synthetic direct Compose parent large enough to calculate `offsetLimit`. Runtime logs showed that the RN scroll signal and Material state were already correct, but translating toolbar content inside a wrap-content Android `ComposeView` was the wrong boundary for an RN overlay. Alpha.15 instead computes the exit distance from the actual Android host geometry and translates the `ComposeView` itself while retaining Material3 `exitAlwaysScrollBehavior` as the offset/snap state engine.
-
-
-### Native host translation (alpha.15)
-
-For RN scroll interop, Material3 `exitAlwaysScrollBehavior` remains the state and snap engine, but its internal Compose movement modifier is not attached to the toolbar. The Expo module intentionally uses a wrap-content Android `ComposeView` so React Native content remains touchable outside the toolbar. Moving toolbar content beyond that Compose surface can be clipped or visually delayed. Alpha.15 therefore computes the Material state limit from the Android host geometry and applies `state.offset` to the `ComposeView` translation itself. No JS scroll callback, list ref, or wrapper is required.
