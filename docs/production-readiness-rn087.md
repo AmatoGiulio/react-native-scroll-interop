@@ -1,6 +1,6 @@
 # RN 0.87 production-readiness plan
 
-Status date: 2026-08-12
+Status date: 2026-08-16
 
 ## Product invariant
 
@@ -14,7 +14,7 @@ N chrome consumers
 
 React Native remains the sole owner of gesture recognition, fling velocity, `OverScroller` state and content position. Native ancestors may consume or observe the Android nested-scroll transaction, but must never create a second scroll, call `scrollBy`/`scrollTo` on the source to emulate Material behavior, or reconstruct momentum from sampled `scrollY`.
 
-This invariant now has a repository gate:
+This invariant has a repository gate:
 
 ```bash
 npm run check:scroll-invariants
@@ -22,7 +22,7 @@ npm run check:scroll-invariants
 
 The gate scans the production host/consumer transport and fails if it reintroduces a parent-owned scroller, child `scrollBy`/`scrollTo`, a parent-started nested session, or timer-based motion reconstruction.
 
-## Proven gates
+## Proven architecture gates
 
 ### Source semantics — PASS
 
@@ -34,7 +34,7 @@ The bare RN 0.87 probe drives a real Material3 `LargeTopAppBar` / `exitUntilColl
 
 ### Multi-consumer transaction — PASS
 
-A real Material3 FloatingToolbar now observes the same transaction as the consuming TopAppBar. It receives only non-zero `childConsumedY` in post-scroll and never modifies the Parent3 consumed array.
+A real Material3 FloatingToolbar observes the same transaction as the consuming TopAppBar. It receives only non-zero `childConsumedY` in post-scroll and never modifies the Parent3 consumed array.
 
 The validated run produced:
 
@@ -62,24 +62,70 @@ Every FloatingToolbar input frame matched a real non-zero child-consumed post fr
 
 This closes the architecture research gate: one RN-owned source transaction can drive multiple native Material consumers with different roles without introducing a second scroll model.
 
-## Required before calling the RN source patch production-safe
+## Upstream React Native source fix
 
-The current proof patch changes the ordinary nested ScrollView fling to enter AndroidX's own `NestedScrollView.fling()` path. Before upstreaming or shipping it as a maintained patch, explicitly validate:
+The source-boundary fix is now proposed upstream as:
 
-- top and bottom edge behavior, including overfling/edge effects;
-- interrupting a running fling with a new touch;
-- immediate direction reversal;
-- short and high-velocity flings;
-- paging mode;
-- snap interval and snap offsets;
-- `disableIntervalMomentum`;
-- deceleration-rate behavior;
-- momentum begin/end event timing and count;
-- scroll perf/FPS hooks;
-- accessibility/programmatic scroll paths;
-- recycled/Fabric ScrollView instances.
+```text
+react/react-native#57972
+Android: preserve NestedScrollView fling nested-scroll lifecycle
+head: c616f357d9ced1934111a66b574634c564682f90
+```
 
-The canonical upstream change must be expressed in the nested-view generator plus regenerated output, because `ReactNestedScrollView.kt` is generated.
+Current status as of 2026-08-16:
+
+- PR open;
+- mergeable;
+- not draft;
+- one commit;
+- two changed files: the nested-view generator and regenerated `ReactNestedScrollView.kt`;
+- Meta CLA accepted;
+- awaiting upstream CI/review.
+
+The proposal keeps `ReactScrollView` unchanged. For the generated nested variant, paging/snap continues through `flingAndSnap()`, while ordinary non-paging flings delegate to `super.fling(correctedVelocityY)`. React Native still initiates and owns the fling; AndroidX supplies the real `TYPE_NON_TOUCH` nested-scroll lifecycle.
+
+The generator also validates the copied scroller branch before replacing it and fails closed if the expected source shape changes.
+
+During upstream review, do not expand the patch unless maintainer feedback or a demonstrated correctness issue requires it.
+
+## Regression matrix: what PR #57972 now covers
+
+The upstream test plan materially reduces the old source-patch uncertainty. The following scenarios have explicit stock-versus-patched evidence in the PR:
+
+| Scenario | Current evidence |
+| --- | --- |
+| ordinary low-velocity fling | COVERED |
+| ordinary high-velocity fling | COVERED |
+| top-edge endpoint | COVERED |
+| bottom-edge endpoint | COVERED |
+| deceleration normal | COVERED |
+| deceleration fast | COVERED |
+| perf-tagged fling endpoint | COVERED |
+| paging path | COVERED / unchanged |
+| snap interval | COVERED / unchanged |
+| snap offsets | COVERED / unchanged |
+| `disableIntervalMomentum` | COVERED / unchanged |
+| programmatic scroll | COVERED / unchanged |
+| physical touch fling opens NON_TOUCH | COVERED |
+| interrupt running fling with touch | COVERED |
+| immediate deterministic reversal | COVERED |
+| ordinary final-distance equivalence | COVERED, 0.00% delta in recorded cases |
+| deceleration fast/normal ratio | COVERED, same recorded ratio |
+
+These results support the narrow claim that ordinary nested flings can enter AndroidX without changing the tested RN motion endpoints, while specialized paging/snap paths remain on their existing branch.
+
+## Source-fix validation still not closed by that matrix
+
+Do not broaden the PR evidence beyond what was actually measured. The following remain distinct validation items before calling the source change fully production-safe across the complete React Native surface:
+
+- detailed overfling/edge-effect behavior, beyond the recorded top/bottom endpoints;
+- momentum begin/end event timing and exact event count;
+- perf/FPS hook semantics beyond the recorded perf-tagged endpoint;
+- accessibility-driven scroll behavior;
+- recycled/Fabric ScrollView instance behavior under realistic remount/reuse;
+- any maintainer-requested platform/regression scenario not represented by the current probe.
+
+The old statement that paging/snap/deceleration/interruption/reversal were all still untested is therefore obsolete. They are covered by the current upstream PR test plan and must not remain listed as generic open blockers.
 
 ## Module hardening
 
@@ -93,15 +139,17 @@ The module-side transport already implements the intended compatibility boundary
 - keep tracing gated behind `BuildConfig.DEBUG`;
 - statically reject the main forms of second-scroll regression with `check:scroll-invariants`.
 
-Still required:
+Still required for package-level production hardening:
 
-- align the production diagnostic ledger with the validated AndroidX full-pre classification;
+- align the production diagnostic ledger with the validated AndroidX full-pre classification wherever any diagnostic path still differs;
 - validate host/source lifecycle under Fabric remounts and view recycling;
 - validate multiple screens and multiple ScrollViews, failing closed when source binding is ambiguous;
 - validate nested navigators/screens and source changes during transitions;
 - validate RTL, font scaling, display density changes and configuration recreation;
 - verify a release build with tracing disabled;
 - verify no JS/userland bridge work occurs per frame under profiler/device tracing.
+
+These module/package gates are separate from the narrow React Native source fix and should not be pushed into PR #57972.
 
 ## Host and package strategy
 
@@ -120,41 +168,43 @@ module version
 
 If the RN feature remains disabled by default, the package must either document an early application-level opt-in or provide a narrowly scoped supported installation mechanism. It must not silently use `dangerouslyForceOverride` as a general production strategy.
 
+The current repository package remains an internal alpha workspace (`private: true`). Publication boundaries and npm contents are a later release decision and should be validated with `npm pack` plus a fresh consumer rather than changed as repository cosmetics.
+
 ## Automated gates
 
 Before release, CI/device tests should cover at least:
 
 1. source class OFF/ON gate;
 2. balanced TOUCH and NON_TOUCH start/stop;
-3. source-patch runtime gate when the patch is required;
+3. source-fix runtime gate when the fix/patch is required;
 4. TopAppBar TOUCH/NON_TOUCH movement;
 5. complete transaction conservation ledger;
 6. FloatingToolbar 100% coverage of non-zero child-consumed post frames;
 7. Material settle completion for both consumers;
-8. edge/interruption/snap/paging regression scenarios;
+8. source regression scenarios represented by the upstream matrix plus the remaining targeted gaps above;
 9. `npm run check:scroll-invariants`;
 10. release build smoke test with tracing disabled.
 
-Items 1–7 and 9 have concrete implementations in this branch. Item 8 is now the primary RN source-patch blocker; item 10 is the primary packaging/runtime-cost blocker.
+Items 1–7 and 9 have concrete implementations/evidence in the repository line. Item 8 is now substantially covered by PR #57972 rather than being wholly open. Item 10 remains a package/runtime-cost gate.
 
 ## Public/upstream path
 
-The public story and upstream proposal should separate three claims:
+The public story separates three claims:
 
 1. RN 0.87 already contains the AndroidX nested-scroll machinery.
 2. The generated RN fling override bypasses AndroidX's NON_TOUCH entry point.
 3. Once the source enters the AndroidX path, multiple native Material consumers can share the real RN-owned transaction without reconstructing a second scroll.
 
-Do not present the proof patch as upstream-final until the RN behavior-regression matrix above is green.
+PR #57972 is the upstream proposal for claim 2. The module repository is evidence for claim 3; it is not a reason to make the RN source patch Material-specific.
 
 ## Definition of production ready
 
 This project is production ready when:
 
-- the RN source fix is either upstreamed or maintained as a versioned, reproducible patch with a complete behavior regression suite;
-- the package installs on an officially compatible host stack without Gradle/Kotlin shims;
+- the RN source fix is upstreamed or maintained as a versioned, reproducible compatibility patch with sufficient regression coverage;
+- the package installs on an officially compatible host stack without unbounded Gradle/Kotlin shims;
 - TopAppBar and FloatingToolbar pass the same real-transaction gates on device;
 - lifecycle/navigation/multiple-source scenarios fail safely;
-- debug instrumentation is optional and zero-cost enough in release;
+- debug instrumentation is optional and sufficiently cheap/disabled in release;
 - compatibility and installation requirements are documented publicly;
 - the invariant remains true in code review and CI: RN owns the only scroll physics.
