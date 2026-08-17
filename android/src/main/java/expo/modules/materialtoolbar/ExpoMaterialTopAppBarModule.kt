@@ -33,12 +33,12 @@ class ExpoMaterialTopAppBarModule : Module() {
       }
     }
 
-    // The nested-scroll host ships as a second named view in this same module so that adopting it
-    // needs no autolinking or config change.
-    View(ExpoNestedScrollHostView::class) {
+    // Expo owns only the registration surface. The host implementation itself is React Native
+    // scroll interop and intentionally has a neutral/non-Expo class name.
+    View(ReactNativeNestedScrollHostView::class) {
       Name("ExpoNestedScrollHostView")
 
-      GroupView<ExpoNestedScrollHostView> {
+      GroupView<ReactNativeNestedScrollHostView> {
         AddChildView<android.view.View> { parent, child, index ->
           parent.addHostChild(child, index)
         }

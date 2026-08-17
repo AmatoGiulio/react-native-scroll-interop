@@ -27,7 +27,7 @@ import expo.modules.kotlin.views.ExpoView
  * treats both as ViewGroup transaction sources through [ReactVerticalScrollSourceInterop]; the
  * nested-scroll callback target remains authoritative.
  */
-class ExpoNestedScrollHostView(
+class ReactNativeNestedScrollHostView(
   context: Context,
   appContext: AppContext,
 ) : ExpoView(context, appContext), NestedScrollingParent3 {
