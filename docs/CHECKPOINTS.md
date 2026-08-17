@@ -12,7 +12,8 @@ This is intentionally not a catalog of every experimental branch. It lists check
 | `rn086-androidx-industrialization` | `00ce738f60395cbcf9a8e2422407517f2df5d6f6` | Validated experiment patches were normalized toward the production config-plugin path. |
 | `expo86-androidx-industrialized-pass` | `a0505e6e324ae1113525c54c3790f572567fdaf4` | Expanded plugin hardening/tests after the RN 0.86 compatibility path was industrialized. |
 | `expo86-androidx-fresh-consumer-pass` | `5db757d66e5442bc5b44afc42bc58ae09a3185c4` | Fresh external Expo SDK 57 / RN 0.86.2 consumer: tarball install, config plugin, clean prebuild, RN source build, Android install/runtime, TopAppBar, FloatingToolbar, and NON_TOUCH behavior all pass. |
-| `rn086-eas-ci-gate` | starts from `5db757d66e5442bc5b44afc42bc58ae09a3185c4` | Work branch for the remaining clean-remote-machine CI/EAS reproducibility gate. This branch may advance; it is not itself a frozen pass checkpoint until that gate is proven. |
+| `expo86-androidx-clean-remote-pass` | `e8b27633accb5e2ffaa3d67d421cb5f6f846882a` | Final clean-remote reproducibility gate. EAS built the fresh consumer from remote state at consumer SHA `e11107ea3a32b6da12ee2659eb57935895e9127a`; the produced APK was installed and started in an emulator and TopAppBar, FloatingToolbar, and NON_TOUCH behavior were manually confirmed working. No runtime/plugin changes were introduced to obtain this pass. |
+| `rn086-eas-ci-gate` | starts from `5db757d66e5442bc5b44afc42bc58ae09a3185c4` | Historical work branch used to close the clean-remote-machine gate. The validated result is frozen separately at `expo86-androidx-clean-remote-pass`. |
 
 ### Fresh-consumer two-entry-point fix
 
@@ -32,9 +33,24 @@ Cover both RN 0.86 ScrollView manager entry points
 
 This is the final checkpoint/test-coverage commit that exercises both paths, partially normalized shapes, and fail-closed behavior. The frozen fresh-consumer branch correctly points at this commit.
 
+### Clean-remote closure
+
+The remote proof used the dedicated fresh consumer repository:
+
+```text
+AmatoGiulio/rn086-fresh-consumer
+e11107ea3a32b6da12ee2659eb57935895e9127a
+```
+
+The EAS profile applies and verifies the RN 0.86 compatibility patch before Gradle, then performs the Android release build remotely. The completed artifact was installed and launched in an emulator and the user confirmed the expected TopAppBar, FloatingToolbar, and NON_TOUCH runtime behavior.
+
+The earlier GitHub Actions attempts remain classified as infrastructure/account failures because GitHub allocated no runner (`runner_id=0`, `steps=[]`) due to billing/spending-limit configuration. They are not product failures and do not weaken this EAS clean-remote checkpoint.
+
+The RN 0.86 compatibility line is now frozen for alpha work except for genuine release-blocking defects.
+
 ### Additional RN 0.86 behavior checkpoints
 
-The repository also contains focused pass branches for ScrollView/FlatList/SectionList/FlashList, source/navigation/orientation stress, TopAppBar visual behavior, FloatingToolbar-only behavior, shared dispatcher, and shared ledger work. They remain useful for bisect/reference work, but the fresh-consumer checkpoint above supersedes them as the current RN 0.86 compatibility proof.
+The repository also contains focused pass branches for ScrollView/FlatList/SectionList/FlashList, source/navigation/orientation stress, TopAppBar visual behavior, FloatingToolbar-only behavior, shared dispatcher, and shared ledger work. They remain useful for bisect/reference work, but the clean-remote checkpoint above is now the terminal RN 0.86 compatibility/reproducibility proof.
 
 ## RN 0.87+ architecture and hardening line
 
@@ -69,8 +85,13 @@ A future change must not be promoted solely because structural checks pass. Visu
 6. Environmental failures do not invalidate a behavioral checkpoint unless they expose an actual source/build integration defect.
 7. The repository has historically used branches, not Git tags, for these checkpoints.
 
-## Next checkpoint to create
+## Current terminal RN 0.86 checkpoint
 
-The next checkpoint should only be created after the RN 0.86 clean remote CI/EAS gate passes from a machine with no prior repository state.
+The RN 0.86 compatibility milestone is closed at:
 
-It should record, at minimum, successful package install, config-plugin application, `prebuild --clean`, RN source build, Android compile/package, install/start, TopAppBar runtime, FloatingToolbar runtime, and NON_TOUCH runtime behavior.
+```text
+expo86-androidx-clean-remote-pass
+e8b27633accb5e2ffaa3d67d421cb5f6f846882a
+```
+
+Further RN 0.86 work requires a separately demonstrated release-blocking defect. Main development attention can return to the RN 0.87+ production/refactor line while upstream PR `react/react-native#57972` proceeds independently.
