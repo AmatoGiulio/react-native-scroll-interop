@@ -19,7 +19,7 @@ abstract class ComposeChromeHostView(
   final override val pointerEvents get() = PointerEvents.BOX_NONE
 
   protected val composeView = ComposeView(context).apply {
-    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
   }
 
   private var measurePending = false
