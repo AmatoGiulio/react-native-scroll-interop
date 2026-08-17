@@ -32,16 +32,16 @@ internal object NativeNestedScrollRegistry {
     val consumer: FloatingToolbarScrollConsumer,
   )
 
-  private val hosts = LinkedHashSet<ExpoNestedScrollHostView>()
+  private val hosts = LinkedHashSet<ReactNativeNestedScrollHostView>()
   private val topBars = LinkedHashSet<TopBarEntry>()
   private val toolbars = LinkedHashSet<ToolbarEntry>()
 
-  fun registerHost(host: ExpoNestedScrollHostView) {
+  fun registerHost(host: ReactNativeNestedScrollHostView) {
     hosts += host
     host.requestNestedChromeBindingRefresh()
   }
 
-  fun unregisterHost(host: ExpoNestedScrollHostView) {
+  fun unregisterHost(host: ReactNativeNestedScrollHostView) {
     hosts -= host
   }
 
