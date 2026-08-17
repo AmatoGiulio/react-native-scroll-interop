@@ -2,6 +2,8 @@ package expo.modules.materialtoolbar
 
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
+import androidx.core.view.ViewCompat
 import com.facebook.react.uimanager.UIManagerHelper
 
 /**
@@ -42,6 +44,12 @@ internal object NativeNestedScrollRegistry {
   }
 
   fun unregisterHost(host: ExpoNestedScrollHostView) {
+    // AndroidX NestedScrollingChildHelper retains TOUCH and NON_TOUCH parents independently.
+    // A screen container can detach this host while a source-owned fling is still active; if the
+    // NON_TOUCH parent link survives that detach, the next fling can keep dispatching to a stale
+    // host session without reopening Android's nested-scroll lifecycle. Close only the Android
+    // parent links here. This does not abort, advance, or reconstruct the React Native scroller.
+    releaseNestedScrollParents(host)
     hosts -= host
   }
 
@@ -112,6 +120,23 @@ internal object NativeNestedScrollRegistry {
     hosts.removeAll { !it.isAttachedToWindow }
     topBars.removeAll { !it.owner.isAttachedToWindow }
     toolbars.removeAll { !it.owner.isAttachedToWindow }
+  }
+
+  private fun releaseNestedScrollParents(view: View) {
+    ReactVerticalScrollSourceInterop.resolve(view)?.let { capabilities ->
+      val source = capabilities.view
+      if (capabilities.supportsTypedNestedScrolling) {
+        ViewCompat.stopNestedScroll(source, ViewCompat.TYPE_TOUCH)
+        ViewCompat.stopNestedScroll(source, ViewCompat.TYPE_NON_TOUCH)
+      } else {
+        ViewCompat.stopNestedScroll(source)
+      }
+    }
+
+    if (view !is ViewGroup) return
+    for (index in 0 until view.childCount) {
+      releaseNestedScrollParents(view.getChildAt(index))
+    }
   }
 
   private fun sameNativeScope(first: View, second: View): Boolean {
