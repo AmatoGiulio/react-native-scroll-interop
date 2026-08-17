@@ -1,8 +1,8 @@
 # Current handoff
 
-Status date: 2026-08-14
+Status date: 2026-08-16
 
-This document is the source of truth for the current development handoff. It separates the completed RN 0.86 compatibility proof from the already-advanced RN 0.87+ architecture line.
+This document is the source of truth for the current development handoff. It separates the completed RN 0.86 compatibility proof from the already-advanced RN 0.87+ architecture line and records the current React Native upstream status.
 
 ## Executive state
 
@@ -10,9 +10,12 @@ This document is the source of truth for the current development handoff. It sep
 local monorepo        PASS
 fresh external app    PASS
 clean remote machine  NEXT
+RN upstream PR        OPEN (#57972)
 ```
 
 The RN 0.86 technical proof is closed locally and in a fresh external Expo consumer. The only remaining gate for the RN 0.86 compatibility layer is a clean Android build/runtime run in CI/EAS on a machine with no prior repository state.
+
+The RN 0.87 source-boundary fix has now been submitted upstream to React Native as `react/react-native#57972`. The PR is open, non-draft and mergeable; the Meta CLA has been accepted. Until maintainers review it, the upstream branch is frozen except for requested changes.
 
 Do not interpret this as "RN 0.87 is next from scratch". RN 0.87+ already has validated multi-consumer architecture and production-hardening checkpoints; it is the main line after the RN 0.86 remote gate is closed.
 
@@ -38,6 +41,27 @@ expo86-androidx-fresh-consumer-pass
 ```
 
 The work branch may receive documentation or CI-gate commits on top. The frozen pass branch must remain pointing at the proven behavioral commit.
+
+## React Native upstream status
+
+Upstream pull request:
+
+```text
+https://github.com/react/react-native/pull/57972
+Android: preserve NestedScrollView fling nested-scroll lifecycle
+```
+
+The upstream change is intentionally narrow:
+
+- only the generated nested ScrollView path changes;
+- ordinary non-paging `ReactNestedScrollView` flings delegate to `super.fling(correctedVelocityY)`;
+- paging/snap remains on the existing `flingAndSnap()` path;
+- React Native still initiates and owns fling physics and momentum events;
+- the generator validates the expected copied scroller branch before replacing it.
+
+The submitted runtime matrix covers ordinary low/high velocity flings, top/bottom edges, normal/fast deceleration, perf-tag use, paging, snap interval, snap offsets, `disableIntervalMomentum`, programmatic scroll, touch interruption and direction reversal. Ordinary deterministic fling endpoints remained identical between stock and patched source while the patched nested source opened the AndroidX `TYPE_NON_TOUCH` lifecycle.
+
+Do not add unrelated changes to the upstream branch while review is pending. Any modification should be either a maintainer-requested adjustment or a directly demonstrated correctness issue in the submitted scope.
 
 ## RN 0.86: what is proven
 
@@ -228,7 +252,7 @@ RN 0.87+ already proved the production architecture. Important facts:
 - the RN patch belongs at the nested-scroll source boundary and must remain Material-agnostic;
 - structural/analyzer PASS does not override a visible behavioral regression.
 
-The RN 0.87 issue is narrow: the source has AndroidX nested-scroll machinery, but RN's fling override can bypass the AndroidX NON_TOUCH entry point. The production direction is to fix that source boundary, not to construct another scroller above React Native.
+The RN 0.87 source issue is narrow: the source has AndroidX nested-scroll machinery, but the generated RN fling override can bypass the AndroidX NON_TOUCH entry point. That source-boundary fix is now represented by upstream PR `react/react-native#57972`; the module must continue to avoid constructing another scroller above React Native regardless of the upstream review outcome.
 
 See:
 
@@ -244,4 +268,4 @@ RN 0.86 is done for the current compatibility milestone when:
 2. the resulting exact SHA is recorded as a new frozen checkpoint;
 3. no architecture workaround or second scroll model was introduced to obtain the pass;
 4. the RN 0.86 compatibility line is frozen except for genuine release-blocking defects;
-5. main development attention returns to the RN 0.87+ production line.
+5. main development attention returns to the RN 0.87+ production line while upstream PR #57972 proceeds independently through review.
