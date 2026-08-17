@@ -1,6 +1,6 @@
 # What was built
 
-Status date: 2026-08-16
+Status date: 2026-08-17
 
 This repository started as a Material 3 toolbar module, but the reusable result is broader: a native Android scroll-interoperability primitive for React Native.
 
@@ -49,13 +49,13 @@ SourceScopedNestedScrollLifecycle
 NestedScrollConservationLedger
 ```
 
-The host that receives Android nested-scroll callbacks also belongs conceptually to this layer. Its current implementation name is `ExpoNestedScrollHostView`, but that name reflects where the prototype was born, not what the primitive is.
-
-The target neutral name is:
+The host that receives Android nested-scroll callbacks also belongs conceptually to this layer. On the frozen RN 0.86 line its historical implementation name remains `ExpoNestedScrollHostView`; the isolated neutral-core refactor renames the internal Kotlin class to:
 
 ```text
 ReactNativeNestedScrollHostView
 ```
+
+The current Expo native registration string remains unchanged during that first mechanical refactor so the validated JS/Expo adapter surface is not changed at the same time.
 
 The core must not know about Material 3 behavior, Expo module registration, or a specific toolbar product.
 
@@ -129,7 +129,27 @@ NON_TOUCH behavior            PASS
 fresh project isolation       PASS
 ```
 
-The separate clean-remote-machine gate remains open and must not be silently promoted to PASS until it is actually observed.
+### RN 0.86.2 clean remote proof
+
+The final clean-remote checkpoint is:
+
+```text
+expo86-androidx-clean-remote-pass
+e8b27633accb5e2ffaa3d67d421cb5f6f846882a
+```
+
+The successful remote consumer was:
+
+```text
+AmatoGiulio/rn086-fresh-consumer
+e11107ea3a32b6da12ee2659eb57935895e9127a
+```
+
+A custom EAS build ran from remote state, applied and verified the RN 0.86 source patch before Gradle, and completed the Android release build. The produced APK was installed and started in an emulator; TopAppBar, FloatingToolbar, and expected NON_TOUCH behavior were manually confirmed working.
+
+This closes the RN 0.86 reproducibility/industrialization gate. The compatibility line is frozen for alpha except for genuine release-blocking defects.
+
+Earlier GitHub Actions attempts with no allocated runner are classified as infrastructure/account failures and are not product failures.
 
 ### RN 0.87+ architecture
 
@@ -243,7 +263,7 @@ FloatingToolbarScrollConsumer
 
 Expo-specific names remain only where Expo actually participates in registration/configuration.
 
-The current code is not renamed on the RN 0.86 gate line while its clean-remote validation is still pending. Structural/package renaming belongs on a separate refactor branch with before/after build and invariant validation.
+The frozen RN 0.86 checkpoint remains untouched. Structural/package renaming belongs on the separate `refactor/neutral-native-scroll-core` branch with before/after build and invariant validation.
 
 ## Non-negotiable constraints
 
