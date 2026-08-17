@@ -5,12 +5,14 @@ This file is the mandatory entry point for work on the native React Native scrol
 ## Current work state
 
 - Repository: `AmatoGiulio/material3-scroll`
-- Current work branch: `rn086-eas-ci-gate`
-- RN 0.86 behavioral baseline under the current gate: `5db757d66e5442bc5b44afc42bc58ae09a3185c4`
-- Frozen RN 0.86 fresh-consumer checkpoint: `expo86-androidx-fresh-consumer-pass` -> `5db757d66e5442bc5b44afc42bc58ae09a3185c4`
-- Immediate next gate: clean Android build/runtime validation in CI/EAS on a machine that has never seen this repository.
+- RN 0.86 fresh-consumer checkpoint: `expo86-androidx-fresh-consumer-pass` -> `5db757d66e5442bc5b44afc42bc58ae09a3185c4`
+- Final RN 0.86 clean-remote checkpoint: `expo86-androidx-clean-remote-pass` -> `e8b27633accb5e2ffaa3d67d421cb5f6f846882a`
+- Successful remote consumer: `AmatoGiulio/rn086-fresh-consumer` -> `e11107ea3a32b6da12ee2659eb57935895e9127a`
+- RN 0.86 compatibility milestone: CLOSED / FROZEN for alpha except genuine release-blocking defects
+- Current isolated refactor branch: `refactor/neutral-native-scroll-core`
+- React Native upstream PR: `react/react-native#57972` OPEN
 
-The work branch can move because documentation and CI-gate work may be committed on top. The frozen checkpoint branch is evidence and must not be retargeted.
+The successful EAS build ran remotely from the fresh consumer, produced an APK, and that artifact was installed/launched in an emulator. TopAppBar, FloatingToolbar, and expected NON_TOUCH behavior were manually confirmed working.
 
 The repository default branch is historical relative to the RN 0.86/RN 0.87 work. Do not assume the default branch is the current development head.
 
@@ -18,13 +20,14 @@ The repository default branch is historical relative to the RN 0.86/RN 0.87 work
 
 Before changing scroll behavior, read:
 
-1. [`docs/HANDOFF_CURRENT.md`](docs/HANDOFF_CURRENT.md) - exact current status and the next acceptance gate.
-2. [`ARCHITECTURE.md`](ARCHITECTURE.md) - invariant and transaction model.
-3. [`docs/production-architecture-rn087.md`](docs/production-architecture-rn087.md) - production architecture for the RN 0.87+ line.
-4. [`docs/production-readiness-rn087.md`](docs/production-readiness-rn087.md) - what is proven and what still requires hardening on RN 0.87+.
-5. [`docs/RN086_ANDROIDX_COMPAT.md`](docs/RN086_ANDROIDX_COMPAT.md) - exact RN 0.86 compatibility-plugin scope.
-6. [`docs/CHECKPOINTS.md`](docs/CHECKPOINTS.md) - frozen behavioral references and pass branches.
-7. [`TESTING.md`](TESTING.md) and the repository analyzers/invariant checks before promoting a behavioral change.
+1. [`docs/HANDOFF_CURRENT.md`](docs/HANDOFF_CURRENT.md) - exact current status and development direction.
+2. [`docs/WHAT_WAS_BUILT.md`](docs/WHAT_WAS_BUILT.md) - product boundary and accepted/rejected upstream strategy.
+3. [`ARCHITECTURE.md`](ARCHITECTURE.md) - invariant and transaction model.
+4. [`docs/production-architecture-rn087.md`](docs/production-architecture-rn087.md) - production architecture for the RN 0.87+ line.
+5. [`docs/production-readiness-rn087.md`](docs/production-readiness-rn087.md) - proven and still-open RN 0.87+ hardening scope.
+6. [`docs/RN086_ANDROIDX_COMPAT.md`](docs/RN086_ANDROIDX_COMPAT.md) - frozen RN 0.86 compatibility-plugin scope.
+7. [`docs/CHECKPOINTS.md`](docs/CHECKPOINTS.md) - frozen behavioral references and pass branches.
+8. [`TESTING.md`](TESTING.md) and repository analyzers/invariant checks before promoting a behavioral change.
 
 `ROADMAP.md` contains historical planning material. It is not the source of truth for current scroll-transport status.
 
@@ -38,7 +41,7 @@ one synchronous native nested-scroll transaction
 N native chrome consumers
 ```
 
-React Native owns the gesture, fling physics, child movement, and child scroll position. Native Material chrome participates in the same Android nested-scroll transaction.
+React Native owns the gesture, fling physics, child movement, and child scroll position. Native Android consumers participate in the same real nested-scroll transaction.
 
 For each movement, the accounting model is:
 
@@ -62,15 +65,17 @@ Do not reintroduce any of the following as production behavior:
 - a parent-started nested-scroll session that substitutes for the source-owned transaction;
 - Material-specific behavior inside a React Native source patch.
 
-If source or chrome ownership is ambiguous, fail closed rather than guessing.
+If source or consumer ownership is ambiguous, fail closed rather than guessing.
 
 ## Source ownership and lifecycle
 
 The Android nested-scroll callback target is transaction authority. Tree discovery is preparation only; it does not grant ownership.
 
-Stale callbacks from a source that is no longer active must not be allowed to mutate the current session. Source replacement/invalidation must clear old momentum ownership. Preserve the source-scoped lifecycle semantics proven on the RN 0.87 line.
+Stale callbacks from a source that is no longer active must not mutate the current session. Source replacement/invalidation must clear old momentum ownership. Preserve the source-scoped lifecycle semantics proven on the RN 0.87 line.
 
-## RN 0.86 compatibility line
+A TOUCH stop must not perform terminal settle if the same source has already opened a `TYPE_NON_TOUCH` momentum session. Settle waits for the real momentum session to end.
+
+## Frozen RN 0.86 compatibility line
 
 The RN 0.86 layer exists only to make the validated architecture consumable on React Native 0.86.x through the Expo config plugin.
 
@@ -92,21 +97,27 @@ Compatibility is intentionally fail-closed:
 
 The validated claim is standard non-paging vertical scrolling. Do not extend the claim to `pagingEnabled`, snap-specific paths, or other unvalidated RN 0.86 motion paths without a separate gate.
 
-## RN 0.86 gate discipline
+Do not change the frozen RN 0.86 compatibility line for cleanup, naming, or speculative improvement. A new RN 0.86 change requires a separately demonstrated release-blocking defect and a new explicit validation checkpoint.
 
-The local monorepo proof and fresh external Expo consumer proof are complete. While the remote clean-machine gate is pending, do not add unrelated RN 0.86 behavior.
+## RN 0.86 remote-gate evidence
 
-Treat these areas as frozen unless the remote gate itself demonstrates a defect that requires a change:
+The terminal checkpoint is:
 
-- `plugin/rn086AndroidXPatch.js`;
-- RN 0.86 patch validation scripts/fixtures;
-- `android/src/main/java/expo/modules/materialtoolbar/` scroll transport and Material consumers;
-- `android-shared/` transport/dispatcher/ledger logic;
-- the public JS/native API used by the validated consumer.
+```text
+expo86-androidx-clean-remote-pass
+e8b27633accb5e2ffaa3d67d421cb5f6f846882a
+```
 
-A CI/EAS failure must first be classified: product/source-shape bug, dependency/build integration bug, or environmental/infrastructure failure. Do not change scroll architecture to cure an environmental failure.
+Remote consumer:
 
-After the clean remote gate passes, freeze the RN 0.86 compatibility line for alpha work instead of continuing to expand it.
+```text
+AmatoGiulio/rn086-fresh-consumer
+e11107ea3a32b6da12ee2659eb57935895e9127a
+```
+
+The EAS custom build applies/verifies the RN 0.86 patch before Gradle. The remote build completed, the APK installed/launched, and TopAppBar/FloatingToolbar/NON_TOUCH behavior was manually confirmed.
+
+Earlier GitHub Actions attempts with `runner_id=0` and `steps=[]` were blocked by account billing/spending-limit configuration. They are infrastructure failures, not product failures.
 
 ## RN 0.87+ line
 
@@ -124,6 +135,32 @@ Key references include:
 - `rn087-production-hardening` / `alpha-prep` -> `f72015999d2ac225856c14d1ce0722ac35710947`
 
 The frozen multi-consumer baseline is a behavioral reference. Numeric analyzer success cannot override a visible behavioral regression.
+
+## Neutral-core refactor discipline
+
+The current refactor is intentionally isolated from the frozen RN 0.86 checkpoint and from the React Native upstream PR.
+
+First mechanical step already prepared on `refactor/neutral-native-scroll-core`:
+
+```text
+ExpoNestedScrollHostView
+→ ReactNativeNestedScrollHostView
+```
+
+The Expo native registration string remains unchanged in that first step so the validated JS/Expo adapter surface does not change.
+
+Do not combine class renaming, package/namespace extraction, npm package splitting, publication-boundary changes, and behavior changes in one refactor. Move one dimension at a time and validate before promotion.
+
+Core target layering:
+
+```text
+neutral native scroll core
+React Native source adapter
+Material3 consumers/adapters
+Expo registration/packaging adapter
+```
+
+Expo and Material3 must not define the neutral core identity.
 
 ## Checkpoint discipline
 
