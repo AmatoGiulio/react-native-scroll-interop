@@ -15,6 +15,7 @@ export default function NavigationFirstLayout() {
         <Stack.Screen name="index">
           <Stack.Header asChild>
             <MaterialTopAppBar
+              style={{ position: 'relative' }}
               title="Navigation first"
               variant="large"
               scrollBehavior="exitUntilCollapsed"
@@ -25,6 +26,7 @@ export default function NavigationFirstLayout() {
         <Stack.Screen name="details">
           <Stack.Header asChild>
             <MaterialTopAppBar
+              style={{ position: 'relative' }}
               title="Details"
               variant="medium"
               scrollBehavior="enterAlways"
