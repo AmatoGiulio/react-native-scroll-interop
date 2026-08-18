@@ -1,18 +1,13 @@
 import { Stack, useRouter } from 'expo-router';
 import { View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   MaterialToolbar,
   MaterialTopAppBar,
 } from 'react-native-scroll-interop';
 
-const MEDIUM_TOP_APP_BAR_HEIGHT = 112;
-const LARGE_TOP_APP_BAR_HEIGHT = 152;
-
 export default function NavigationFirstLayout() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
 
   return (
     <View style={{ flex: 1 }}>
@@ -20,10 +15,7 @@ export default function NavigationFirstLayout() {
         <Stack.Screen name="index">
           <Stack.Header asChild>
             <MaterialTopAppBar
-              style={{
-                position: 'relative',
-                height: insets.top + LARGE_TOP_APP_BAR_HEIGHT,
-              }}
+              placement="header"
               title="Navigation first"
               variant="large"
               scrollBehavior="exitUntilCollapsed"
@@ -34,10 +26,7 @@ export default function NavigationFirstLayout() {
         <Stack.Screen name="details">
           <Stack.Header asChild>
             <MaterialTopAppBar
-              style={{
-                position: 'relative',
-                height: insets.top + MEDIUM_TOP_APP_BAR_HEIGHT,
-              }}
+              placement="header"
               title="Details"
               variant="medium"
               scrollBehavior="enterAlways"
