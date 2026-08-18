@@ -3,8 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "expo-material-toolbar": ["../src/index"],
-      "expo-material-toolbar/*": ["../src/*"]
+      "react-native-scroll-interop": ["../index"],
+      "react-native-scroll-interop/*": ["../src/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]

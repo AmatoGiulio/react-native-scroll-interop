@@ -1,8 +1,6 @@
-# Native Scroll Interop for React Native Android
+# react-native-scroll-interop
 
-Current alpha package id: `expo-material-toolbar`
-
-Android-native scroll-reactive UI for Expo/React Native, driven by the **real synchronous Android nested-scroll transaction** while React Native remains the sole owner of touch handling, source position and fling physics.
+Android-native scroll interoperability for React Native. The package exposes the **real synchronous Android nested-scroll transaction** to native UI while React Native remains the sole owner of touch handling, source position and fling physics.
 
 ```text
 one React Native scroll physics
@@ -10,7 +8,7 @@ one synchronous native nested-scroll transaction
 N native UI consumers
 ```
 
-The current product ships three public JavaScript entry points:
+Material3 is the first packaged native consumer family:
 
 - `NativeScrollHost` — native transaction host around a React Native vertical scroll source;
 - `MaterialTopAppBar` — Material3 TopAppBar PRE/POST consumer;
@@ -20,11 +18,17 @@ There is no per-frame JS `onScroll` transport, no sampled `scrollY` momentum rec
 
 ## Status
 
-This repository is currently a **private alpha package**. Runtime architecture and RN 0.86.2 fresh-consumer behavior are validated, but public npm naming/licensing are separate release decisions and are not implied by the current package id.
+Current public release line:
 
-Native behavior is Android-only. The JavaScript surface is safe to import on other platforms: Material components are no-op there and `NativeScrollHost` preserves normal container layout through a `View` fallback.
+```text
+react-native-scroll-interop@0.1.0-alpha.1
+```
 
-See [`PRODUCT.md`](PRODUCT.md) for the exact product contract and [`ARCHITECTURE.md`](ARCHITECTURE.md) for the native layering.
+The package is released under the MIT license. Native behavior is Android-only. The JavaScript surface is safe to import on other platforms: Material components are no-op there and `NativeScrollHost` preserves normal container layout through a `View` fallback.
+
+The current packaged compatibility gate is Expo SDK 57 + React Native 0.86.x. The neutral native architecture is additionally certified against the repository's RN 0.87 bare-host line, but that is not yet a package-level compatibility promise.
+
+See [`PRODUCT.md`](PRODUCT.md) for the exact product contract, [`ARCHITECTURE.md`](ARCHITECTURE.md) for the native layering, and [`RELEASE.md`](RELEASE.md) for release operations.
 
 ## Why this exists
 
@@ -49,6 +53,46 @@ requested = chromePre + childConsumed + chromePost + remaining
 
 `MaterialTopAppBar` may consume real PRE/POST distance. `MaterialToolbar` observes the real child-consumed POST distance and consumes zero list distance.
 
+## Install
+
+For published alpha releases:
+
+```bash
+npm install react-native-scroll-interop@next
+```
+
+Because this is a native module, use an Expo development build or another native build. Expo Go does not contain this module.
+
+For an exact local release candidate before publication:
+
+```bash
+npm pack
+npm install ./react-native-scroll-interop-0.1.0-alpha.1.tgz
+```
+
+### Expo SDK 57 / RN 0.86.x
+
+Enable the version-scoped compatibility plugin:
+
+```json
+{
+  "expo": {
+    "plugins": [
+      [
+        "react-native-scroll-interop",
+        {
+          "android": {
+            "rn086AndroidXScroll": true
+          }
+        }
+      ]
+    ]
+  }
+}
+```
+
+Then regenerate/build Android as required by the consumer project.
+
 ## Quick start
 
 ```tsx
@@ -56,7 +100,7 @@ import {
   MaterialToolbar,
   MaterialTopAppBar,
   NativeScrollHost,
-} from 'expo-material-toolbar';
+} from 'react-native-scroll-interop';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 export function Screen() {
@@ -99,51 +143,20 @@ const styles = StyleSheet.create({
 
 The React Native source does not receive a package-specific `onScroll`, ref, velocity callback or imperative scrolling command.
 
-## Current alpha installation
-
-The package is not enabled for public npm publication yet. For the current alpha workflow, package an exact repository head and install the generated tarball into the consumer:
-
-```bash
-npm pack
-npm install ./expo-material-toolbar-2.0.0-alpha.25.tgz
-```
-
-Because this is a native module, use a development/native build rather than Expo Go.
-
-For Expo SDK 57 / RN 0.86.x, enable the version-scoped compatibility plugin:
-
-```json
-{
-  "expo": {
-    "plugins": [
-      [
-        "expo-material-toolbar",
-        {
-          "android": {
-            "rn086AndroidXScroll": true
-          }
-        }
-      ]
-    ]
-  }
-}
-```
-
-Then regenerate/build Android as required by the consumer project.
-
 ## Compatibility
 
-Current packaged alpha release gate:
+Current package-level alpha contract:
 
 | Platform / stack | Status |
 |---|---|
 | Android | supported product target |
-| Expo SDK 57 + RN 0.86.2 | fresh-consumer package/build/install/runtime validated |
-| RN 0.87 native transport line | bare-host architecture validated in this repository |
+| Expo SDK 57 | supported alpha line |
+| React Native 0.86.x | supported alpha line; config plugin required for AndroidX NON_TOUCH lifecycle |
+| RN 0.87 native transport line | bare-host architecture certified; not yet package support |
 | iOS / web native Material behavior | not implemented; JS fallbacks are safe |
 | Expo Go | not supported; native development build required |
 
-Broad `peerDependencies` in the private alpha are not a compatibility promise. Compatibility claims are based on actual recorded gates.
+`peerDependencies` intentionally match the packaged release gate instead of advertising untested compatibility.
 
 ## `NativeScrollHost`
 
@@ -288,11 +301,13 @@ index.ts
 app.plugin.js
 expo-module.config.json
 ARCHITECTURE.md
+PRODUCT.md
+LICENSE
 README.md
 package.json
 ```
 
-Examples, bare certification probes, internal test scripts and repository-only handoff material are excluded from the package surface.
+Examples, bare certification probes, internal test scripts, CI configuration and repository-only handoff material are excluded from the package surface.
 
 Run:
 
@@ -300,7 +315,7 @@ Run:
 npm run check
 ```
 
-for native invariants, the RN 0.86 plugin guard and npm package-surface validation.
+for native invariants, the RN 0.86 plugin guard and npm package-surface validation. `npm publish` also runs this gate through `prepublishOnly`.
 
 ## Android dependency
 
@@ -310,4 +325,6 @@ The native module currently builds against Material3 Compose:
 implementation 'androidx.compose.material3:material3:1.5.0-alpha17'
 ```
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the internal core / React Native adapter / Material3 / Expo layering.
+## License
+
+MIT. See [`LICENSE`](LICENSE).

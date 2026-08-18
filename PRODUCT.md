@@ -2,7 +2,7 @@
 
 ## What this product is
 
-This repository is an Android-native scroll-interoperability product for React Native.
+`react-native-scroll-interop` is an Android-native scroll-interoperability product for React Native.
 
 It lets native Android UI consume or observe the real synchronous nested-scroll transaction emitted by a React Native vertical scroll source while React Native remains the sole owner of touch handling, source position and fling physics.
 
@@ -21,15 +21,23 @@ The current packaged alpha includes Material3 chrome as the first production con
 
 The JavaScript integration point is `NativeScrollHost`.
 
-## Current package identity
+## Package identity
 
-The current alpha package identifier remains:
+Public npm package:
 
 ```text
-expo-material-toolbar
+react-native-scroll-interop
 ```
 
-That identifier is a packaging compatibility surface, not the definition of the underlying architecture. Public npm naming and licensing are intentionally separate release decisions; this repository should not rename the package as part of unrelated runtime or architecture work.
+Initial public release line:
+
+```text
+0.1.0-alpha.x
+```
+
+Alpha releases use the npm `next` dist-tag. The project is licensed under MIT.
+
+The historical Android/Expo implementation namespace remains `expo.modules.materialtoolbar` and native registration names such as `ExpoNestedScrollHostView` remain unchanged. They are implementation compatibility surfaces, not the public npm identity.
 
 ## Public JavaScript API
 
@@ -76,14 +84,15 @@ Its scroll behavior is observation-only in Android transaction accounting: it re
 
 ## Current platform/support contract
 
-Behavioral product target:
+Package-level alpha target:
 
 - Android only for native scroll interoperability and Material3 rendering;
 - Expo development build / native build required; Expo Go does not contain this native module;
-- Expo SDK 57 + React Native 0.86.2 fresh-consumer package/build/install/runtime is the current packaged alpha release gate;
-- the neutral native architecture is also certified in this repository against the RN 0.87 bare host line.
+- Expo SDK 57;
+- React Native 0.86.x, with the version-scoped AndroidX compatibility plugin enabled;
+- Expo SDK 57 + React Native 0.86.2 fresh-consumer package/build/install/runtime is the current release gate.
 
-The package currently keeps broad peer dependency ranges while it is private alpha. Those ranges are not a compatibility guarantee. Compatibility claims must come from recorded build/runtime gates, not from semver guesses.
+The neutral native architecture is additionally certified in this repository against the RN 0.87 bare host line. That evidence does not yet widen the public package peer range; package compatibility is promoted only after an equivalent packaged consumer gate.
 
 ## RN 0.86 compatibility
 
@@ -91,7 +100,7 @@ RN 0.86.x needs the package config plugin enabled with:
 
 ```json
 [
-  "expo-material-toolbar",
+  "react-native-scroll-interop",
   {
     "android": {
       "rn086AndroidXScroll": true
@@ -125,9 +134,11 @@ A product release must preserve these gates:
 2. Material3 adapter invariants;
 3. RN 0.86 config-plugin invariant;
 4. npm package-surface invariant;
-5. install/build/runtime in the fresh external consumer.
+5. install/build/runtime in the fresh external consumer using the exact package name/version candidate.
 
 Frozen `*-pass` branches are evidence checkpoints and are never repointed.
+
+Release operations are documented in [`RELEASE.md`](RELEASE.md).
 
 ## Non-goals
 

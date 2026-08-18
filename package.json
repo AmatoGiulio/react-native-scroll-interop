@@ -1,10 +1,11 @@
 {
-  "name": "expo-material-toolbar",
-  "version": "2.0.0-alpha.25",
-  "description": "Android-native Material 3 scroll-reactive chrome for Expo and React Native, driven by the source's real nested-scroll transaction.",
+  "name": "react-native-scroll-interop",
+  "version": "0.1.0-alpha.1",
+  "description": "Android-native scroll interoperability for React Native, exposing the source's real nested-scroll transaction to native UI consumers.",
+  "license": "MIT",
+  "author": "Giulio Amato",
   "main": "index.ts",
   "types": "index.ts",
-  "private": true,
   "files": [
     "android",
     "android-shared",
@@ -14,13 +15,15 @@
     "app.plugin.js",
     "expo-module.config.json",
     "ARCHITECTURE.md",
-    "PRODUCT.md"
+    "PRODUCT.md",
+    "LICENSE"
   ],
   "keywords": [
     "react-native",
     "expo",
     "android",
     "nested-scroll",
+    "scroll-interop",
     "material3",
     "top-app-bar",
     "floating-toolbar"
@@ -33,17 +36,22 @@
   "bugs": {
     "url": "https://github.com/AmatoGiulio/material3-scroll/issues"
   },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  },
   "scripts": {
     "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
     "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs",
     "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs && node scripts/check-material3-adapter-invariants.mjs",
     "check:rn086-androidx-plugin": "node scripts/check-rn086-androidx-plugin.mjs",
     "check:package-surface": "node scripts/check-package-surface.mjs",
-    "check": "npm run check:scroll-invariants && npm run check:rn086-androidx-plugin && npm run check:package-surface"
+    "check": "npm run check:scroll-invariants && npm run check:rn086-androidx-plugin && npm run check:package-surface",
+    "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
-    "expo": "*",
-    "react": "*",
-    "react-native": "*"
+    "expo": ">=57.0.0 <58.0.0",
+    "react": ">=19.2.0 <20.0.0",
+    "react-native": ">=0.86.0 <0.87.0"
   }
 }

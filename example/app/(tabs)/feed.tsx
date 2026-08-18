@@ -1,6 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
-import { NativeScrollHost, MaterialTopAppBar } from 'expo-material-toolbar';
+import { NativeScrollHost, MaterialTopAppBar } from 'react-native-scroll-interop';
 import { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 

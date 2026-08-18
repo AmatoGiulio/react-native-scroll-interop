@@ -3,7 +3,7 @@ import React, { useCallback } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { NativeScrollHost, MaterialTopAppBar } from 'expo-material-toolbar';
+import { NativeScrollHost, MaterialTopAppBar } from 'react-native-scroll-interop';
 
 /**
  * Faithful copy of the screen that works in the host app, with only the private design-system

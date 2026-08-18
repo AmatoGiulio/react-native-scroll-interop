@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Material Toolbar Example",
-    "slug": "expo-material-toolbar-example",
+    "name": "Scroll Interop Example",
+    "slug": "react-native-scroll-interop-example",
     "version": "1.0.0",
     "orientation": "default",
-    "scheme": "materialtoolbarexample",
+    "scheme": "scrollinteropexample",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "android": {
@@ -15,7 +15,7 @@
       "expo-router",
       "expo-image",
       [
-        "expo-material-toolbar",
+        "../app.plugin.js",
         {
           "android": {
             "rn086AndroidXScroll": true
