@@ -7,6 +7,8 @@ import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumTopAppBar
@@ -25,9 +27,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import expo.modules.kotlin.AppContext
+import expo.modules.kotlin.viewevent.EventDispatcher
 import kotlinx.coroutines.CoroutineScope
 
 private data class TopAppBarHostState(
@@ -35,6 +39,8 @@ private data class TopAppBarHostState(
   val visible: Boolean = true,
   val variant: String = "medium",
   val scrollBehavior: String = "none",
+  val navigationIcon: String = "none",
+  val navigationAccessibilityLabel: String = "Back",
   val themeMode: String = "system",
   val dynamicColor: Boolean = false,
 )
@@ -43,6 +49,8 @@ class ExpoMaterialTopAppBarView(
   context: Context,
   appContext: AppContext,
 ) : ComposeChromeHostView(context, appContext) {
+
+  internal val onNavigationPress by EventDispatcher()
 
   private val state = mutableStateOf(TopAppBarHostState())
   private var lastTopInsetPx = -1
@@ -246,6 +254,14 @@ class ExpoMaterialTopAppBarView(
     )
   }
 
+  fun setNavigationIcon(icon: String) = updateState {
+    it.copy(navigationIcon = if (icon == "back") "back" else "none")
+  }
+
+  fun setNavigationAccessibilityLabel(label: String) = updateState {
+    it.copy(navigationAccessibilityLabel = label.ifBlank { "Back" })
+  }
+
   fun setThemeMode(mode: String) = updateState {
     it.copy(
       themeMode = when (mode) {
@@ -309,17 +325,31 @@ class ExpoMaterialTopAppBarView(
       }
 
       if (uiState.visible) {
+        val navigationIcon: @Composable () -> Unit = {
+          if (uiState.navigationIcon == "back") {
+            IconButton(onClick = { onNavigationPress(mapOf()) }) {
+              Icon(
+                painter = painterResource(R.drawable.react_native_scroll_interop_arrow_back),
+                contentDescription = uiState.navigationAccessibilityLabel,
+              )
+            }
+          }
+        }
+
         when (uiState.variant) {
           "small" -> TopAppBar(
             title = { Text(uiState.title) },
+            navigationIcon = navigationIcon,
             scrollBehavior = materialScrollBehavior,
           )
           "large" -> LargeTopAppBar(
             title = { Text(uiState.title) },
+            navigationIcon = navigationIcon,
             scrollBehavior = materialScrollBehavior,
           )
           else -> MediumTopAppBar(
             title = { Text(uiState.title) },
+            navigationIcon = navigationIcon,
             scrollBehavior = materialScrollBehavior,
           )
         }
