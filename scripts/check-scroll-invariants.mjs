@@ -11,12 +11,14 @@ const composeHostPath =
   'android/src/main/java/expo/modules/materialtoolbar/ComposeChromeHostView.kt';
 const topBarConsumerPath =
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
+const floatingToolbarConsumerPath =
+  'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt';
 const sharedLifecyclePath =
-  'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt';
+  'android-shared/src/main/java/com/reactnativescroll/interop/core/SourceScopedNestedScrollLifecycle.kt';
 const sharedLedgerPath =
-  'android-shared/src/main/java/com/material3scroll/transport/NestedScrollConservationLedger.kt';
+  'android-shared/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt';
 const sharedDispatcherPath =
-  'android-shared/src/main/java/com/material3scroll/transport/VerticalNestedScrollTransactionDispatcher.kt';
+  'android-shared/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt';
 const bareHostPath =
   'rn087-bare-probe/android/app/src/main/java/com/rn087nestedscrollprobe/NestedScrollProbeLayout.kt';
 const files = [
@@ -25,8 +27,15 @@ const files = [
   sharedLedgerPath,
   sharedDispatcherPath,
   topBarConsumerPath,
-  'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
+  floatingToolbarConsumerPath,
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt',
+];
+
+const legacyPhysicalPaths = [
+  'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt',
+  'android-shared/src/main/java/com/material3scroll/transport/NestedScrollConservationLedger.kt',
+  'android-shared/src/main/java/com/material3scroll/transport/VerticalNestedScrollTransactionDispatcher.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
 ];
 
 const sourceAdapter =
@@ -52,6 +61,12 @@ function stripComments(source) {
 }
 
 const violations = [];
+
+for (const relativePath of legacyPhysicalPaths) {
+  if (fs.existsSync(path.join(root, relativePath))) {
+    violations.push(`${relativePath}: legacy physical source path must be removed`);
+  }
+}
 
 for (const relativePath of files) {
   const absolutePath = path.join(root, relativePath);
@@ -358,6 +373,7 @@ console.log('  production host uses shared source-scoped lifecycle ownership');
 console.log('  production host uses shared vertical PRE/POST dispatcher');
 console.log('  production host uses shared conservation accounting through dispatcher');
 console.log('  production host binds Material3 through neutral participant adapters');
+console.log('  Material3 consumer and core physical source ownership is normalized');
 console.log('  FloatingToolbar is observation-only in neutral POST dispatch');
 console.log('  stale nested callbacks fail closed before parent helper mutation');
 console.log('  Compose chrome child remeasured directly from Fabric-owned bounds');
