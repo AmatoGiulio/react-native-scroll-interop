@@ -31,7 +31,24 @@ npm view react-native-scroll-interop
 
 For an unpublished name npm should report that the package is not present. If the name exists unexpectedly, stop rather than publishing under a different identity.
 
-Then authenticate to npm with the maintainer account and publish:
+Authenticate to npm and verify the active account before publishing:
+
+```bash
+npm login
+npm whoami
+```
+
+`npm whoami` must print the intended maintainer account. If it returns `E401`, do not publish yet.
+
+Run one final publish dry-run with the release tag and access flags explicit:
+
+```bash
+npm publish --dry-run --access public --tag next
+```
+
+The publish notice must say `tag next`, and the tarball must contain only the release-controlled source surface. Generated paths such as `android/build`, `android/.gradle`, `android/.cxx`, `android/.kotlin` and `android/src/debug` must never be present.
+
+Then publish with the same explicit release flags:
 
 ```bash
 npm publish --access public --tag next
@@ -51,7 +68,7 @@ After the first package version exists on npm, configure npm Trusted Publishing 
 
 ```text
 GitHub owner: AmatoGiulio
-Repository: material3-scroll
+Repository: react-native-scroll-interop
 Workflow: publish-npm.yml
 Allowed action: npm publish
 ```
@@ -64,7 +81,7 @@ For future alpha releases:
 2. run the release candidate gate and freeze the exact commit;
 3. create tag `v0.1.0-alpha.N` on that exact commit;
 4. publish a GitHub Release from that tag;
-5. the trusted-publishing workflow verifies the tag/version match and runs `npm publish`;
+5. the trusted-publishing workflow verifies the tag/version match and runs `npm publish --access public --tag next`;
 6. confirm the new version is on npm under the `next` dist-tag.
 
 ## Stable release

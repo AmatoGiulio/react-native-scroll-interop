@@ -7,8 +7,10 @@
   "main": "index.ts",
   "types": "index.ts",
   "files": [
-    "android",
-    "android-shared",
+    "android/build.gradle",
+    "android/src/main",
+    "android-shared/README.md",
+    "android-shared/src/main",
     "plugin",
     "src",
     "index.ts",
@@ -16,6 +18,7 @@
     "expo-module.config.json",
     "ARCHITECTURE.md",
     "PRODUCT.md",
+    "README.md",
     "LICENSE"
   ],
   "keywords": [
@@ -30,11 +33,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AmatoGiulio/material3-scroll.git"
+    "url": "git+https://github.com/AmatoGiulio/react-native-scroll-interop.git"
   },
-  "homepage": "https://github.com/AmatoGiulio/material3-scroll#readme",
+  "homepage": "https://github.com/AmatoGiulio/react-native-scroll-interop#readme",
   "bugs": {
-    "url": "https://github.com/AmatoGiulio/material3-scroll/issues"
+    "url": "https://github.com/AmatoGiulio/react-native-scroll-interop/issues"
   },
   "publishConfig": {
     "access": "public",
