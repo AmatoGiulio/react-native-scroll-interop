@@ -11,35 +11,29 @@ export default function NavigationFirstLayout() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerTransparent: true }}>
-        <Stack.Screen
-          name="index"
-          options={{
-            header: () => (
-              <MaterialTopAppBar
-                title="Navigation first"
-                variant="large"
-                scrollBehavior="exitUntilCollapsed"
-              />
-            ),
-          }}
-        />
+      <Stack>
+        <Stack.Screen name="index">
+          <Stack.Header asChild transparent>
+            <MaterialTopAppBar
+              title="Navigation first"
+              variant="large"
+              scrollBehavior="exitUntilCollapsed"
+            />
+          </Stack.Header>
+        </Stack.Screen>
 
-        <Stack.Screen
-          name="details"
-          options={{
-            header: ({ navigation, back }) => (
-              <MaterialTopAppBar
-                title="Details"
-                variant="medium"
-                scrollBehavior="enterAlways"
-                navigationIcon={back ? 'back' : 'none'}
-                navigationAccessibilityLabel="Back"
-                onNavigationPress={back ? () => navigation.goBack() : undefined}
-              />
-            ),
-          }}
-        />
+        <Stack.Screen name="details">
+          <Stack.Header asChild transparent>
+            <MaterialTopAppBar
+              title="Details"
+              variant="medium"
+              scrollBehavior="enterAlways"
+              navigationIcon="back"
+              navigationAccessibilityLabel="Back"
+              onNavigationPress={() => router.back()}
+            />
+          </Stack.Header>
+        </Stack.Screen>
       </Stack>
 
       <MaterialToolbar.Root
