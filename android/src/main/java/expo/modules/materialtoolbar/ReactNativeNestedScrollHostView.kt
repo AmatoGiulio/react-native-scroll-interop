@@ -13,6 +13,8 @@ import androidx.core.view.ViewCompat
 import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle
 import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle.StopDecision
 import com.reactnativescroll.interop.core.VerticalNestedScrollTransactionDispatcher
+import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceCapabilities
+import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 
