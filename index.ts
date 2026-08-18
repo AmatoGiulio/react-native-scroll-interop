@@ -1,6 +1,8 @@
 export { MaterialTopAppBar } from './src/MaterialTopAppBar';
 export { MaterialToolbar } from './src/MaterialToolbar';
 export { NativeScrollHost } from './src/NativeScrollHost';
+export type { NativeScrollHostProps } from './src/NativeScrollHost';
+
 export type {
   MaterialToolbarAlignment,
   MaterialToolbarColors,
