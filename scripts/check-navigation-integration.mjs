@@ -19,6 +19,7 @@ function forbidText(path, content, needle, label) {
 
 const index = read('index.ts');
 const pkg = read('package.json');
+const appJson = read('example/app.json');
 const topTypes = read('src/MaterialTopAppBar.types.ts');
 const topAndroid = read('src/MaterialTopAppBar.android.tsx');
 const topNative = read('src/ExpoMaterialTopAppBarNativeView.tsx');
@@ -57,6 +58,7 @@ requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopA
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'R.drawable.react_native_scroll_interop_arrow_back', 'packaged back drawable');
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'navigationIcon = navigationIcon', 'Material3 TopAppBar navigation slot');
 
+requireText('example/app.json', appJson, '"reactNativeScreensInterop": true', 'direct react-native-screens interop option');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, '<Stack screenOptions={{ headerTransparent: true }}>', 'Expo Router transparent custom-header scope');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, '<Stack.Header asChild>', 'Expo Router custom header');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'placement="header"', 'TopAppBar-owned navigator sizing');
@@ -71,7 +73,8 @@ for (const [path, content] of [
   ['example/app/navigation-first/index.tsx', expoHome],
   ['example/app/navigation-first/details.tsx', expoDetails],
 ]) {
-  requireText(path, content, '<NativeScrollHost', 'screen-local NativeScrollHost');
+  requireText(path, content, '<ScrollView', 'screen-local React Native ScrollView');
+  forbidText(path, content, 'NativeScrollHost', 'app-level NativeScrollHost');
   forbidText(path, content, 'MaterialTopAppBar', 'screen-local TopAppBar declaration');
   forbidText(path, content, 'MaterialToolbar', 'screen-local FloatingToolbar declaration');
 }
@@ -92,5 +95,6 @@ if (violations.length > 0) {
 
 console.log('Navigation integration invariant: PASS');
 console.log('  Expo Router: Stack-owned MaterialTopAppBar + layout-owned MaterialToolbar');
+console.log('  navigation screens contain plain RN ScrollView without NativeScrollHost');
 console.log('  navigator header sizing is owned by MaterialTopAppBar placement="header"');
 console.log('  native Material back action wired without scroll-frame JS transport');
