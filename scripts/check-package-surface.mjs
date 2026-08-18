@@ -30,6 +30,7 @@ const required = [
   'package.json',
   'README.md',
   'ARCHITECTURE.md',
+  'PRODUCT.md',
   'index.ts',
   'app.plugin.js',
   'expo-module.config.json',
