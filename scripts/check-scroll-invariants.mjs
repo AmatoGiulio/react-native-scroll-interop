@@ -135,6 +135,9 @@ if (fs.existsSync(sharedDispatcherAbsolutePath)) {
       violations.push(`${sharedDispatcherPath}: missing ${phase} dispatch port`);
     }
   }
+  if (!dispatcher.includes('fun bindParticipants(')) {
+    violations.push(`${sharedDispatcherPath}: missing neutral participant binding API`);
+  }
   if (!dispatcher.includes('ledger.beginFrame(requestedY, consumedY)')) {
     violations.push(`${sharedDispatcherPath}: PRE dispatch must feed shared conservation accounting`);
   }
@@ -223,17 +226,35 @@ if (fs.existsSync(hostAbsolutePath)) {
   if (/private var ledger(RequestedY|ChromePreY|Pending|Frames|Broken|Orphans|OrphanPres)/.test(host)) {
     violations.push(`${hostPath}: production host must not duplicate shared conservation state`);
   }
-  if (!host.includes('VerticalNestedScrollTransactionDispatcher.PostObserver')) {
-    violations.push(`${hostPath}: FloatingToolbar observation must use the non-consuming POST port`);
+  if (!host.includes('Material3TopAppBarNestedScrollAdapter')) {
+    violations.push(`${hostPath}: TopAppBar must bind through the Material3 neutral adapter`);
   }
-  if (!host.includes('postObservers = if (toolbarReady) floatingToolbarPostObservers else emptyList()')) {
-    violations.push(`${hostPath}: FloatingToolbar must bind only as a POST observer`);
+  if (!host.includes('Material3FloatingToolbarNestedScrollAdapter')) {
+    violations.push(`${hostPath}: FloatingToolbar must bind through the Material3 neutral adapter`);
   }
-  if (!host.includes('preConsumers = if (topBarReady) topBarPreConsumers else emptyList()')) {
+  if (!host.includes('transactionDispatcher.bindParticipants(')) {
+    violations.push(`${hostPath}: production host must use the neutral participant binding API`);
+  }
+  if (!host.includes('postObservers = if (toolbarAdapter != null) listOf(toolbarAdapter) else emptyList()')) {
+    violations.push(`${hostPath}: FloatingToolbar must bind only as a neutral POST observer`);
+  }
+  if (!host.includes('preConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList()')) {
     violations.push(`${hostPath}: TopAppBar PRE participation must be fixed at transaction bind`);
   }
-  if (!host.includes('postConsumers = if (topBarReady) topBarPostConsumers else emptyList()')) {
+  if (!host.includes('postConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList()')) {
     violations.push(`${hostPath}: TopAppBar POST participation must be fixed at transaction bind`);
+  }
+  for (const legacyPort of [
+    'VerticalNestedScrollTransactionDispatcher.PreConsumer',
+    'VerticalNestedScrollTransactionDispatcher.PostConsumer',
+    'VerticalNestedScrollTransactionDispatcher.PostObserver',
+  ]) {
+    if (host.includes(legacyPort)) {
+      violations.push(`${hostPath}: production host must not bypass neutral participants via ${legacyPort}`);
+    }
+  }
+  if (host.includes('toInputType()')) {
+    violations.push(`${hostPath}: Android-to-Material input translation must stay inside the Material3 adapter`);
   }
   if (host.includes('private var momentumSource:')) {
     violations.push(`${hostPath}: production host must not duplicate shared momentum ownership`);
@@ -336,7 +357,8 @@ console.log('  bare RN 0.87 host uses shared vertical PRE/POST dispatcher');
 console.log('  production host uses shared source-scoped lifecycle ownership');
 console.log('  production host uses shared vertical PRE/POST dispatcher');
 console.log('  production host uses shared conservation accounting through dispatcher');
-console.log('  FloatingToolbar is observation-only in shared POST dispatch');
+console.log('  production host binds Material3 through neutral participant adapters');
+console.log('  FloatingToolbar is observation-only in neutral POST dispatch');
 console.log('  stale nested callbacks fail closed before parent helper mutation');
 console.log('  Compose chrome child remeasured directly from Fabric-owned bounds');
 console.log('  unresolved Material TopAppBar geometry fails closed');
