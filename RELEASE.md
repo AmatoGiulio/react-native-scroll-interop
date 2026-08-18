@@ -6,22 +6,81 @@ Current release line: `0.1.0-alpha.x`
 
 Alpha releases use the npm dist-tag `next`. Do not publish an alpha as `latest`.
 
+## First-public-alpha blocker
+
+Do **not** publish `0.1.0-alpha.1` until the navigation-first product shape is validated on the exact release candidate.
+
+The required public shape is:
+
+```text
+Stack / navigator
+└── MaterialTopAppBar per route
+
+navigation layout
+└── one persistent MaterialToolbar
+
+screen
+└── NativeScrollHost
+    └── React Native vertical scroll source
+```
+
+The screen must not need to repeat TopAppBar or FloatingToolbar declarations.
+
 ## Release candidate gate
 
 Before publishing a version, freeze and validate one exact commit:
 
 1. `npm run check`;
 2. `npm pack --dry-run` and inspect the package surface;
-3. install the exact tarball in the external RN 0.86.2 fresh consumer under the public package name;
+3. install the exact tarball in an external RN 0.86.2 consumer under the public package name;
 4. verify the Expo config plugin resolves as `react-native-scroll-interop`;
-5. build/install Android and run the release smoke for ordinary scroll, NON_TOUCH fling, NativeTabs away/return, TopAppBar and FloatingToolbar/FAB;
-6. create a new immutable `*-pass` checkpoint for the exact tested commit.
+5. run the Expo Router SDK 57 navigation-first gate;
+6. run the React Navigation native-stack navigation-first gate;
+7. create a new immutable `*-pass` checkpoint for the exact tested commit.
 
 Do not repoint a frozen release checkpoint.
 
+### Expo Router navigation-first gate
+
+Use the exact release tarball in an Expo SDK 57 / RN 0.86.2 consumer.
+
+Required structure:
+
+- `MaterialTopAppBar` declared directly in `Stack.Screen` through `Stack.Header asChild`;
+- transparent custom Stack header;
+- one persistent `MaterialToolbar.Root` in the route layout;
+- screen files contain `NativeScrollHost` + scroll source, with no repeated TopAppBar/FloatingToolbar.
+
+Runtime validation:
+
+- Android prebuild/build/install;
+- Home ordinary scroll + fling;
+- navigate Home -> Details;
+- Details ordinary scroll + fling;
+- native Material back button returns to Home;
+- new Home scroll after return;
+- persistent FloatingToolbar/FAB still responds to the active screen source;
+- no duplicate/ambiguous chrome binding or stale transaction behavior.
+
+### React Navigation navigation-first gate
+
+Use the exact same release tarball with React Navigation native stack.
+
+Required structure:
+
+- `MaterialTopAppBar` supplied through the native stack custom `header` option;
+- `headerTransparent: true`;
+- one persistent `MaterialToolbar.Root` around the navigator;
+- host navigator supplies back ownership through `navigation.goBack()`;
+- screen content does not declare duplicate chrome.
+
+Runtime validation matches the Expo Router gate: scroll/fling on both screens, forward navigation, native Material back, return/new scroll, persistent toolbar and no ambiguous binding.
+
+`screenLayout` may be tested as an optional React Navigation convenience for centralizing `NativeScrollHost`; it is not required for first-alpha transport correctness.
+
 ## First npm publish
 
-The first publish bootstraps the package on npm and must be performed manually from the exact frozen release commit.
+The first publish bootstraps the package on npm and must be performed manually only after the exact navigation-first release candidate has passed all gates above.
 
 Before publishing, check the registry name again:
 
