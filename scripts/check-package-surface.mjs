@@ -1,7 +1,43 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import process from 'node:process';
+
+const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const androidGradle = readFileSync(new URL('../android/build.gradle', import.meta.url), 'utf8');
+
+const expectedName = 'react-native-scroll-interop';
+const expectedVersion = '0.1.0-alpha.1';
+const violations = [];
+
+if (packageJson.name !== expectedName) {
+  violations.push(`unexpected package name: ${packageJson.name ?? '<missing>'}`);
+}
+if (packageJson.version !== expectedVersion) {
+  violations.push(`unexpected package version: ${packageJson.version ?? '<missing>'}`);
+}
+if (packageJson.private === true) {
+  violations.push('public release package must not be private');
+}
+if (packageJson.license !== 'MIT') {
+  violations.push(`unexpected package license: ${packageJson.license ?? '<missing>'}`);
+}
+if (packageJson.publishConfig?.access !== 'public') {
+  violations.push('publishConfig.access must be public');
+}
+if (packageJson.publishConfig?.tag !== 'next') {
+  violations.push('alpha publishConfig.tag must be next');
+}
+if (packageJson.scripts?.prepublishOnly !== 'npm run check') {
+  violations.push('prepublishOnly must run the complete package gate');
+}
+if (!androidGradle.includes(`version = '${expectedVersion}'`)) {
+  violations.push('Android library version must match package version');
+}
+if (!androidGradle.includes(`versionName '${expectedVersion}'`)) {
+  violations.push('Android versionName must match package version');
+}
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const result = spawnSync(
@@ -25,10 +61,18 @@ try {
   process.exit(1);
 }
 
+if (pack?.name !== expectedName) {
+  violations.push(`npm pack resolved unexpected package name: ${pack?.name ?? '<missing>'}`);
+}
+if (pack?.version !== expectedVersion) {
+  violations.push(`npm pack resolved unexpected package version: ${pack?.version ?? '<missing>'}`);
+}
+
 const files = new Set((pack?.files ?? []).map((entry) => entry.path));
 const required = [
   'package.json',
   'README.md',
+  'LICENSE',
   'ARCHITECTURE.md',
   'PRODUCT.md',
   'index.ts',
@@ -55,10 +99,10 @@ const forbiddenExact = new Set([
   'AGENTS.md',
   'ROADMAP.md',
   'TESTING.md',
+  'RELEASE.md',
   'bun.lock',
 ]);
 
-const violations = [];
 for (const path of required) {
   if (!files.has(path)) violations.push(`missing required package file: ${path}`);
 }
@@ -77,7 +121,10 @@ if (violations.length > 0) {
 }
 
 console.log('Package surface invariant: PASS');
+console.log(`  package: ${expectedName}@${expectedVersion}`);
+console.log('  license: MIT');
+console.log('  npm dist-tag: next');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${pack?.unpackedSize ?? 'unknown'} bytes`);
 console.log('  runtime Android/JS/plugin surface included');
-console.log('  examples, probes, repository docs and scripts excluded');
+console.log('  examples, probes, repository docs, release ops and scripts excluded');
