@@ -1,13 +1,46 @@
-# Shared Android transport sources
+# Shared Android interop sources
 
-This source set contains Android/RN nested-scroll primitives that must compile in both the Expo module and the bare React Native certification host.
+This source set contains the Android/RN nested-scroll primitives compiled by both the Expo module and the bare React Native certification host.
 
-The neutral core package is `com.reactnativescroll.interop.core`.
+## Core
 
-The React Native compatibility adapter package is `com.reactnativescroll.interop.reactnative`; its source now lives in this shared source set so the Expo module and bare RN certification host compile the same adapter implementation.
+The neutral core lives physically and logically under:
 
-The core exposes neutral synchronous participant ports for vertical nested scroll: `VerticalNestedPreScrollConsumer`, `VerticalNestedPostScrollConsumer`, and observation-only `VerticalNestedPostScrollObserver`. These ports consume or observe Android's real transaction deltas; they do not own physics, source position, velocity integration, or timers.
+```text
+android-shared/src/main/java/com/reactnativescroll/interop/core/
+```
 
-The core package must remain independent of Expo APIs, Compose Material components, React Native concrete scroll-view types, and app-specific probe code. The React Native adapter may recognize supported RN source implementations only behind its compatibility boundary and must remain free of Expo and Material3 APIs.
+Package: `com.reactnativescroll.interop.core`.
 
-The physical core source directory remains historical in this step; moving those files is a separate mechanical refactor.
+It contains:
+
+- `SourceScopedNestedScrollLifecycle`
+- `NestedScrollConservationLedger`
+- `VerticalNestedScrollTransactionDispatcher`
+- `VerticalNestedPreScrollConsumer`
+- `VerticalNestedPostScrollConsumer`
+- observation-only `VerticalNestedPostScrollObserver`
+
+The core consumes or observes Android's real synchronous nested-scroll transaction. It owns no gesture physics, fling physics, source position, velocity integration, timers, Expo APIs, Material3 behavior, or concrete React Native scroll-view types.
+
+## React Native compatibility boundary
+
+The React Native adapter lives under:
+
+```text
+android-shared/src/main/java/com/reactnativescroll/interop/reactnative/
+```
+
+Package: `com.reactnativescroll.interop.reactnative`.
+
+It may recognize supported React Native vertical source implementations and version-specific source capabilities. Concrete RN source typing stays behind this boundary and does not leak into the neutral core.
+
+## Ownership invariant
+
+```text
+one React Native scroll physics
+one synchronous native nested-scroll transaction
+N native chrome consumers
+```
+
+The shared source set exists so production and certification hosts compile the same lifecycle, conservation and dispatch implementation.

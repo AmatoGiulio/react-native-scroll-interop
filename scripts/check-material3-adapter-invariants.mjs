@@ -12,12 +12,16 @@ const registryRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt';
 const topBarRelativePath =
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
+const floatingToolbarRelativePath =
+  'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt';
 const legacyTopBarRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt';
-const consumerAliasesRelativePath =
-  'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerAliases.kt';
-const floatingToolbarRelativePath =
+const legacyFloatingToolbarRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt';
+const consumerBindingsRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerAliases.kt';
+const placementRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/NativeFloatingToolbarPlacement.kt';
 const violations = [];
 
 function read(relativePath) {
@@ -62,6 +66,7 @@ if (source != null) {
     ['direct Compose nested-scroll ownership', /androidx\.compose\.ui\.input\.nestedscroll/],
     ['Expo Modules API dependency', /expo\.modules\.kotlin/],
     ['Expo TopAppBar consumer import', /expo\.modules\.materialtoolbar\.TopAppBarScrollConsumer/],
+    ['Expo FloatingToolbar consumer import', /expo\.modules\.materialtoolbar\.FloatingToolbarScrollConsumer/],
   ];
 
   for (const [name, pattern] of forbidden) {
@@ -149,34 +154,70 @@ if (topBarSource != null) {
   }
 }
 
-if (fs.existsSync(path.join(process.cwd(), legacyTopBarRelativePath))) {
-  violations.push(`${legacyTopBarRelativePath}: legacy Expo TopAppBar consumer source must be removed`);
+const floatingToolbarSource = read(floatingToolbarRelativePath);
+if (floatingToolbarSource != null) {
+  const required = [
+    'package com.reactnativescroll.interop.material3',
+    'open class FloatingToolbarScrollConsumer',
+    'NativeNestedInputType',
+    'current.onPostScroll(',
+    'Velocity.Zero',
+    'placementInsets() ?: visibleFrameInsets()',
+  ];
+  for (const marker of required) {
+    if (!floatingToolbarSource.includes(marker)) {
+      violations.push(`${floatingToolbarRelativePath}: missing moved FloatingToolbar marker: ${marker}`);
+    }
+  }
+
+  const forbiddenRuntimeExpo = [
+    /ExpoMaterialToolbarView/,
+    /NativeFloatingToolbarPlacement/,
+    /NativeNestedScrollRegistry/,
+    /expo\.modules\.kotlin/,
+  ];
+  for (const pattern of forbiddenRuntimeExpo) {
+    if (pattern.test(floatingToolbarSource)) {
+      violations.push(`${floatingToolbarRelativePath}: FloatingToolbar consumer depends on Expo runtime/view API: ${pattern}`);
+    }
+  }
 }
 
-const aliasesSource = read(consumerAliasesRelativePath);
-if (aliasesSource != null) {
+for (const legacyPath of [legacyTopBarRelativePath, legacyFloatingToolbarRelativePath]) {
+  if (fs.existsSync(path.join(process.cwd(), legacyPath))) {
+    violations.push(`${legacyPath}: legacy Expo Material3 consumer source must be removed`);
+  }
+}
+
+const bindingsSource = read(consumerBindingsRelativePath);
+if (bindingsSource != null) {
   for (const marker of [
     'typealias TopAppBarScrollConsumer',
     'com.reactnativescroll.interop.material3.TopAppBarScrollConsumer',
     'typealias TopAppBarInteropMode',
     'com.reactnativescroll.interop.material3.TopAppBarInteropMode',
+    'class FloatingToolbarScrollConsumer',
+    ': com.reactnativescroll.interop.material3.FloatingToolbarScrollConsumer(',
+    'placementInsets = { NativeFloatingToolbarPlacement.apply(hostView, composeView) }',
   ]) {
-    if (!aliasesSource.includes(marker)) {
-      violations.push(`${consumerAliasesRelativePath}: missing Expo-to-Material3 alias marker: ${marker}`);
+    if (!bindingsSource.includes(marker)) {
+      violations.push(`${consumerBindingsRelativePath}: missing Expo-to-Material3 binding marker: ${marker}`);
     }
   }
 }
 
-const floatingToolbarSource = read(floatingToolbarRelativePath);
-if (
-  floatingToolbarSource != null &&
-  !floatingToolbarSource.includes(
-    'import com.reactnativescroll.interop.material3.NativeNestedInputType',
-  )
-) {
-  violations.push(
-    `${floatingToolbarRelativePath}: missing Material3 transaction import: NativeNestedInputType`,
-  );
+const placementSource = read(placementRelativePath);
+if (placementSource != null) {
+  for (const marker of [
+    'package expo.modules.materialtoolbar',
+    'object NativeFloatingToolbarPlacement',
+    'WeakHashMap<ExpoMaterialToolbarView, State>()',
+    'fun apply(host: ViewGroup, childOverride: ComposeView? = null): Insets?',
+  ]) {
+    if (!placementSource.includes(marker)) {
+      violations.push(`${placementRelativePath}: missing Expo placement marker: ${marker}`);
+    }
+  }
 }
 
 if (violations.length > 0) {
@@ -189,5 +230,7 @@ console.log('Material3 adapter invariant: PASS');
 console.log('  neutral PRE/POST ports are used');
 console.log('  Material3 transaction types are outside the Expo registry layer');
 console.log('  TopAppBar consumer source is owned by the Material3 package');
+console.log('  FloatingToolbar consumer source is owned by the Material3 package');
+console.log('  FloatingToolbar placement remains in the Expo view layer');
 console.log('  FloatingToolbar remains observation-only');
 console.log('  no source physics, position sampling, timers or concrete RN source typing in adapters');

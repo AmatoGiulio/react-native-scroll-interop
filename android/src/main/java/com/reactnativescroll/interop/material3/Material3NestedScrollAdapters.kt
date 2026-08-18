@@ -4,7 +4,6 @@ import androidx.core.view.ViewCompat
 import com.reactnativescroll.interop.core.VerticalNestedPostScrollConsumer
 import com.reactnativescroll.interop.core.VerticalNestedPostScrollObserver
 import com.reactnativescroll.interop.core.VerticalNestedPreScrollConsumer
-import expo.modules.materialtoolbar.FloatingToolbarScrollConsumer
 
 /**
  * Material3 PRE/POST adapter over the neutral native nested-scroll participant API.
