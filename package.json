@@ -47,9 +47,10 @@
     "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
     "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs",
     "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs && node scripts/check-material3-adapter-invariants.mjs",
+    "check:navigation-integration": "node scripts/check-navigation-integration.mjs",
     "check:rn086-androidx-plugin": "node scripts/check-rn086-androidx-plugin.mjs",
     "check:package-surface": "node scripts/check-package-surface.mjs",
-    "check": "npm run check:scroll-invariants && npm run check:rn086-androidx-plugin && npm run check:package-surface",
+    "check": "npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:rn086-androidx-plugin && npm run check:package-surface",
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
