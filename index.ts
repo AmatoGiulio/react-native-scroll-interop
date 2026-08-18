@@ -29,6 +29,7 @@ export type {
 } from './src/MaterialToolbar.types';
 
 export type {
+  MaterialTopAppBarNavigationIcon,
   MaterialTopAppBarProps,
   MaterialTopAppBarScrollBehavior,
   MaterialTopAppBarVariant,
