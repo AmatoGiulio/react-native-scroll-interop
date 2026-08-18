@@ -6,7 +6,7 @@ import process from 'node:process';
 
 const root = process.cwd();
 const hostPath =
-  'android/src/main/java/expo/modules/materialtoolbar/ExpoNestedScrollHostView.kt';
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostView.kt';
 const composeHostPath =
   'android/src/main/java/expo/modules/materialtoolbar/ComposeChromeHostView.kt';
 const topBarConsumerPath =
