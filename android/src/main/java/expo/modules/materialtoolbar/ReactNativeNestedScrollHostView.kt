@@ -13,6 +13,8 @@ import androidx.core.view.ViewCompat
 import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle
 import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle.StopDecision
 import com.reactnativescroll.interop.core.VerticalNestedScrollTransactionDispatcher
+import com.reactnativescroll.interop.material3.Material3FloatingToolbarNestedScrollAdapter
+import com.reactnativescroll.interop.material3.Material3TopAppBarNestedScrollAdapter
 import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceCapabilities
 import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
 import expo.modules.kotlin.AppContext
@@ -46,35 +48,6 @@ class ReactNativeNestedScrollHostView(
   private var activeToolbar: FloatingToolbarScrollConsumer? = null
   private var activeSourceCapabilities: ReactVerticalScrollSourceCapabilities? = null
   private var nestedTransactionActive = false
-
-  private val topBarPreConsumer =
-    VerticalNestedScrollTransactionDispatcher.PreConsumer { availableY, inputType ->
-      activeTopBar
-        ?.takeIf { nestedTransactionActive && it.isNestedDirectCapable }
-        ?.nestedPreScroll(availableY, inputType.toInputType())
-        ?.reportedConsumedY
-        ?: 0
-    }
-
-  private val topBarPostConsumer =
-    VerticalNestedScrollTransactionDispatcher.PostConsumer { childConsumedY, availableY, inputType ->
-      activeTopBar
-        ?.takeIf { nestedTransactionActive && it.isNestedDirectCapable }
-        ?.nestedPostScroll(childConsumedY, availableY, inputType.toInputType())
-        ?.availableConsumedY
-        ?: 0
-    }
-
-  private val floatingToolbarPostObserver =
-    VerticalNestedScrollTransactionDispatcher.PostObserver { childConsumedY, inputType ->
-      activeToolbar
-        ?.takeIf { nestedTransactionActive }
-        ?.nestedPostScroll(childConsumedY, inputType.toInputType())
-    }
-
-  private val topBarPreConsumers = listOf(topBarPreConsumer)
-  private val topBarPostConsumers = listOf(topBarPostConsumer)
-  private val floatingToolbarPostObservers = listOf(floatingToolbarPostObserver)
 
   private val activeSource: ViewGroup?
     get() = sourceLifecycle.activeSource
@@ -439,10 +412,6 @@ class ReactNativeNestedScrollHostView(
     )
   }
 
-  private fun Int.toInputType(): NativeNestedInputType =
-    if (this == ViewCompat.TYPE_NON_TOUCH) NativeNestedInputType.NonTouch
-    else NativeNestedInputType.Touch
-
   // ---------------------------------------------------------------------------
   // Session binding / lifecycle.
   // ---------------------------------------------------------------------------
@@ -470,10 +439,14 @@ class ReactNativeNestedScrollHostView(
 
     val topBarReady = topBar?.beginNestedTransaction(source) == true
     val toolbarReady = toolbar?.beginNestedTransaction(source) == true
-    transactionDispatcher.bind(
-      preConsumers = if (topBarReady) topBarPreConsumers else emptyList(),
-      postConsumers = if (topBarReady) topBarPostConsumers else emptyList(),
-      postObservers = if (toolbarReady) floatingToolbarPostObservers else emptyList(),
+    val topBarAdapter =
+      if (topBarReady && topBar != null) Material3TopAppBarNestedScrollAdapter(topBar) else null
+    val toolbarAdapter =
+      if (toolbarReady && toolbar != null) Material3FloatingToolbarNestedScrollAdapter(toolbar) else null
+    transactionDispatcher.bindParticipants(
+      preConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList(),
+      postConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList(),
+      postObservers = if (toolbarAdapter != null) listOf(toolbarAdapter) else emptyList(),
     )
     nestedTransactionActive = transactionDispatcher.hasParticipants
 
