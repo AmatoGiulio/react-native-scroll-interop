@@ -20,7 +20,7 @@ config.resolver.nodeModulesPaths = [
 ];
 
 config.resolver.extraNodeModules = {
-  'expo-material-toolbar': path.resolve(__dirname, '..'),
+  'react-native-scroll-interop': path.resolve(__dirname, '..'),
 };
 
 config.watchFolders = [path.resolve(__dirname, '..')];
