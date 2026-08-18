@@ -4,16 +4,29 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-const relativePath =
+const adapterRelativePath =
   'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollAdapters.kt';
-const absolutePath = path.join(process.cwd(), relativePath);
+const transactionRelativePath =
+  'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollTransaction.kt';
+const registryRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt';
+const topBarRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt';
+const floatingToolbarRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt';
 const violations = [];
 
-if (!fs.existsSync(absolutePath)) {
-  violations.push(`${relativePath}: missing Material3 nested-scroll adapter boundary`);
-} else {
-  const source = fs.readFileSync(absolutePath, 'utf8');
+function read(relativePath) {
+  const absolutePath = path.join(process.cwd(), relativePath);
+  if (!fs.existsSync(absolutePath)) {
+    violations.push(`${relativePath}: missing required file`);
+    return null;
+  }
+  return fs.readFileSync(absolutePath, 'utf8');
+}
 
+const source = read(adapterRelativePath);
+if (source != null) {
   const required = [
     'package com.reactnativescroll.interop.material3',
     'VerticalNestedPreScrollConsumer',
@@ -28,7 +41,7 @@ if (!fs.existsSync(absolutePath)) {
 
   for (const marker of required) {
     if (!source.includes(marker)) {
-      violations.push(`${relativePath}: missing required adapter marker: ${marker}`);
+      violations.push(`${adapterRelativePath}: missing required adapter marker: ${marker}`);
     }
   }
 
@@ -48,22 +61,83 @@ if (!fs.existsSync(absolutePath)) {
 
   for (const [name, pattern] of forbidden) {
     if (pattern.test(source)) {
-      violations.push(`${relativePath}: forbidden ${name}`);
+      violations.push(`${adapterRelativePath}: forbidden ${name}`);
     }
+  }
+
+  if (source.includes('expo.modules.materialtoolbar.NativeNestedInputType')) {
+    violations.push(`${adapterRelativePath}: Material3 input type must not come from Expo package`);
   }
 
   const floatingHeader = source.match(
     /class Material3FloatingToolbarNestedScrollAdapter[\s\S]*?\)\s*:\s*([^\{]+)\{/,
   );
   if (!floatingHeader) {
-    violations.push(`${relativePath}: cannot resolve FloatingToolbar adapter interface list`);
+    violations.push(`${adapterRelativePath}: cannot resolve FloatingToolbar adapter interface list`);
   } else if (/VerticalNested(Post|Pre)ScrollConsumer/.test(floatingHeader[1])) {
-    violations.push(`${relativePath}: FloatingToolbar must remain observation-only`);
+    violations.push(`${adapterRelativePath}: FloatingToolbar must remain observation-only`);
   }
 
   if (!source.includes('consumer.nestedPostScroll(childConsumedY, inputType.toNativeNestedInputType())')) {
-    violations.push(`${relativePath}: FloatingToolbar must observe the real child-consumed POST delta`);
+    violations.push(`${adapterRelativePath}: FloatingToolbar must observe the real child-consumed POST delta`);
   }
+}
+
+const transactionSource = read(transactionRelativePath);
+if (transactionSource != null) {
+  const required = [
+    'package com.reactnativescroll.interop.material3',
+    'enum class NativeNestedInputType',
+    'data class NativeNestedPreResult',
+    'data class NativeNestedPostResult',
+  ];
+  for (const marker of required) {
+    if (!transactionSource.includes(marker)) {
+      violations.push(`${transactionRelativePath}: missing Material3 transaction marker: ${marker}`);
+    }
+  }
+  if (/\bexpo\.modules\./.test(transactionSource)) {
+    violations.push(`${transactionRelativePath}: Material3 transaction types must not depend on Expo`);
+  }
+}
+
+const registrySource = read(registryRelativePath);
+if (registrySource != null) {
+  for (const typeName of [
+    'NativeNestedInputType',
+    'NativeNestedPreResult',
+    'NativeNestedPostResult',
+  ]) {
+    if (registrySource.includes(typeName)) {
+      violations.push(`${registryRelativePath}: Material3 transaction type remains in Expo registry: ${typeName}`);
+    }
+  }
+}
+
+const topBarSource = read(topBarRelativePath);
+if (topBarSource != null) {
+  for (const typeName of [
+    'NativeNestedInputType',
+    'NativeNestedPreResult',
+    'NativeNestedPostResult',
+  ]) {
+    const marker = `import com.reactnativescroll.interop.material3.${typeName}`;
+    if (!topBarSource.includes(marker)) {
+      violations.push(`${topBarRelativePath}: missing Material3 transaction import: ${typeName}`);
+    }
+  }
+}
+
+const floatingToolbarSource = read(floatingToolbarRelativePath);
+if (
+  floatingToolbarSource != null &&
+  !floatingToolbarSource.includes(
+    'import com.reactnativescroll.interop.material3.NativeNestedInputType',
+  )
+) {
+  violations.push(
+    `${floatingToolbarRelativePath}: missing Material3 transaction import: NativeNestedInputType`,
+  );
 }
 
 if (violations.length > 0) {
@@ -74,5 +148,6 @@ if (violations.length > 0) {
 
 console.log('Material3 adapter invariant: PASS');
 console.log('  neutral PRE/POST ports are used');
+console.log('  Material3 transaction types are outside the Expo registry layer');
 console.log('  FloatingToolbar remains observation-only');
 console.log('  no source physics, position sampling, timers or concrete RN source typing');
