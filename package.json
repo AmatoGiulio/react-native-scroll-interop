@@ -13,7 +13,8 @@
     "index.ts",
     "app.plugin.js",
     "expo-module.config.json",
-    "ARCHITECTURE.md"
+    "ARCHITECTURE.md",
+    "PRODUCT.md"
   ],
   "keywords": [
     "react-native",
