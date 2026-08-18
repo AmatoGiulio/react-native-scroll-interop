@@ -30,6 +30,7 @@ export type {
 
 export type {
   MaterialTopAppBarNavigationIcon,
+  MaterialTopAppBarPlacement,
   MaterialTopAppBarProps,
   MaterialTopAppBarScrollBehavior,
   MaterialTopAppBarVariant,
