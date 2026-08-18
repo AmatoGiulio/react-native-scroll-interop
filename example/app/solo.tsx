@@ -21,10 +21,9 @@ export default function SoloScreen() {
       <View style={styles.cell}>
         <Image
           source={{ uri: item.uri }}
-          style={styles.image}
+          style={[styles.image, { backgroundColor: item.tint }]}
           contentFit="cover"
           transition={120}
-          backgroundColor={item.tint}
         />
       </View>
     ),
