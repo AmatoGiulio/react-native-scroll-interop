@@ -10,9 +10,9 @@ import android.view.ViewTreeObserver
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
-import com.material3scroll.transport.SourceScopedNestedScrollLifecycle
-import com.material3scroll.transport.SourceScopedNestedScrollLifecycle.StopDecision
-import com.material3scroll.transport.VerticalNestedScrollTransactionDispatcher
+import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle
+import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle.StopDecision
+import com.reactnativescroll.interop.core.VerticalNestedScrollTransactionDispatcher
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.views.ExpoView
 

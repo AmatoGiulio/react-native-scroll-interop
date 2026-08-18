@@ -6,7 +6,7 @@ import process from 'node:process';
 
 const root = process.cwd();
 const hostPath =
-  'android/src/main/java/expo/modules/materialtoolbar/ExpoNestedScrollHostView.kt';
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostView.kt';
 const composeHostPath =
   'android/src/main/java/expo/modules/materialtoolbar/ComposeChromeHostView.kt';
 const topBarConsumerPath =
@@ -285,7 +285,7 @@ if (!fs.existsSync(composeHostAbsolutePath)) {
   violations.push(`${composeHostPath}: missing Compose/Fabric chrome host`);
 } else {
   const composeHost = stripComments(fs.readFileSync(composeHostAbsolutePath, 'utf8'));
-  if (!composeHost.includes('onMeasureComposeChild(hostWidth, hostHeight)')) {
+  if (!composeHost.includes('onMeasureComposeChild(width, height)')) {
     violations.push(`${composeHostPath}: Fabric retry must directly measure the Compose child`);
   }
   if (!composeHost.includes('onLayout(')) {

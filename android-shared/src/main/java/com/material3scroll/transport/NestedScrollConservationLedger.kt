@@ -1,4 +1,4 @@
-package com.material3scroll.transport
+package com.reactnativescroll.interop.core
 
 class NestedScrollConservationLedger {
   data class PreFrame(val requestedY: Int, val chromePreY: Int)

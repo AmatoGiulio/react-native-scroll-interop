@@ -9,8 +9,8 @@ import android.widget.FrameLayout
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
-import com.material3scroll.transport.SourceScopedNestedScrollLifecycle
-import com.material3scroll.transport.VerticalNestedScrollTransactionDispatcher
+import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle
+import com.reactnativescroll.interop.core.VerticalNestedScrollTransactionDispatcher
 
 class NestedScrollProbeLayout(context: Context) : FrameLayout(context), NestedScrollingParent3 {
   private val parentHelper = NestedScrollingParentHelper(this)
