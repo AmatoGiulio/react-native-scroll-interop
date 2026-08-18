@@ -26,5 +26,8 @@ jobs:
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           test "${GITHUB_REF_NAME}" = "v${PACKAGE_VERSION}"
 
-      - name: Publish to npm
-        run: npm publish
+      - name: Verify package before publish
+        run: npm run check
+
+      - name: Publish alpha to npm
+        run: npm publish --access public --tag next
