@@ -30,8 +30,12 @@ type MarkerComponent<P> = FC<P> & {
 };
 
 function createMarker<P>(kind: MarkerKind): MarkerComponent<P> {
-  const Component = (() => null) as MarkerComponent<P>;
-  Component.__materialToolbarMarker = MATERIAL_TOOLBAR_MARKER[kind];
+  const Component: MarkerComponent<P> = Object.assign(
+    () => null,
+    {
+      __materialToolbarMarker: MATERIAL_TOOLBAR_MARKER[kind],
+    }
+  );
   Component.displayName = `MaterialToolbar.${kind[0].toUpperCase()}${kind.slice(1)}`;
   return Component;
 }
