@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { MaterialToolbar } from 'react-native-scroll-interop';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, type ColorValue } from 'react-native';
 
 /**
  * Three tabs, all mounted at once, plus the shared floating toolbar.
@@ -73,7 +73,7 @@ export default function TabsLayout() {
 	);
 }
 
-function TabGlyph({ color, glyph }: { color: string; glyph: string }) {
+function TabGlyph({ color, glyph }: { color: ColorValue; glyph: string }) {
 	return <Text style={{ color, fontSize: 20 }}>{glyph}</Text>;
 }
 
