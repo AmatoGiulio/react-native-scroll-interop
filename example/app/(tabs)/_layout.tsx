@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { MaterialToolbar } from 'expo-material-toolbar';
+import { MaterialToolbar } from 'react-native-scroll-interop';
 import { View, Text, StyleSheet } from 'react-native';
 
 /**
