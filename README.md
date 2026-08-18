@@ -54,7 +54,7 @@ Navigation libraries are **not** used to transport scroll frames. They only deci
 
 ## Expo Router SDK 57
 
-Expo Router 57 supports a fully custom Stack header through `Stack.Header asChild`. Use a transparent header so the Material TopAppBar remains an overlay and the existing native scroll-away accounting owns content geometry.
+Expo Router 57 supports a fully custom Stack header through `Stack.Header asChild`. Set `headerTransparent: true` on the Stack options and render `MaterialTopAppBar` with `placement="header"`. In that mode the component owns its Material3 expanded height and top safe inset; application layouts do not hard-code `64/112/152`, `position: 'relative'`, or safe-area arithmetic.
 
 `app/_layout.tsx`:
 
@@ -71,10 +71,11 @@ export default function Layout() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack>
+      <Stack screenOptions={{ headerTransparent: true }}>
         <Stack.Screen name="index">
-          <Stack.Header asChild transparent>
+          <Stack.Header asChild>
             <MaterialTopAppBar
+              placement="header"
               title="Home"
               variant="large"
               scrollBehavior="exitUntilCollapsed"
@@ -83,8 +84,9 @@ export default function Layout() {
         </Stack.Screen>
 
         <Stack.Screen name="details">
-          <Stack.Header asChild transparent>
+          <Stack.Header asChild>
             <MaterialTopAppBar
+              placement="header"
               title="Details"
               variant="medium"
               scrollBehavior="enterAlways"
@@ -134,7 +136,7 @@ No `MaterialTopAppBar` or `MaterialToolbar` is repeated inside the screen.
 
 ## React Navigation
 
-`MaterialTopAppBar` is navigation-library agnostic. React Navigation's native stack can render it through its standard custom `header` option while `headerTransparent: true` preserves the same overlay model:
+`MaterialTopAppBar` is navigation-library agnostic. React Navigation's native stack can render it through its standard custom `header` option while `headerTransparent: true` preserves the same scroll-away model. Use `placement="header"` so the component owns navigator header sizing.
 
 ```tsx
 <Stack.Navigator
@@ -148,6 +150,7 @@ No `MaterialTopAppBar` or `MaterialToolbar` is repeated inside the screen.
     options={{
       header: () => (
         <MaterialTopAppBar
+          placement="header"
           title="Home"
           variant="large"
           scrollBehavior="exitUntilCollapsed"
@@ -162,6 +165,7 @@ No `MaterialTopAppBar` or `MaterialToolbar` is repeated inside the screen.
     options={{
       header: ({ navigation, back }) => (
         <MaterialTopAppBar
+          placement="header"
           title="Details"
           navigationIcon={back ? 'back' : 'none'}
           onNavigationPress={back ? () => navigation.goBack() : undefined}
@@ -253,6 +257,7 @@ The actual nested-scroll target supplied by Android remains transaction authorit
 
 ```tsx
 <MaterialTopAppBar
+  placement="header"
   title="Gallery"
   variant="large"
   scrollBehavior="exitUntilCollapsed"
@@ -262,6 +267,14 @@ The actual nested-scroll target supplied by Android remains transaction authorit
   dynamicColor
 />
 ```
+
+Placements:
+
+```text
+overlay | header
+```
+
+`overlay` is the standalone default. `header` is for navigator custom-header surfaces; it switches to normal-flow positioning and owns the expanded Material3 height plus top safe inset internally.
 
 Variants:
 
