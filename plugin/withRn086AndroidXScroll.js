@@ -12,7 +12,7 @@ const {
 const {
   assertSupportedReactNativeScreensVersion,
   patchReactNativeScreensGradle,
-  patchStackScreen,
+  patchScreen,
 } = require('./reactNativeScreensInteropPatch');
 
 function resolvePackageJson(projectRoot, packageName) {
@@ -93,7 +93,9 @@ function patchReactNativeScreensSource(projectRoot) {
 
   assertSupportedReactNativeScreensVersion(screensPackage.version);
 
-  const stackScreenPath = path.join(
+  // react-native-screens 4.26.x still uses the legacy native Screen owner. The newer
+  // stack/screen/StackScreen.kt source belongs to a later architecture and must not be assumed here.
+  const screenPath = path.join(
     screensRoot,
     'android',
     'src',
@@ -102,13 +104,11 @@ function patchReactNativeScreensSource(projectRoot) {
     'com',
     'swmansion',
     'rnscreens',
-    'stack',
-    'screen',
-    'StackScreen.kt'
+    'Screen.kt'
   );
   const gradlePath = path.join(screensRoot, 'android', 'build.gradle');
 
-  for (const filePath of [stackScreenPath, gradlePath]) {
+  for (const filePath of [screenPath, gradlePath]) {
     if (!fs.existsSync(filePath)) {
       throw new Error(
         `[react-native-scroll-interop] Missing expected react-native-screens 4.26.x file: ${filePath}. ` +
@@ -117,10 +117,10 @@ function patchReactNativeScreensSource(projectRoot) {
     }
   }
 
-  const originalStackScreen = fs.readFileSync(stackScreenPath, 'utf8');
-  const patchedStackScreen = patchStackScreen(originalStackScreen);
-  if (patchedStackScreen !== originalStackScreen) {
-    fs.writeFileSync(stackScreenPath, patchedStackScreen);
+  const originalScreen = fs.readFileSync(screenPath, 'utf8');
+  const patchedScreen = patchScreen(originalScreen);
+  if (patchedScreen !== originalScreen) {
+    fs.writeFileSync(screenPath, patchedScreen);
   }
 
   const originalGradle = fs.readFileSync(gradlePath, 'utf8');
@@ -130,7 +130,7 @@ function patchReactNativeScreensSource(projectRoot) {
   }
 
   console.log(
-    `[react-native-scroll-interop] react-native-screens ${screensPackage.version}: StackScreen nested-scroll ownership enabled.`
+    `[react-native-scroll-interop] react-native-screens ${screensPackage.version}: Screen nested-scroll ownership enabled.`
   );
 }
 
