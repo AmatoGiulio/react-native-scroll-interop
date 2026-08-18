@@ -6,6 +6,7 @@ import { StyleSheet, Text, View } from 'react-native';
  * deep links reaching the dev client.
  */
 const ROUTES = [
+  { href: '/navigation-first', label: 'Navigation first · Stack TopAppBar + persistent layout FloatingToolbar' },
   { href: '/transport-probe', label: 'Transport probe · ScrollView + TopAppBar + FloatingToolbar' },
   { href: '/transport-flatlist-probe', label: 'Transport matrix · FlatList + TopAppBar + FloatingToolbar' },
   { href: '/transport-sectionlist-probe', label: 'Transport matrix · SectionList + TopAppBar + FloatingToolbar' },
@@ -24,9 +25,9 @@ const ROUTES = [
 export default function DebugIndex() {
   return (
     <View style={styles.root}>
-      <Text style={styles.heading}>expo-material-toolbar PoC</Text>
+      <Text style={styles.heading}>react-native-scroll-interop</Text>
       <Text style={styles.note}>
-        Validate the minimal ScrollView oracle first, then run the production-matrix probes without changing the native core.
+        Start with the navigation-first route, then use the transport probes for regression checks without changing the native core.
       </Text>
       {ROUTES.map((route) => (
         <Link key={route.href} href={route.href as never} style={styles.link}>
