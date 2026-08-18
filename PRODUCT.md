@@ -50,13 +50,14 @@ Navigation libraries do not transport scroll position, velocity, momentum or fra
 The initial Expo Router integration target is SDK 57:
 
 - declare `MaterialTopAppBar` directly under `Stack.Screen` with `Stack.Header asChild`;
-- use a transparent Stack header so the Material app bar remains overlay chrome and native scroll-away geometry remains owned by the interop layer;
+- set `headerTransparent: true` at the Stack option level;
+- render the TopAppBar with `placement="header"`, which owns normal-flow positioning, Material3 expanded height and the top safe inset internally;
 - declare one persistent `MaterialToolbar.Root` in the route layout;
-- keep screen files free of repeated TopAppBar/FloatingToolbar declarations.
+- keep screen files free of repeated TopAppBar/FloatingToolbar declarations and platform-specific TopAppBar sizing styles.
 
 ### React Navigation
 
-`MaterialTopAppBar` does not import React Navigation. React Navigation's native-stack `header` callback supplies navigation/back ownership and renders the same component. `headerTransparent: true` preserves the overlay model. A persistent `MaterialToolbar.Root` can live around the navigator.
+`MaterialTopAppBar` does not import React Navigation. React Navigation's native-stack `header` callback supplies navigation/back ownership and renders the same component with `placement="header"`. `headerTransparent: true` preserves the existing native scroll-away geometry model. A persistent `MaterialToolbar.Root` can live around the navigator.
 
 React Navigation's `screenLayout` may be used by applications that want to centralize per-screen wrappers such as `NativeScrollHost`; this is optional and does not become part of scroll physics.
 
@@ -101,9 +102,12 @@ Supported initial behaviors:
 
 - variants: `small`, `medium`, `large`;
 - scroll behaviors: `none`, `enterAlways`, `exitUntilCollapsed`;
+- placement: `overlay`, `header`;
 - navigation icon: `none`, `back`;
 - native Material3 back `IconButton` with host-provided `onNavigationPress` callback;
 - native theme mode and Android dynamic color.
+
+`placement="overlay"` remains the standalone default. `placement="header"` is the navigation integration mode and owns the expanded Material3 height plus top safe inset so application layouts do not contain platform-specific height constants or positioning styles.
 
 The package does not import a navigation library. The navigator remains responsible for deciding whether a back action exists and for executing navigation when the native Material button emits `onNavigationPress`.
 
@@ -195,7 +199,8 @@ Navigation runtime gates must cover at least:
 - ordinary scroll and NON_TOUCH fling on both screens;
 - return to the previous screen and a new scroll transaction;
 - persistent FloatingToolbar still observing the active source;
-- no duplicate/ambiguous native chrome binding.
+- no duplicate/ambiguous native chrome binding;
+- no application-owned TopAppBar safe-area/height constants.
 
 Frozen `*-pass` branches are evidence checkpoints and are never repointed.
 
