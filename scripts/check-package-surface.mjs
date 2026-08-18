@@ -9,6 +9,22 @@ const androidGradle = readFileSync(new URL('../android/build.gradle', import.met
 
 const expectedName = 'react-native-scroll-interop';
 const expectedVersion = '0.1.0-alpha.1';
+const expectedRepository = 'git+https://github.com/AmatoGiulio/react-native-scroll-interop.git';
+const expectedFiles = [
+  'android/build.gradle',
+  'android/src/main',
+  'android-shared/README.md',
+  'android-shared/src/main',
+  'plugin',
+  'src',
+  'index.ts',
+  'app.plugin.js',
+  'expo-module.config.json',
+  'ARCHITECTURE.md',
+  'PRODUCT.md',
+  'README.md',
+  'LICENSE',
+];
 const violations = [];
 
 if (packageJson.name !== expectedName) {
@@ -23,6 +39,15 @@ if (packageJson.private === true) {
 if (packageJson.license !== 'MIT') {
   violations.push(`unexpected package license: ${packageJson.license ?? '<missing>'}`);
 }
+if (packageJson.repository?.url !== expectedRepository) {
+  violations.push(`unexpected repository URL: ${packageJson.repository?.url ?? '<missing>'}`);
+}
+if (packageJson.homepage !== 'https://github.com/AmatoGiulio/react-native-scroll-interop#readme') {
+  violations.push(`unexpected homepage: ${packageJson.homepage ?? '<missing>'}`);
+}
+if (packageJson.bugs?.url !== 'https://github.com/AmatoGiulio/react-native-scroll-interop/issues') {
+  violations.push(`unexpected bugs URL: ${packageJson.bugs?.url ?? '<missing>'}`);
+}
 if (packageJson.publishConfig?.access !== 'public') {
   violations.push('publishConfig.access must be public');
 }
@@ -31,6 +56,9 @@ if (packageJson.publishConfig?.tag !== 'next') {
 }
 if (packageJson.scripts?.prepublishOnly !== 'npm run check') {
   violations.push('prepublishOnly must run the complete package gate');
+}
+if (JSON.stringify(packageJson.files) !== JSON.stringify(expectedFiles)) {
+  violations.push('package files allowlist must stay narrow and release-controlled');
 }
 if (!androidGradle.includes(`version = '${expectedVersion}'`)) {
   violations.push('Android library version must match package version');
@@ -83,6 +111,7 @@ const required = [
   'src/NativeScrollHost.tsx',
   'src/NativeScrollHost.android.tsx',
   'android/build.gradle',
+  'android/src/main/AndroidManifest.xml',
   'android-shared/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt',
@@ -94,6 +123,13 @@ const forbiddenPrefixes = [
   'docs/',
   'scripts/',
   '.github/',
+  'android/.gradle/',
+  'android/.cxx/',
+  'android/.kotlin/',
+  'android/build/',
+  'android/src/debug/',
+  'android-shared/.gradle/',
+  'android-shared/build/',
 ];
 const forbiddenExact = new Set([
   'AGENTS.md',
@@ -110,8 +146,16 @@ for (const path of required) {
 for (const path of files) {
   if (forbiddenExact.has(path)) violations.push(`repository-only file leaked into package: ${path}`);
   for (const prefix of forbiddenPrefixes) {
-    if (path.startsWith(prefix)) violations.push(`repository-only path leaked into package: ${path}`);
+    if (path.startsWith(prefix)) violations.push(`repository/generated path leaked into package: ${path}`);
   }
+}
+
+const unpackedSize = pack?.unpackedSize ?? Number.POSITIVE_INFINITY;
+if (files.size > 100) {
+  violations.push(`package file count unexpectedly high: ${files.size} > 100`);
+}
+if (unpackedSize > 2_000_000) {
+  violations.push(`package unpacked size unexpectedly high: ${unpackedSize} > 2000000 bytes`);
 }
 
 if (violations.length > 0) {
@@ -125,6 +169,6 @@ console.log(`  package: ${expectedName}@${expectedVersion}`);
 console.log('  license: MIT');
 console.log('  npm dist-tag: next');
 console.log(`  files: ${files.size}`);
-console.log(`  unpacked size: ${pack?.unpackedSize ?? 'unknown'} bytes`);
+console.log(`  unpacked size: ${unpackedSize} bytes`);
 console.log('  runtime Android/JS/plugin surface included');
-console.log('  examples, probes, repository docs, release ops and scripts excluded');
+console.log('  generated Android artifacts, debug sources and repository-only files excluded');
