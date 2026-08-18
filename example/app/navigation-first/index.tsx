@@ -1,37 +1,34 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { NativeScrollHost } from 'react-native-scroll-interop';
-
 const ROWS = Array.from({ length: 80 }, (_, index) => `Home row ${index + 1}`);
 
 export default function NavigationFirstHome() {
   const router = useRouter();
 
   return (
-    <NativeScrollHost style={styles.host}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+    <ScrollView
+      style={styles.host}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <Pressable
+        style={styles.card}
+        onPress={() => router.push('/navigation-first/details')}
       >
-        <Pressable
-          style={styles.card}
-          onPress={() => router.push('/navigation-first/details')}
-        >
-          <Text style={styles.cardTitle}>Open details</Text>
-          <Text style={styles.cardBody}>
-            The TopAppBar is declared by the Stack and the FloatingToolbar is declared once by the layout.
-          </Text>
-        </Pressable>
+        <Text style={styles.cardTitle}>Open details</Text>
+        <Text style={styles.cardBody}>
+          The TopAppBar is declared by the Stack and the FloatingToolbar is declared once by the layout.
+        </Text>
+      </Pressable>
 
-        {ROWS.map((row, index) => (
-          <View key={row} style={styles.row}>
-            <Text style={styles.number}>{String(index + 1).padStart(2, '0')}</Text>
-            <Text style={styles.text}>{row}</Text>
-          </View>
-        ))}
-      </ScrollView>
-    </NativeScrollHost>
+      {ROWS.map((row, index) => (
+        <View key={row} style={styles.row}>
+          <Text style={styles.number}>{String(index + 1).padStart(2, '0')}</Text>
+          <Text style={styles.text}>{row}</Text>
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
