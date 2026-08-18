@@ -1,13 +1,44 @@
 {
   "name": "expo-material-toolbar",
   "version": "2.0.0-alpha.25",
+  "description": "Android-native Material 3 scroll-reactive chrome for Expo and React Native, driven by the source's real nested-scroll transaction.",
   "main": "index.ts",
+  "types": "index.ts",
   "private": true,
+  "files": [
+    "android",
+    "android-shared",
+    "plugin",
+    "src",
+    "index.ts",
+    "app.plugin.js",
+    "expo-module.config.json",
+    "ARCHITECTURE.md"
+  ],
+  "keywords": [
+    "react-native",
+    "expo",
+    "android",
+    "nested-scroll",
+    "material3",
+    "top-app-bar",
+    "floating-toolbar"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AmatoGiulio/material3-scroll.git"
+  },
+  "homepage": "https://github.com/AmatoGiulio/material3-scroll#readme",
+  "bugs": {
+    "url": "https://github.com/AmatoGiulio/material3-scroll/issues"
+  },
   "scripts": {
     "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
     "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs",
     "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs && node scripts/check-material3-adapter-invariants.mjs",
-    "check:rn086-androidx-plugin": "node scripts/check-rn086-androidx-plugin.mjs"
+    "check:rn086-androidx-plugin": "node scripts/check-rn086-androidx-plugin.mjs",
+    "check:package-surface": "node scripts/check-package-surface.mjs",
+    "check": "npm run check:scroll-invariants && npm run check:rn086-androidx-plugin && npm run check:package-surface"
   },
   "peerDependencies": {
     "expo": "*",
