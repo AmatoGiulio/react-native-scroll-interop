@@ -52,7 +52,8 @@ requireText('src/ExpoMaterialTopAppBarNativeView.tsx', topNative, 'onNavigationP
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt', topModule, 'Events("onNavigationPress")', 'Expo navigation event registration');
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt', topModule, 'Prop("navigationIcon")', 'native navigation icon prop');
 
-requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'IconButton(onClick = { onNavigationPress(', 'native Material navigation button');
+requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'IconButton(', 'native Material navigation button');
+requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'onNavigationPress(emptyMap<String, Any>())', 'native Material navigation event dispatch');
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'R.drawable.react_native_scroll_interop_arrow_back', 'packaged back drawable');
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'navigationIcon = navigationIcon', 'Material3 TopAppBar navigation slot');
 
