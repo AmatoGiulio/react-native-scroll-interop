@@ -1,10 +1,11 @@
 {
-  "name": "expo-material-toolbar",
-  "version": "2.0.0-alpha.25",
-  "description": "Android-native Material 3 scroll-reactive chrome for Expo and React Native, driven by the source's real nested-scroll transaction.",
+  "name": "react-native-material3-scroll",
+  "version": "0.1.0-alpha.1",
+  "description": "Android-native Material 3 scroll-reactive chrome for React Native, driven by the source's real nested-scroll transaction.",
+  "license": "MIT",
+  "author": "Giulio Amato",
   "main": "index.ts",
   "types": "index.ts",
-  "private": true,
   "files": [
     "android",
     "android-shared",
@@ -14,7 +15,9 @@
     "app.plugin.js",
     "expo-module.config.json",
     "ARCHITECTURE.md",
-    "PRODUCT.md"
+    "PRODUCT.md",
+    "RELEASE.md",
+    "LICENSE"
   ],
   "keywords": [
     "react-native",
@@ -33,6 +36,10 @@
   "bugs": {
     "url": "https://github.com/AmatoGiulio/material3-scroll/issues"
   },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  },
   "scripts": {
     "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
     "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs",
@@ -42,8 +49,8 @@
     "check": "npm run check:scroll-invariants && npm run check:rn086-androidx-plugin && npm run check:package-surface"
   },
   "peerDependencies": {
-    "expo": "*",
-    "react": "*",
-    "react-native": "*"
+    "expo": ">=57.0.0 <58.0.0",
+    "react": ">=19.2.0 <20.0.0",
+    "react-native": ">=0.86.0 <0.87.0"
   }
 }
