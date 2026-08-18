@@ -9,13 +9,18 @@ const {
   patchMainReactPackage,
   patchReactNestedScrollView,
 } = require('./rn086AndroidXPatch');
+const {
+  assertSupportedReactNativeScreensVersion,
+  patchReactNativeScreensGradle,
+  patchStackScreen,
+} = require('./reactNativeScreensInteropPatch');
 
 function resolvePackageJson(projectRoot, packageName) {
   try {
     return require.resolve(`${packageName}/package.json`, { paths: [projectRoot] });
   } catch (error) {
     throw new Error(
-      `[expo-material-toolbar] Could not resolve ${packageName} from ${projectRoot}. ` +
+      `[react-native-scroll-interop] Could not resolve ${packageName} from ${projectRoot}. ` +
         'Install dependencies before running Expo Prebuild.',
       { cause: error }
     );
@@ -58,7 +63,7 @@ function patchReactNative086Source(projectRoot) {
   for (const filePath of [scrollPath, mainPackagePath]) {
     if (!fs.existsSync(filePath)) {
       throw new Error(
-        `[expo-material-toolbar] Missing expected React Native 0.86 source file: ${filePath}. ` +
+        `[react-native-scroll-interop] Missing expected React Native 0.86 source file: ${filePath}. ` +
           'Refusing to enable rn086AndroidXScroll.'
       );
     }
@@ -77,30 +82,87 @@ function patchReactNative086Source(projectRoot) {
   }
 
   console.log(
-    `[expo-material-toolbar] RN ${reactNativePackage.version}: AndroidX vertical ScrollView compatibility enabled.`
+    `[react-native-scroll-interop] RN ${reactNativePackage.version}: AndroidX vertical ScrollView compatibility enabled.`
+  );
+}
+
+function patchReactNativeScreensSource(projectRoot) {
+  const packageJsonPath = resolvePackageJson(projectRoot, 'react-native-screens');
+  const screensRoot = path.dirname(packageJsonPath);
+  const screensPackage = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+
+  assertSupportedReactNativeScreensVersion(screensPackage.version);
+
+  const stackScreenPath = path.join(
+    screensRoot,
+    'android',
+    'src',
+    'main',
+    'java',
+    'com',
+    'swmansion',
+    'rnscreens',
+    'stack',
+    'screen',
+    'StackScreen.kt'
+  );
+  const gradlePath = path.join(screensRoot, 'android', 'build.gradle');
+
+  for (const filePath of [stackScreenPath, gradlePath]) {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(
+        `[react-native-scroll-interop] Missing expected react-native-screens 4.26.x file: ${filePath}. ` +
+          'Refusing to enable reactNativeScreensInterop.'
+      );
+    }
+  }
+
+  const originalStackScreen = fs.readFileSync(stackScreenPath, 'utf8');
+  const patchedStackScreen = patchStackScreen(originalStackScreen);
+  if (patchedStackScreen !== originalStackScreen) {
+    fs.writeFileSync(stackScreenPath, patchedStackScreen);
+  }
+
+  const originalGradle = fs.readFileSync(gradlePath, 'utf8');
+  const patchedGradle = patchReactNativeScreensGradle(originalGradle);
+  if (patchedGradle !== originalGradle) {
+    fs.writeFileSync(gradlePath, patchedGradle);
+  }
+
+  console.log(
+    `[react-native-scroll-interop] react-native-screens ${screensPackage.version}: StackScreen nested-scroll ownership enabled.`
   );
 }
 
 function withRn086AndroidXScroll(config, props = {}) {
-  const enabled = props?.android?.rn086AndroidXScroll === true;
-  if (!enabled) {
+  const rn086Enabled = props?.android?.rn086AndroidXScroll === true;
+  const screensInteropEnabled = props?.android?.reactNativeScreensInterop === true;
+
+  if (!rn086Enabled && !screensInteropEnabled) {
     return config;
   }
 
-  config = withSettingsGradle(config, (config) => {
-    if (config.modResults.language !== 'groovy') {
-      throw new Error(
-        '[expo-material-toolbar] rn086AndroidXScroll currently requires android/settings.gradle (Groovy).'
-      );
-    }
-    config.modResults.contents = ensureReactNativeSourceBuildSettings(config.modResults.contents);
-    return config;
-  });
+  if (rn086Enabled) {
+    config = withSettingsGradle(config, (config) => {
+      if (config.modResults.language !== 'groovy') {
+        throw new Error(
+          '[react-native-scroll-interop] rn086AndroidXScroll currently requires android/settings.gradle (Groovy).'
+        );
+      }
+      config.modResults.contents = ensureReactNativeSourceBuildSettings(config.modResults.contents);
+      return config;
+    });
+  }
 
   config = withDangerousMod(config, [
     'android',
     async (config) => {
-      patchReactNative086Source(config.modRequest.projectRoot);
+      if (rn086Enabled) {
+        patchReactNative086Source(config.modRequest.projectRoot);
+      }
+      if (screensInteropEnabled) {
+        patchReactNativeScreensSource(config.modRequest.projectRoot);
+      }
       return config;
     },
   ]);
@@ -110,3 +172,4 @@ function withRn086AndroidXScroll(config, props = {}) {
 
 module.exports = withRn086AndroidXScroll;
 module.exports.patchReactNative086Source = patchReactNative086Source;
+module.exports.patchReactNativeScreensSource = patchReactNativeScreensSource;
