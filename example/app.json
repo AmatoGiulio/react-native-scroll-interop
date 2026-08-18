@@ -18,7 +18,8 @@
         "../app.plugin.js",
         {
           "android": {
-            "rn086AndroidXScroll": true
+            "rn086AndroidXScroll": true,
+            "reactNativeScreensInterop": true
           }
         }
       ]
