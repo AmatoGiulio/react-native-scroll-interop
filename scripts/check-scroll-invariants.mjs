@@ -30,7 +30,7 @@ const files = [
 ];
 
 const sourceAdapter =
-  'android/src/main/java/expo/modules/materialtoolbar/ReactVerticalScrollSourceInterop.kt';
+  'android-shared/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt';
 
 const forbidden = [
   {name: 'parent-owned OverScroller', pattern: /\bOverScroller\s*\(/},
