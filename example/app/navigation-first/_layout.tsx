@@ -41,7 +41,7 @@ export default function NavigationFirstLayout() {
       <MaterialToolbar.Root
         placement="bottom"
         scrollBehavior="exitAlways"
-        insets="safe"
+        insets="none"
       >
         <MaterialToolbar.Content>
           <MaterialToolbar.TextButton
