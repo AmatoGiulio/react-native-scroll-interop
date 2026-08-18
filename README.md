@@ -18,17 +18,161 @@ There is no per-frame JS `onScroll` transport, no sampled `scrollY` momentum rec
 
 ## Status
 
-Current public release line:
+First public release candidate:
 
 ```text
 react-native-scroll-interop@0.1.0-alpha.1
 ```
 
-The package is released under the MIT license. Native behavior is Android-only. The JavaScript surface is safe to import on other platforms: Material components are no-op there and `NativeScrollHost` preserves normal container layout through a `View` fallback.
+The package is not considered ready for its first npm publication until the navigation-first integration is validated with Expo Router and React Navigation.
 
-The current packaged compatibility gate is Expo SDK 57 + React Native 0.86.x. The neutral native architecture is additionally certified against the repository's RN 0.87 bare-host line, but that is not yet a package-level compatibility promise.
+Native behavior is Android-only. The JavaScript surface is safe to import on other platforms: Material components are no-op there and `NativeScrollHost` preserves normal container layout through a `View` fallback.
+
+The current package line targets Expo SDK 57 + React Native 0.86.x. The neutral native architecture is additionally certified against the repository's RN 0.87 bare-host line, but that is not yet a package-level compatibility promise.
 
 See [`PRODUCT.md`](PRODUCT.md) for the exact product contract, [`ARCHITECTURE.md`](ARCHITECTURE.md) for the native layering, and [`RELEASE.md`](RELEASE.md) for release operations.
+
+## Navigation-first model
+
+Native chrome belongs to navigation, not to every screen component.
+
+```text
+navigation layout
+├── Stack
+│   ├── route A -> MaterialTopAppBar
+│   └── route B -> MaterialTopAppBar
+└── persistent MaterialToolbar
+
+route content
+└── NativeScrollHost
+    └── ScrollView / FlatList / SectionList / compatible vertical RN source
+```
+
+The TopAppBar is route chrome and should be declared through the navigator's custom-header API. The FloatingToolbar is layout chrome and should be declared once around the navigator. Screen components own their scroll content, not repeated copies of navigation chrome.
+
+Navigation libraries are **not** used to transport scroll frames. They only decide which screen/header is active. The real Android nested-scroll target remains transaction authority.
+
+## Expo Router SDK 57
+
+Expo Router 57 supports a fully custom Stack header through `Stack.Header asChild`. Use a transparent header so the Material TopAppBar remains an overlay and the existing native scroll-away accounting owns content geometry.
+
+`app/_layout.tsx`:
+
+```tsx
+import { Stack, useRouter } from 'expo-router';
+import { View } from 'react-native';
+import {
+  MaterialToolbar,
+  MaterialTopAppBar,
+} from 'react-native-scroll-interop';
+
+export default function Layout() {
+  const router = useRouter();
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Stack>
+        <Stack.Screen name="index">
+          <Stack.Header asChild transparent>
+            <MaterialTopAppBar
+              title="Home"
+              variant="large"
+              scrollBehavior="exitUntilCollapsed"
+            />
+          </Stack.Header>
+        </Stack.Screen>
+
+        <Stack.Screen name="details">
+          <Stack.Header asChild transparent>
+            <MaterialTopAppBar
+              title="Details"
+              variant="medium"
+              scrollBehavior="enterAlways"
+              navigationIcon="back"
+              onNavigationPress={() => router.back()}
+            />
+          </Stack.Header>
+        </Stack.Screen>
+      </Stack>
+
+      <MaterialToolbar.Root
+        placement="bottom"
+        scrollBehavior="exitAlways"
+        insets="safe"
+      >
+        <MaterialToolbar.Content>
+          <MaterialToolbar.TextButton
+            id="home"
+            accessibilityLabel="Home"
+            onPress={() => router.replace('/')}
+          >
+            <MaterialToolbar.Text>Home</MaterialToolbar.Text>
+          </MaterialToolbar.TextButton>
+        </MaterialToolbar.Content>
+      </MaterialToolbar.Root>
+    </View>
+  );
+}
+```
+
+A screen contains only its scroll host/content:
+
+```tsx
+import { NativeScrollHost } from 'react-native-scroll-interop';
+import { FlatList } from 'react-native';
+
+export default function HomeScreen() {
+  return (
+    <NativeScrollHost style={{ flex: 1 }}>
+      <FlatList data={items} renderItem={renderItem} />
+    </NativeScrollHost>
+  );
+}
+```
+
+No `MaterialTopAppBar` or `MaterialToolbar` is repeated inside the screen.
+
+## React Navigation
+
+`MaterialTopAppBar` is navigation-library agnostic. React Navigation's native stack can render it through its standard custom `header` option while `headerTransparent: true` preserves the same overlay model:
+
+```tsx
+<Stack.Navigator
+  screenOptions={{
+    headerTransparent: true,
+  }}
+>
+  <Stack.Screen
+    name="Home"
+    component={HomeScreen}
+    options={{
+      header: () => (
+        <MaterialTopAppBar
+          title="Home"
+          variant="large"
+          scrollBehavior="exitUntilCollapsed"
+        />
+      ),
+    }}
+  />
+
+  <Stack.Screen
+    name="Details"
+    component={DetailsScreen}
+    options={{
+      header: ({ navigation, back }) => (
+        <MaterialTopAppBar
+          title="Details"
+          navigationIcon={back ? 'back' : 'none'}
+          onNavigationPress={back ? () => navigation.goBack() : undefined}
+        />
+      ),
+    }}
+  />
+</Stack.Navigator>
+```
+
+Declare one `MaterialToolbar.Root` outside the navigator when the toolbar should persist across that navigation scope. React Navigation also provides `screenLayout` for apps that want to centralize per-screen wrappers such as `NativeScrollHost`; this is an optional navigation integration, not part of the scroll transport.
 
 ## Why this exists
 
@@ -55,7 +199,7 @@ requested = chromePre + childConsumed + chromePost + remaining
 
 ## Install
 
-For published alpha releases:
+After the first public alpha is published:
 
 ```bash
 npm install react-native-scroll-interop@next
@@ -93,71 +237,6 @@ Enable the version-scoped compatibility plugin:
 
 Then regenerate/build Android as required by the consumer project.
 
-## Quick start
-
-```tsx
-import {
-  MaterialToolbar,
-  MaterialTopAppBar,
-  NativeScrollHost,
-} from 'react-native-scroll-interop';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-
-export function Screen() {
-  return (
-    <View style={styles.root}>
-      <NativeScrollHost style={styles.content}>
-        <ScrollView>
-          {Array.from({ length: 80 }, (_, index) => (
-            <Text key={index}>Row {index + 1}</Text>
-          ))}
-        </ScrollView>
-      </NativeScrollHost>
-
-      <MaterialTopAppBar
-        title="Inbox"
-        variant="large"
-        scrollBehavior="exitUntilCollapsed"
-      />
-
-      <MaterialToolbar.Root
-        style={StyleSheet.absoluteFill}
-        placement="bottom"
-        scrollBehavior="exitAlways"
-      >
-        <MaterialToolbar.Content>
-          <MaterialToolbar.IconButton id="home" accessibilityLabel="Home">
-            <MaterialToolbar.Icon resource="ic_home" />
-          </MaterialToolbar.IconButton>
-        </MaterialToolbar.Content>
-      </MaterialToolbar.Root>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  root: { flex: 1 },
-  content: { flex: 1 },
-});
-```
-
-The React Native source does not receive a package-specific `onScroll`, ref, velocity callback or imperative scrolling command.
-
-## Compatibility
-
-Current package-level alpha contract:
-
-| Platform / stack | Status |
-|---|---|
-| Android | supported product target |
-| Expo SDK 57 | supported alpha line |
-| React Native 0.86.x | supported alpha line; config plugin required for AndroidX NON_TOUCH lifecycle |
-| RN 0.87 native transport line | bare-host architecture certified; not yet package support |
-| iOS / web native Material behavior | not implemented; JS fallbacks are safe |
-| Expo Go | not supported; native development build required |
-
-`peerDependencies` intentionally match the packaged release gate instead of advertising untested compatibility.
-
 ## `NativeScrollHost`
 
 Wrap the vertical React Native source that should drive native chrome:
@@ -177,6 +256,8 @@ The actual nested-scroll target supplied by Android remains transaction authorit
   title="Gallery"
   variant="large"
   scrollBehavior="exitUntilCollapsed"
+  navigationIcon="back"
+  onNavigationPress={goBack}
   themeMode="system"
   dynamicColor
 />
@@ -194,13 +275,20 @@ Scroll behaviors:
 none | enterAlways | exitUntilCollapsed
 ```
 
+Navigation icons:
+
+```text
+none | back
+```
+
+The back affordance is rendered as a native Material3 `IconButton`; `onNavigationPress` is the navigation callback supplied by the host navigator. No navigation library is imported by the package.
+
 The app bar is a true transaction participant and may consume distance while Material changes its native state.
 
 ## `MaterialToolbar`
 
 ```tsx
 <MaterialToolbar.Root
-  style={StyleSheet.absoluteFill}
   visible
   expanded
   orientation="horizontal"
@@ -222,6 +310,8 @@ The app bar is a true transaction participant and may consume distance while Mat
   </MaterialToolbar.Fab>
 </MaterialToolbar.Root>
 ```
+
+`MaterialToolbar.Root` uses an absolute overlay by default, which makes it suitable for persistent placement in a navigation layout.
 
 Available compound elements:
 
@@ -268,6 +358,23 @@ export type MaterialToolbarRef = {
 };
 ```
 
+## Compatibility
+
+Current release-candidate contract:
+
+| Platform / stack | Status |
+|---|---|
+| Android | supported product target |
+| Expo SDK 57 | package target; navigation-first gate required before first publish |
+| Expo Router SDK 57 | navigation-first integration target |
+| React Navigation native stack | navigation-first integration target; release gate required before first publish |
+| React Native 0.86.x | supported alpha line; config plugin required for AndroidX NON_TOUCH lifecycle |
+| RN 0.87 native transport line | bare-host architecture certified; not yet package support |
+| iOS / web native Material behavior | not implemented; JS fallbacks are safe |
+| Expo Go | not supported; native development build required |
+
+`peerDependencies` intentionally match the packaged release gate instead of advertising untested compatibility.
+
 ## Material and source ownership
 
 Material is the source of truth for Material chrome state and terminal snap behavior.
@@ -290,24 +397,7 @@ The plugin does not implement the transport, a second scroller or Material behav
 
 ## Package contents
 
-The npm tarball is intentionally limited to runtime/product material:
-
-```text
-android/
-android-shared/
-plugin/
-src/
-index.ts
-app.plugin.js
-expo-module.config.json
-ARCHITECTURE.md
-PRODUCT.md
-LICENSE
-README.md
-package.json
-```
-
-Examples, bare certification probes, internal test scripts, CI configuration and repository-only handoff material are excluded from the package surface.
+The npm tarball is intentionally limited to runtime/product material. Generated Gradle caches/build output, examples, bare certification probes, internal scripts, CI configuration and repository-only handoff material are excluded.
 
 Run:
 
@@ -315,7 +405,7 @@ Run:
 npm run check
 ```
 
-for native invariants, the RN 0.86 plugin guard and npm package-surface validation. `npm publish` also runs this gate through `prepublishOnly`.
+for native invariants, navigation-surface invariants, the RN 0.86 plugin guard and npm package-surface validation. `npm publish` also runs this gate through `prepublishOnly`.
 
 ## Android dependency
 
