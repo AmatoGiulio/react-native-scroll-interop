@@ -1,242 +1,222 @@
-# Native scroll interop architecture
+# React Native Android scroll interop architecture
 
-## Goal
+## Product definition
 
-Keep React Native in complete ownership of scrolling while native screen chrome participates in the same Android nested-scroll transaction.
+This repository implements a native Android scroll-interoperability primitive that exposes React Native's real nested-scroll transaction to native UI consumers while keeping React Native as the sole owner of gesture and fling physics.
 
-The invariant is simple:
-
-> React Native owns the gesture, the fling, the physics and the child movement. Native chrome may consume part of the source's real nested-scroll transaction, but it never drives or reconstructs the scroll.
-
-There is no per-frame JS callback, no sampled `scrollY` transport, no parent-owned `OverScroller`, and no parent call to `scrollBy` / `scrollTo` on the source.
-
-## Current shape
+The invariant is:
 
 ```text
-ReactScrollView / FlashList
-        |
-        | real Android nested scroll
-        | TOUCH and TYPE_NON_TOUCH
-        v
-ExpoNestedScrollHostView
-  NestedScrollingParent3
-        |
-        +-----------------------------+
-        |                             |
-        v                             v
-TopAppBarScrollConsumer        FloatingToolbarScrollConsumer
-  pre + post participant         post observer/participant
-  may consume distance           consumes no list distance
-        |                             |
-        v                             v
-Material3 TopAppBar            Material3 FloatingToolbar
-ScrollBehavior                 ScrollBehavior
+one React Native scroll physics
+one synchronous native nested-scroll transaction
+N native chrome consumers
 ```
 
-`ExpoNestedScrollHostView` is only the prototype home for the parent. In an upstream integration the natural owner is the screen/navigation layer, which already sits above the screen content and knows which chrome belongs to it.
+There is no parent-owned second scroller, no sampled-`scrollY` momentum reconstruction, no timer-driven physics, no per-frame JS transport and no parent call to `scrollBy` / `scrollTo` on the source.
 
-## One transaction, one driver
+## Transaction model
 
-For a vertical delta `dy`, the transaction is:
+For one vertical request:
 
 ```text
-source asks to move by dy
-        |
-        v
-parent pre-scroll
-  TopAppBar may consume chromePre
-        |
-        v
-source moves itself by the remainder
-  childConsumed is reported by the source
-        |
-        v
-parent post-scroll
-  TopAppBar may consume some dyUnconsumed
-  FloatingToolbar observes childConsumed
-        |
-        v
-final unconsumed distance / source edge behavior
+requested
+  -> native PRE consumers
+  -> React Native source moves its remainder
+  -> native POST consumers
+  -> native POST observers
+  -> remaining
 ```
 
-The frame invariant is:
+Conservation is:
 
 ```text
 requested = chromePre + childConsumed + chromePost + remaining
 ```
 
-No term is reconstructed from a previous frame. The debug transaction ledger in `ExpoNestedScrollHostView` checks this equation against the callbacks Android actually delivers.
+The Android nested-scroll callback is the clock. Every value comes from the real synchronous transaction; no value is reconstructed from previous frames.
 
-The important ownership rule is that pre-scroll only *reports consumption*. It does not execute the child phase. React Native receives the remainder and performs its normal scroll itself. Post-scroll then receives the real `dyConsumed` and `dyUnconsumed` produced by the source.
+## Layering
 
-## Touch and momentum
+### 1. Neutral core
 
-### Touch
-
-The source owns touch through its normal Android `ScrollView.onTouchEvent` path. The host participates through nested scrolling and never intercepts the gesture.
-
-React Native 0.83 uses `android.widget.ScrollView`, whose legacy touch loop has one structural limitation: its post-scroll dispatch does not expose the `NestedScrollingParent3 consumed[]` result back to the source. A parent can correctly consume top-edge post-scroll distance to expand the app bar, but platform `ScrollView` cannot subtract that post consumption before deciding what remains for overscroll.
-
-This is a source-layer limitation, not something the parent can repair without replacing the source's touch loop.
-
-### Momentum
-
-The fling must remain owned by React Native's own `OverScroller`.
-
-Stock React Native 0.83 moves a fling from `android.widget.ScrollView.computeScroll()` without delivering the movement as `TYPE_NON_TOUCH` nested-scroll frames. The prototype patch under `docs/upstream/` closes only that visibility gap: the source wraps the movement it was already going to perform in a normal nested-scroll transaction.
-
-The parent never takes the fling, estimates a velocity, runs an `OverScroller`, or replays sampled deltas.
+Package:
 
 ```text
-RN OverScroller frame
-        |
-        v
-nested pre-scroll
-        |
-        v
-RN applies the remainder
-        |
-        v
-nested post-scroll
+com.reactnativescroll.interop.core
 ```
 
-A source backed by AndroidX `NestedScrollView` should provide this contract itself. The parent must not care whether the source is a patched 0.83 `ReactScrollView` or a future nested-scroll-native implementation.
-
-## Session lifecycle
-
-Touch and momentum are two phases of one user movement.
-
-The source can open its `TYPE_NON_TOUCH` nested session before the touch session finishes. When that happens the host must not settle Material chrome at touch stop; it waits until the momentum session actually ends. Only then does it call the Material behavior's terminal settle/snap.
-
-The settle does not move the list and does not receive the fling velocity a second time. Every fling frame has already reached Material as scroll distance, so terminal settle is invoked with zero velocity to avoid integrating the same momentum twice.
-
-## Chrome geometry
-
-`scrollY` has one meaning again:
+Physical source path:
 
 ```text
-scrollY = where React Native scrolled the source
+android-shared/src/main/java/com/reactnativescroll/interop/core/
 ```
 
-TopAppBar collapse is not encoded into `scrollY`.
+The core contains:
 
-The current standalone-module bridge uses React Native's scroll-away top-padding primitive to reserve the expanded native app-bar height. As Material collapses the bar, the source content child is translated by the current collapse amount:
+- `SourceScopedNestedScrollLifecycle`
+- `NestedScrollConservationLedger`
+- `VerticalNestedScrollTransactionDispatcher`
+- `VerticalNestedPreScrollConsumer`
+- `VerticalNestedPostScrollConsumer`
+- `VerticalNestedPostScrollObserver`
+
+The core owns transaction lifecycle, participant fanout and conservation accounting only. It does not depend on Expo, Material3, concrete React Native scroll classes, source position sampling, velocity integration or timers.
+
+### 2. React Native compatibility adapter
+
+Package:
 
 ```text
-expanded chrome height = H
-collapse amount        = C
-content translationY   = H - C
+com.reactnativescroll.interop.reactnative
 ```
 
-This is visual geometry only. It does not perform a scroll, does not modify the source physics and does not participate in transaction accounting.
-
-This geometry bridge is still prototype-specific. An upstream screen implementation should prefer geometry owned by the screen/container rather than depending on the internal content child of `ReactScrollView`.
-
-## Consumers
-
-### TopAppBar
-
-The TopAppBar is a true participant.
-
-- In pre-scroll it may withhold distance from the list while Material changes `heightOffset`.
-- It reports at most the distance the chrome actually moved. Material can report more than its clamped state moved at an endpoint; withholding that larger value would delete gesture distance.
-- In post-scroll it receives the source's real child-consumed and unconsumed distances, allowing `exitUntilCollapsed` to expand at the top edge.
-- Its snap changes Material state and the chrome geometry only; it never reconciles the list with `scrollTo`.
-
-### FloatingToolbar
-
-The FloatingToolbar is a post-scroll observer/participant.
-
-It receives the source's real `dyConsumed`. It consumes zero distance from the list. While a TopAppBar consumes the whole pre-scroll delta, `dyConsumed` can correctly be zero, matching the phase ordering of a native Compose nested-scroll chain.
-
-## Source and chrome registration
-
-The **transaction source is authoritative only when Android opens nested scrolling**: `onStartNestedScroll(..., target, ...)` supplies the exact child that is moving, and `beginNestedSession` binds consumers from that target. Pre-gesture discovery does not write transaction state.
-
-The standalone module still needs one piece of preparation before the first gesture: find the native ReactScrollView early enough to enable nested scrolling and install TopAppBar visual geometry. That preparation now follows native mount/layout events rather than fixed delays:
+Physical source path:
 
 ```text
-host attach / child change / chrome state change
-        |
-        v
-posted source scan
-        |
-        +-- ReactScrollView exists -> prepare once
-        |
-        `-- not mounted yet -> OnGlobalLayoutListener
-                                |
-                                `-- source appears -> prepare + remove listener
+android-shared/src/main/java/com/reactnativescroll/interop/reactnative/
 ```
 
-There are no 32/250/750 ms retry timers. Discovery looks only for actual `android.widget.ScrollView` descendants, force-enables nested scrolling where FlashList 2.0.2 failed to forward it in this setup, and requires exactly one `ReactScrollView` for pre-gesture geometry. Multiple ReactScrollViews fail closed instead of being ranked heuristically.
+`ReactVerticalScrollSourceInterop` is the compatibility boundary for supported RN vertical sources and their capabilities. Concrete RN source typing is confined here.
 
-Chrome lookup is separately fail-closed: at most one eligible TopAppBar and one FloatingToolbar in the same native/Fabric scope may participate.
+The adapter does not own motion. It only answers source-capability questions and exposes the narrow source geometry operations required by the current TopAppBar bridge.
 
-This descendant walk remains standalone-module plumbing, not the desired upstream API. A screen layer should own explicit source/chrome registration because it already knows which content belongs to the screen; at that point even the preparation scan can disappear.
+### 3. Material3 consumers
 
-## Measured invariants
-
-The current transaction ledger was stressed with slow drag, hard fling, direction reversal, top edge, bottom edge and touch interruption of momentum:
-
-| Screen | Source | Chrome | Ledger frames | Broken |
-|---|---|---|---:|---:|
-| Feed | FlashList | small `enterAlways` | 177 | 0 |
-| Profile | RN ScrollView | large `exitUntilCollapsed` | 251 | 0 |
-| Gallery | FlashList | large `exitUntilCollapsed` | 138 | 0 |
-
-Total: 566 accounted frames, 0 broken transactions.
-
-At the top boundary the source and chrome also split the real gesture correctly. One measured sequence was:
+Package:
 
 ```text
-requested=-48 -> child=-47, chrome=-1
-requested=-26 -> child=0,   chrome=-26
+com.reactnativescroll.interop.material3
 ```
 
-The second frame also demonstrates the 0.83 platform `ScrollView` touch limitation described above: the parent consumes the 26 pixels correctly, but the legacy source cannot receive that Parent3 post-consumption value before its own overscroll decision.
+The Material3 layer contains:
 
-## FlashList hard-fling blank window
+- `Material3NestedScrollTransaction`
+- `Material3NestedScrollAdapters`
+- `TopAppBarScrollConsumer`
+- `FloatingToolbarScrollConsumer`
 
-A transient blank FlashList window under violent fling is reproducible, but controlled frame-by-frame recordings show that it is not introduced by this transport or by the chrome geometry:
+`TopAppBarScrollConsumer` is a PRE/POST participant. It may consume transaction distance while Material changes app-bar state.
 
-| Run | Our geometry | Frames | Blank frames |
-|---|---|---:|---:|
-| App bar present | padding + translation | 38 | 12 |
-| App bar removed | none | 36 | 14 |
+`FloatingToolbarScrollConsumer` is observation-only in transaction accounting. It receives the source's real `childConsumedY` in POST and returns no consumed distance.
 
-The blank stretches are contiguous and also occur with the module absent from the screen. It is therefore not evidence of a transaction or chrome-geometry failure here.
+Material terminal settling does not run a second fling. Fling distance has already arrived frame-by-frame through nested scroll, so terminal Material settle uses zero velocity.
 
-## Non-negotiable invariants
+### 4. Expo integration layer
 
-1. React Native owns the gesture and child movement.
-2. React Native owns fling physics.
-3. A parent never calls `scrollBy` or `scrollTo` to execute source movement.
-4. A parent never owns a proxy `OverScroller` for the source.
-5. Native chrome consumes or observes the real synchronous nested-scroll transaction.
-6. No `scrollY` sampling is used as the transport.
-7. No navigation-chrome-specific per-frame JS callback is required.
-8. `scrollY` remains the source's own coordinate; chrome state is separate.
-9. Source/chrome ambiguity fails closed.
-10. Material remains the source of truth for Material behavior and terminal snap state.
+Package:
 
-## Upstream boundary
+```text
+expo.modules.materialtoolbar
+```
 
-The work separates cleanly into two responsibilities:
+This layer owns Expo-specific concerns:
 
-### React Native / the scroll source
+- native module/view registration
+- Fabric/native view ownership
+- screen-local consumer registry/resolution
+- production `ReactNativeNestedScrollHostView`
+- FloatingToolbar placement and window-insets binding
+- RN 0.86 config-plugin compatibility packaging
 
-Provide a complete Android nested-scrolling child contract for the movement the source already owns, including momentum and correct Parent3 accounting.
+`NativeFloatingToolbarPlacement` intentionally stays here because it owns `ExpoMaterialToolbarView` placement/insets state. The Expo-side `FloatingToolbarScrollConsumer` binding is only a constructor/environment adapter over the real Material3 consumer; it injects placement into the Material3 consumer without moving Expo view knowledge into the Material3 layer.
 
-### react-native-screens / the screen layer
+The registered native identity remains compatible with the existing Expo package surface.
 
-Provide the native ancestor and explicit screen-scoped registration through which screen chrome can participate in that transaction.
+## Production host
 
-The screen layer should not own the source physics, and React Native should not know about Material3.
+`ReactNativeNestedScrollHostView` is an Android `NestedScrollingParent3` ancestor. It does not become a scroll container.
 
-## Next steps
+Its responsibilities are:
 
-1. Re-run the 0.83 stress matrix after the layout-driven preparation change and keep the existing ledger baseline as the comparison point.
-2. Preserve the transaction ledger as debug/stress instrumentation.
-3. Replace the remaining prototype descendant walk with explicit source registration in the upstream-oriented screen shape.
-4. Move chrome geometry ownership out of the internal ReactScrollView content child when the screen layer can own that container.
-5. Use the 0.83 touch and momentum limitations as source-level evidence rather than adding more intelligence to the parent.
+1. accept the source's real Android nested-scroll session;
+2. resolve source capabilities through `ReactVerticalScrollSourceInterop`;
+3. bind screen-local native chrome consumers;
+4. dispatch PRE/POST through `VerticalNestedScrollTransactionDispatcher`;
+5. reject stale callbacks and source replacement safely;
+6. end Material transactions only when source lifecycle permits it.
+
+The actual nested-scroll target supplied by Android is transaction authority. Pre-gesture tree discovery may prepare geometry and nested-scrolling capability, but it does not grant transaction authority.
+
+## Source-scoped lifecycle
+
+Touch and NON_TOUCH momentum belong to a concrete source View instance.
+
+`SourceScopedNestedScrollLifecycle` tracks:
+
+```text
+activeSource
+momentumSource
+```
+
+If Fabric replaces the source, stale callbacks from the old source fail closed. A TOUCH stop does not end the chrome transaction while the same source still owns NON_TOUCH momentum. Terminal settle occurs when the real momentum session ends.
+
+## TopAppBar behavior
+
+The TopAppBar consumer:
+
+- fails closed until Material has resolved a finite `heightOffsetLimit`;
+- consumes real PRE/POST nested-scroll distance;
+- clamps reported consumption to available Android distance;
+- reports no more distance than the chrome actually moved;
+- keeps React Native as source-position owner;
+- uses the RN compatibility adapter only for the current scroll-away geometry primitive;
+- never runs child scroll physics.
+
+The visual source-content translation used by the standalone Expo integration is geometry, not scrolling. It is not part of transaction conservation.
+
+## FloatingToolbar behavior
+
+The FloatingToolbar consumer:
+
+- observes real `childConsumedY` in POST;
+- maps TOUCH to Material `UserInput` and NON_TOUCH to `SideEffect`;
+- updates Material offset state and visual translation;
+- preserves Material state across host detach/rebind where required by navigation lifecycle;
+- consumes zero list distance;
+- performs terminal Material settle with zero velocity.
+
+Placement/insets are injected from `NativeFloatingToolbarPlacement` in the Expo integration layer. This keeps Expo view ownership out of the Material3 behavior implementation.
+
+## RN 0.86 compatibility
+
+RN 0.86.x requires a narrow source compatibility patch supplied by the Expo config plugin.
+
+For the ordinary non-paging `ReactNestedScrollView` fling path, the patch delegates to AndroidX `NestedScrollView.fling()` so AndroidX emits the real typed NON_TOUCH nested-scroll lifecycle while React Native still owns fling initiation and physics.
+
+The compatibility patch does not implement chrome behavior, parent physics, sampled motion or a second scroller.
+
+If the equivalent source behavior is available upstream in a future RN version, the version-scoped compatibility patch can shrink or disappear without changing the core transaction architecture.
+
+## What the architecture explicitly forbids
+
+- parent-owned `OverScroller` / `Scroller` for source movement
+- parent `scrollBy` / `scrollTo` on the React Native source
+- sampled `scrollY` as a transport
+- timer-based momentum reconstruction
+- custom velocity integration replacing RN physics
+- parent-started nested sessions pretending to be source movement
+- Material3 knowledge in the neutral core
+- Expo Modules APIs in the neutral core or RN compatibility adapter
+- concrete RN scroll-view typing outside the RN compatibility boundary
+- FloatingToolbar participation as a consuming PRE/POST participant
+
+## Validation model
+
+The repository invariant scripts guard the architecture statically. Runtime certification additionally exercises:
+
+- ordinary touch scroll
+- NON_TOUCH fling
+- TopAppBar collapse/expand
+- FloatingToolbar/FAB behavior
+- source replacement/detach
+- NativeTabs switch-away/return
+- immediate scroll after return
+- fling -> tab switch -> return -> new scroll
+
+The RN 0.86 fresh-consumer project is the external packaging/runtime gate; the local example is the package's direct integration smoke test.
+
+## Package identity
+
+The current npm package remains the internal alpha workspace `expo-material-toolbar`. That name is a packaging surface, not the architectural identity of the scroll primitive.
+
+The architecture is intentionally organized so the neutral core, RN adapter and Material3 consumers can be packaged independently later without changing transaction ownership. No public package rename is implied by this document.
