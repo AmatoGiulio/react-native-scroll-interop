@@ -3,25 +3,22 @@ package expo.modules.materialtoolbar
 import android.util.Log
 import android.view.View
 import com.facebook.react.uimanager.UIManagerHelper
+import com.reactnativescroll.interop.reactnative.ReactNativeNestedScrollParentController
 
 /**
- * Pairs a nested-scroll host with the native chrome that should follow its scroll source.
+ * Pairs a nested-scroll parent with the native chrome that should follow its scroll source.
  *
  * The transaction source is never guessed: it is the `target` Android supplies when a scrolling
  * descendant opens nested scrolling with its real ancestor. Pre-gesture preparation is deliberately
  * weaker. The standalone host may inspect its descendants only to enable nested scrolling and
- * install visual chrome geometry before the first gesture; if more than one ReactScrollView is
- * present, that preparation fails closed rather than choosing one heuristically.
+ * install visual chrome geometry before the first gesture; a navigation screen may instead register
+ * the content ScrollView it already owns.
  *
  * TopAppBar lookup prefers the native screen that owns the scroll source. This matters during
  * native-stack transitions, when the outgoing and incoming screens can both remain attached on the
  * same Fabric surface. A persistent/global TopAppBar can still participate as a surface-scoped
  * fallback when no screen-local TopAppBar exists. FloatingToolbar remains surface-scoped because a
  * toolbar may intentionally live outside the Stack and persist across route changes.
- *
- * Registration belongs here only because the module has nowhere better to put it. In the upstream
- * shape the screen layer owns it: a screen already knows which content is its own, and no app-level
- * API can resolve that ambiguity from the outside.
  */
 internal object NativeNestedScrollRegistry {
   private data class TopBarEntry(
@@ -35,6 +32,7 @@ internal object NativeNestedScrollRegistry {
   )
 
   private val hosts = LinkedHashSet<ReactNativeNestedScrollHostView>()
+  private val screenParents = LinkedHashSet<ReactNativeNestedScrollParentController>()
   private val topBars = LinkedHashSet<TopBarEntry>()
   private val toolbars = LinkedHashSet<ToolbarEntry>()
 
@@ -53,10 +51,18 @@ internal object NativeNestedScrollRegistry {
     hosts -= host
   }
 
+  fun registerScreenParent(parent: ReactNativeNestedScrollParentController) {
+    screenParents += parent
+  }
+
+  fun unregisterScreenParent(parent: ReactNativeNestedScrollParentController) {
+    screenParents -= parent
+  }
+
   fun registerTopBar(owner: ExpoMaterialTopAppBarView, consumer: TopAppBarScrollConsumer) {
     topBars.removeAll { it.owner === owner }
     topBars += TopBarEntry(owner, consumer)
-    refreshHostsForTopBar(owner)
+    refreshParentsForTopBar(owner)
   }
 
   fun unregisterTopBar(owner: ExpoMaterialTopAppBarView) {
@@ -66,7 +72,7 @@ internal object NativeNestedScrollRegistry {
   fun registerToolbar(owner: ExpoMaterialToolbarView, consumer: FloatingToolbarScrollConsumer) {
     toolbars.removeAll { it.owner === owner }
     toolbars += ToolbarEntry(owner, consumer)
-    refreshHostsForSurface(owner)
+    refreshParentsForSurface(owner)
   }
 
   fun unregisterToolbar(owner: ExpoMaterialToolbarView) {
@@ -74,9 +80,9 @@ internal object NativeNestedScrollRegistry {
   }
 
   /** Call whenever Compose binds/unbinds behavior or expanded chrome geometry changes. */
-  fun topBarStateChanged(owner: ExpoMaterialTopAppBarView) = refreshHostsForTopBar(owner)
+  fun topBarStateChanged(owner: ExpoMaterialTopAppBarView) = refreshParentsForTopBar(owner)
 
-  fun toolbarStateChanged(owner: ExpoMaterialToolbarView) = refreshHostsForSurface(owner)
+  fun toolbarStateChanged(owner: ExpoMaterialToolbarView) = refreshParentsForSurface(owner)
 
   fun resolveTopBar(source: View): TopAppBarScrollConsumer? {
     cleanupDetached()
@@ -132,8 +138,9 @@ internal object NativeNestedScrollRegistry {
       owner.windowVisibility == View.VISIBLE &&
       sameNativeScope(owner, source)
 
-  private fun refreshHostsForTopBar(owner: View) {
+  private fun refreshParentsForTopBar(owner: View) {
     val ownerScreen = findNativeScreenAncestor(owner)
+
     hosts.forEach { host ->
       if (!sameNativeScope(owner, host)) return@forEach
 
@@ -146,18 +153,38 @@ internal object NativeNestedScrollRegistry {
         host.requestNestedChromeBindingRefresh()
       }
     }
+
+    screenParents.forEach { parent ->
+      val parentOwner = parent.ownerView
+      if (!sameNativeScope(owner, parentOwner)) return@forEach
+
+      val sameTopBarScope = if (ownerScreen != null) {
+        findNativeScreenAncestor(parentOwner) === ownerScreen
+      } else {
+        true
+      }
+      if (sameTopBarScope) {
+        parent.requestNestedChromeBindingRefresh()
+      }
+    }
   }
 
-  private fun refreshHostsForSurface(owner: View) {
+  private fun refreshParentsForSurface(owner: View) {
     hosts.forEach { host ->
       if (sameNativeScope(owner, host)) {
         host.requestNestedChromeBindingRefresh()
+      }
+    }
+    screenParents.forEach { parent ->
+      if (sameNativeScope(owner, parent.ownerView)) {
+        parent.requestNestedChromeBindingRefresh()
       }
     }
   }
 
   private fun cleanupDetached() {
     hosts.removeAll { !it.isAttachedToWindow }
+    screenParents.removeAll { !it.ownerView.isAttachedToWindow }
     topBars.removeAll { !it.owner.isAttachedToWindow }
     toolbars.removeAll { !it.owner.isAttachedToWindow }
   }
