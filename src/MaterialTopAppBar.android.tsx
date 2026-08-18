@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { StyleSheet } from 'react-native';
 
 import ExpoMaterialTopAppBarNativeView from './ExpoMaterialTopAppBarNativeView';
@@ -9,10 +9,17 @@ export function MaterialTopAppBar({
   visible = true,
   variant = 'medium',
   scrollBehavior = 'none',
+  navigationIcon = 'none',
+  navigationAccessibilityLabel = 'Back',
+  onNavigationPress,
   themeMode = 'system',
   dynamicColor = false,
   style,
 }: MaterialTopAppBarProps) {
+  const handleNavigationPress = useCallback(() => {
+    onNavigationPress?.();
+  }, [onNavigationPress]);
+
   return (
     <ExpoMaterialTopAppBarNativeView
       style={[styles.topOverlay, style]}
@@ -21,8 +28,11 @@ export function MaterialTopAppBar({
       visible={visible}
       variant={variant}
       scrollBehavior={scrollBehavior}
+      navigationIcon={navigationIcon}
+      navigationAccessibilityLabel={navigationAccessibilityLabel}
       themeMode={themeMode}
       dynamicColor={dynamicColor}
+      onNavigationPress={onNavigationPress ? handleNavigationPress : undefined}
     />
   );
 }
