@@ -6,8 +6,9 @@ export type MaterialTopAppBarVariant = 'small' | 'medium' | 'large';
 export type MaterialTopAppBarScrollBehavior = 'none' | 'enterAlways' | 'exitUntilCollapsed';
 
 /**
- * Experimental PoC surface used to validate the generic native-scroll coordinator against a
- * second real Material3 consumer. The API is intentionally minimal in alpha.24.
+ * Native Android Material3 TopAppBar driven by the same real nested-scroll transaction as the
+ * React Native scroll source. The API remains intentionally small while the package is in alpha,
+ * but it is part of the supported public surface rather than an internal proof-of-concept type.
  */
 export type MaterialTopAppBarProps = {
   title: string;
