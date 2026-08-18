@@ -52,6 +52,36 @@ class VerticalNestedScrollTransactionDispatcher(
     this.postObservers = postObservers
   }
 
+  /**
+   * Bind neutral native participants without exposing dispatcher-internal compatibility ports.
+   *
+   * This is an API boundary only: dispatch ordering, clamping and conservation accounting remain
+   * exactly the same as [bind].
+   */
+  fun bindParticipants(
+    preConsumers: List<VerticalNestedPreScrollConsumer>,
+    postConsumers: List<VerticalNestedPostScrollConsumer>,
+    postObservers: List<VerticalNestedPostScrollObserver>,
+  ) {
+    bind(
+      preConsumers = preConsumers.map { consumer ->
+        PreConsumer { availableY, inputType ->
+          consumer.consumePreScroll(availableY, inputType)
+        }
+      },
+      postConsumers = postConsumers.map { consumer ->
+        PostConsumer { childConsumedY, availableY, inputType ->
+          consumer.consumePostScroll(childConsumedY, availableY, inputType)
+        }
+      },
+      postObservers = postObservers.map { observer ->
+        PostObserver { childConsumedY, inputType ->
+          observer.observePostScroll(childConsumedY, inputType)
+        }
+      },
+    )
+  }
+
   fun clearParticipants() {
     preConsumers = emptyList()
     postConsumers = emptyList()
