@@ -1,4 +1,4 @@
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.reactnative
 
 import android.view.View
 import android.view.ViewGroup
