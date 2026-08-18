@@ -6,7 +6,7 @@ const require = createRequire(import.meta.url);
 const {
   assertSupportedReactNativeScreensVersion,
   patchReactNativeScreensGradle,
-  patchStackScreen,
+  patchScreen,
 } = require('../plugin/reactNativeScreensInteropPatch');
 
 const violations = [];
@@ -44,25 +44,25 @@ expect(
   'react-native-screens Gradle patch must be idempotent'
 );
 
-const stackScreenFixture = `package com.swmansion.rnscreens.stack.screen\n\nimport android.view.ViewGroup\nimport com.facebook.react.uimanager.ThemedReactContext\nimport com.swmansion.rnscreens.common.FragmentProviding\nimport com.swmansion.rnscreens.common.container.ContainerItem\nimport com.swmansion.rnscreens.common.container.ContainerItemSupport\nimport com.swmansion.rnscreens.scrollviewmarker.ScrollViewMarker\nimport com.swmansion.rnscreens.scrollviewmarker.ScrollViewSeeking\n\nclass StackScreen(\n    private val reactContext: ThemedReactContext,\n) : ViewGroup(reactContext),\n    FragmentProviding,\n    ScrollViewSeeking,\n    ContainerItem {\n    private val containerItemSupport = ContainerItemSupport()\n\n    // region ScrollViewSeeking\n\n    override fun registerScrollView(\n        marker: ScrollViewMarker,\n        scrollView: ViewGroup,\n    ) {\n        containerItemSupport.registerScrollView(scrollView)\n        headerConfig?.onContentScrollViewChanged()\n    }\n\n    // endregion\n\n    internal lateinit var eventEmitter: StackScreenEventEmitter\n\n    override fun findContentScrollView(): ViewGroup? = containerItemSupport.findContentScrollView(this)\n}\n`;
+const screenFixture = `package com.swmansion.rnscreens\n\nimport android.view.MotionEvent\nimport android.view.View\nimport android.view.ViewGroup\nimport android.view.WindowManager\nimport androidx.core.view.children\nimport com.facebook.react.uimanager.events.EventDispatcher\n\nclass Screen(\n    val reactContext: ThemedReactContext,\n) : FabricEnabledViewGroup(reactContext),\n    ScreenContentWrapper.OnLayoutCallback,\n    FragmentProviding {\n    var container: ScreenContainer? = null\n\n    private val isNativeStackScreen: Boolean\n        get() = container is ScreenStack\n\n    init {\n        layoutParams = WindowManager.LayoutParams(WindowManager.LayoutParams.TYPE_APPLICATION)\n    }\n\n    val contentWrapper: ScreenContentWrapper?\n        get() = children.find { it is ScreenContentWrapper } as? ScreenContentWrapper\n\n    override fun onLayout(\n        changed: Boolean,\n        l: Int,\n        t: Int,\n        r: Int,\n        b: Int,\n    ) {\n        if (changed && isNativeStackScreen && !usesFormSheetPresentation()) {\n            val width = r - l\n            val height = b - t\n\n            updateShadowNodeScreenSize(width, height, t)\n        }\n    }\n\n    internal fun onBottomSheetBehaviorDidLayout(coordinatorLayoutDidChange: Boolean) {}\n\n    override fun onAttachedToWindow() {\n        super.onAttachedToWindow()\n\n        // Insets handler for formSheet\n        if (usesFormSheetPresentation()) {\n            Unit\n        }\n    }\n\n    private fun dispatchSheetDetentChanged(\n        detentIndex: Int,\n        isStable: Boolean,\n    ) {}\n}\n`;
 
-const patchedStack = patchStackScreen(stackScreenFixture);
+const patchedScreen = patchScreen(screenFixture);
 for (const needle of [
   'NestedScrollingParent3',
   'ReactNativeNestedScrollParentController(this)',
-  'nestedScrollInterop.prepareNestedSource(scrollView)',
+  'ReactNativeVerticalScrollSourceLocator.findUniqueDescendant(root)',
+  'requestNestedScrollInteropBinding()',
   'nestedScrollInterop.onOwnerAttached()',
   'nestedScrollInterop.onOwnerDetached()',
   'nestedScrollInterop.onStartNestedScroll(',
   'nestedScrollInterop.onNestedPreScroll(',
   'nestedScrollInterop.onNestedScroll(',
-  'findContentScrollView()?.let(nestedScrollInterop::prepareNestedSource)',
 ]) {
-  expect(patchedStack.includes(needle), `StackScreen patch missing ${needle}`);
+  expect(patchedScreen.includes(needle), `Screen patch missing ${needle}`);
 }
 expect(
-  patchStackScreen(patchedStack) === patchedStack,
-  'StackScreen patch must be idempotent'
+  patchScreen(patchedScreen) === patchedScreen,
+  'Screen patch must be idempotent'
 );
 
 if (violations.length > 0) {
@@ -73,7 +73,7 @@ if (violations.length > 0) {
 
 console.log('react-native-screens interop plugin invariant: PASS');
 console.log('  supported line is version-scoped to react-native-screens 4.26.x');
-console.log('  StackScreen becomes the real NestedScrollingParent3 ancestor');
-console.log('  StackScreen forwards to ReactNativeNestedScrollParentController');
-console.log('  screen-owned content ScrollView is prepared directly');
+console.log('  legacy Screen.kt becomes the real NestedScrollingParent3 ancestor');
+console.log('  Screen forwards to ReactNativeNestedScrollParentController');
+console.log('  screen-owned content subtree resolves exactly one RN vertical source');
 console.log('  Gradle dependency on react-native-scroll-interop is injected idempotently');
