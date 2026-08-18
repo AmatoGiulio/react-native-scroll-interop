@@ -11,7 +11,11 @@ const transactionRelativePath =
 const registryRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt';
 const topBarRelativePath =
+  'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
+const legacyTopBarRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt';
+const consumerAliasesRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerAliases.kt';
 const floatingToolbarRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt';
 const violations = [];
@@ -57,6 +61,7 @@ if (source != null) {
     ['concrete RN source type', /\b(ReactScrollView|ReactNestedScrollView)\b/],
     ['direct Compose nested-scroll ownership', /androidx\.compose\.ui\.input\.nestedscroll/],
     ['Expo Modules API dependency', /expo\.modules\.kotlin/],
+    ['Expo TopAppBar consumer import', /expo\.modules\.materialtoolbar\.TopAppBarScrollConsumer/],
   ];
 
   for (const [name, pattern] of forbidden) {
@@ -116,14 +121,48 @@ if (registrySource != null) {
 
 const topBarSource = read(topBarRelativePath);
 if (topBarSource != null) {
-  for (const typeName of [
+  const required = [
+    'package com.reactnativescroll.interop.material3',
+    'enum class TopAppBarInteropMode',
+    'class TopAppBarScrollConsumer',
+    'ReactVerticalScrollSourceInterop',
     'NativeNestedInputType',
     'NativeNestedPreResult',
     'NativeNestedPostResult',
-  ]) {
-    const marker = `import com.reactnativescroll.interop.material3.${typeName}`;
+    'Velocity.Zero',
+  ];
+  for (const marker of required) {
     if (!topBarSource.includes(marker)) {
-      violations.push(`${topBarRelativePath}: missing Material3 transaction import: ${typeName}`);
+      violations.push(`${topBarRelativePath}: missing moved TopAppBar marker: ${marker}`);
+    }
+  }
+
+  const forbiddenRuntimeExpo = [
+    /ExpoMaterialTopAppBarView/,
+    /NativeNestedScrollRegistry/,
+    /expo\.modules\.kotlin/,
+  ];
+  for (const pattern of forbiddenRuntimeExpo) {
+    if (pattern.test(topBarSource)) {
+      violations.push(`${topBarRelativePath}: TopAppBar consumer depends on Expo runtime/view API: ${pattern}`);
+    }
+  }
+}
+
+if (fs.existsSync(path.join(process.cwd(), legacyTopBarRelativePath))) {
+  violations.push(`${legacyTopBarRelativePath}: legacy Expo TopAppBar consumer source must be removed`);
+}
+
+const aliasesSource = read(consumerAliasesRelativePath);
+if (aliasesSource != null) {
+  for (const marker of [
+    'typealias TopAppBarScrollConsumer',
+    'com.reactnativescroll.interop.material3.TopAppBarScrollConsumer',
+    'typealias TopAppBarInteropMode',
+    'com.reactnativescroll.interop.material3.TopAppBarInteropMode',
+  ]) {
+    if (!aliasesSource.includes(marker)) {
+      violations.push(`${consumerAliasesRelativePath}: missing Expo-to-Material3 alias marker: ${marker}`);
     }
   }
 }
@@ -149,5 +188,6 @@ if (violations.length > 0) {
 console.log('Material3 adapter invariant: PASS');
 console.log('  neutral PRE/POST ports are used');
 console.log('  Material3 transaction types are outside the Expo registry layer');
+console.log('  TopAppBar consumer source is owned by the Material3 package');
 console.log('  FloatingToolbar remains observation-only');
-console.log('  no source physics, position sampling, timers or concrete RN source typing');
+console.log('  no source physics, position sampling, timers or concrete RN source typing in adapters');

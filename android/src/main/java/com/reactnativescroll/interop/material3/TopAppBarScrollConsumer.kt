@@ -1,6 +1,6 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.material3
 
 import android.util.Log
 import android.view.ViewGroup
@@ -9,10 +9,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
-import com.reactnativescroll.interop.material3.NativeNestedInputType
-import com.reactnativescroll.interop.material3.NativeNestedPostResult
-import com.reactnativescroll.interop.material3.NativeNestedPreResult
 import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
+import expo.modules.materialtoolbar.BuildConfig
+import expo.modules.materialtoolbar.NATIVE_SCROLL_LOG_TAG
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
