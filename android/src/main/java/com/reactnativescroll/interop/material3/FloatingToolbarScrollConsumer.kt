@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 internal open class FloatingToolbarScrollConsumer(
   private val hostView: ViewGroup,
@@ -42,6 +43,7 @@ internal open class FloatingToolbarScrollConsumer(
   private var lastInputDeltaY = 0
   private var lastKnownBehaviorState: RetainedBehaviorState? = null
   private var restoreBehaviorStateOnNextBind = false
+  private var geometryResyncPosted = false
 
   val isBound: Boolean get() = behavior != null && scope != null
 
@@ -189,6 +191,22 @@ internal open class FloatingToolbarScrollConsumer(
   }
 
   fun syncGeometry() {
+    syncGeometryNow()
+    scheduleGeometryResync()
+  }
+
+  private fun scheduleGeometryResync() {
+    if (geometryResyncPosted || !hostView.isAttachedToWindow) return
+    geometryResyncPosted = true
+    hostView.post {
+      geometryResyncPosted = false
+      if (!hostView.isAttachedToWindow || !composeView.isAttachedToWindow || behavior == null) return@post
+      syncGeometryNow()
+      applyCurrentOffset()
+    }
+  }
+
+  private fun syncGeometryNow() {
     val current = behavior ?: return
     if (hostView.width <= 0 || hostView.height <= 0 || composeView.width <= 0 || composeView.height <= 0) return
     val insets = placementInsets() ?: visibleFrameInsets()
@@ -204,9 +222,12 @@ internal open class FloatingToolbarScrollConsumer(
       FloatingToolbarExitDirection.End -> if (rtl) composeView.right - left else right - composeView.left
       else -> composeView.height
     }.coerceAtLeast(1).toFloat()
-    val offset = current.state.offset
+    val previousLimit = current.state.offsetLimit
+    val previousOffset = current.state.offset
+    val wasFullyCollapsed =
+      previousLimit < 0f && previousLimit.isFinite() && abs(previousOffset - previousLimit) <= 1f
     current.state.offsetLimit = -distance
-    current.state.offset = offset
+    current.state.offset = if (wasFullyCollapsed) current.state.offsetLimit else previousOffset
     rememberBehaviorState(current)
     if (BuildConfig.DEBUG) Log.d(
       NATIVE_SCROLL_LOG_TAG,
