@@ -10,7 +10,7 @@ const hostPath =
 const composeHostPath =
   'android/src/main/java/expo/modules/materialtoolbar/ComposeChromeHostView.kt';
 const topBarConsumerPath =
-  'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt';
+  'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
 const sharedLifecyclePath =
   'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt';
 const sharedLedgerPath =
