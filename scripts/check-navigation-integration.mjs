@@ -19,6 +19,7 @@ function forbidText(path, content, needle, label) {
 
 const index = read('index.ts');
 const pkg = read('package.json');
+const examplePkg = read('example/package.json');
 const appJson = read('example/app.json');
 const topTypes = read('src/MaterialTopAppBar.types.ts');
 const topAndroid = read('src/MaterialTopAppBar.android.tsx');
@@ -40,6 +41,9 @@ requireText('src/MaterialTopAppBar.types.ts', topTypes, 'navigationAccessibility
 requireText('index.ts', index, 'MaterialTopAppBarNavigationIcon', 'navigation icon type export');
 requireText('index.ts', index, 'MaterialTopAppBarPlacement', 'header placement type export');
 requireText('package.json', pkg, 'react-native-safe-area-context', 'safe-area peer dependency');
+
+requireText('example/package.json', examplePkg, '"react-native-scroll-interop": "file:.."', 'canonical local package dependency');
+forbidText('example/package.json', examplePkg, '"expo-material-toolbar":', 'legacy package alias');
 
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, "props.placement ?? 'overlay'", 'overlay placement default');
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, "=== 'header'", 'navigator header placement branch');
@@ -96,5 +100,6 @@ if (violations.length > 0) {
 console.log('Navigation integration invariant: PASS');
 console.log('  Expo Router: Stack-owned MaterialTopAppBar + layout-owned MaterialToolbar');
 console.log('  navigation screens contain plain RN ScrollView without NativeScrollHost');
+console.log('  example uses canonical react-native-scroll-interop package identity');
 console.log('  navigator header sizing is owned by MaterialTopAppBar placement="header"');
 console.log('  native Material back action wired without scroll-frame JS transport');
