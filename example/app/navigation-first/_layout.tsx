@@ -11,9 +11,9 @@ export default function NavigationFirstLayout() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack>
+      <Stack screenOptions={{ headerTransparent: true }}>
         <Stack.Screen name="index">
-          <Stack.Header asChild transparent>
+          <Stack.Header asChild>
             <MaterialTopAppBar
               title="Navigation first"
               variant="large"
@@ -23,7 +23,7 @@ export default function NavigationFirstLayout() {
         </Stack.Screen>
 
         <Stack.Screen name="details">
-          <Stack.Header asChild transparent>
+          <Stack.Header asChild>
             <MaterialTopAppBar
               title="Details"
               variant="medium"
