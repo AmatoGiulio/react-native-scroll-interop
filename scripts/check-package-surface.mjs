@@ -57,6 +57,12 @@ if (packageJson.publishConfig?.tag !== 'next') {
 if (packageJson.scripts?.prepublishOnly !== 'npm run check') {
   violations.push('prepublishOnly must run the complete package gate');
 }
+if (packageJson.scripts?.['check:navigation-integration'] !== 'node scripts/check-navigation-integration.mjs') {
+  violations.push('navigation integration guard must remain in the package gate');
+}
+if (!packageJson.scripts?.check?.includes('check:navigation-integration')) {
+  violations.push('npm run check must execute the navigation integration guard');
+}
 if (JSON.stringify(packageJson.files) !== JSON.stringify(expectedFiles)) {
   violations.push('package files allowlist must stay narrow and release-controlled');
 }
@@ -110,8 +116,14 @@ const required = [
   'plugin/rn086AndroidXPatch.js',
   'src/NativeScrollHost.tsx',
   'src/NativeScrollHost.android.tsx',
+  'src/MaterialTopAppBar.types.ts',
+  'src/MaterialTopAppBar.android.tsx',
+  'src/ExpoMaterialTopAppBarNativeView.tsx',
   'android/build.gradle',
   'android/src/main/AndroidManifest.xml',
+  'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt',
+  'android/src/main/res/drawable/react_native_scroll_interop_arrow_back.xml',
   'android-shared/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt',
@@ -170,5 +182,5 @@ console.log('  license: MIT');
 console.log('  npm dist-tag: next');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
-console.log('  runtime Android/JS/plugin surface included');
+console.log('  runtime Android/JS/plugin/navigation-header surface included');
 console.log('  generated Android artifacts, debug sources and repository-only files excluded');
