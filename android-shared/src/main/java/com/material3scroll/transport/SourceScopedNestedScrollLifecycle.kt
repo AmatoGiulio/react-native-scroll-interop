@@ -1,4 +1,4 @@
-package com.material3scroll.transport
+package com.reactnativescroll.interop.core
 
 import android.view.ViewGroup
 import androidx.core.view.ViewCompat

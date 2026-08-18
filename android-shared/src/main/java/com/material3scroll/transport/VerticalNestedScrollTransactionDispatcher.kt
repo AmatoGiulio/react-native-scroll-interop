@@ -1,4 +1,4 @@
-package com.material3scroll.transport
+package com.reactnativescroll.interop.core
 
 /**
  * Synchronous vertical nested-scroll fanout shared by the Expo production host and the bare
