@@ -9,6 +9,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
+import com.reactnativescroll.interop.material3.NativeNestedInputType
+import com.reactnativescroll.interop.material3.NativeNestedPostResult
+import com.reactnativescroll.interop.material3.NativeNestedPreResult
 import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
