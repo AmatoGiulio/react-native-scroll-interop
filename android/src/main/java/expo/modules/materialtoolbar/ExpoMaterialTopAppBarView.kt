@@ -33,6 +33,7 @@ import androidx.core.view.WindowInsetsCompat
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlin.math.roundToInt
 
 private data class TopAppBarHostState(
   val title: String = "",
@@ -84,6 +85,7 @@ class ExpoMaterialTopAppBarView(
 
     lastTopInsetPx = topInset
     resetExpandedChromeGeometry()
+    seedExpandedChromeGeometry()
     scheduleHostMeasureAndLayout()
     scheduleIntrinsicHostSizeResolution()
     composeView.requestLayout()
@@ -98,6 +100,7 @@ class ExpoMaterialTopAppBarView(
     updateTopInset(ViewCompat.getRootWindowInsets(this))
     ViewCompat.requestApplyInsets(this)
     NativeNestedScrollRegistry.registerTopBar(this, topAppBarScrollConsumer)
+    seedExpandedChromeGeometry()
     scheduleIntrinsicHostSizeResolution()
   }
 
@@ -129,6 +132,34 @@ class ExpoMaterialTopAppBarView(
     requestLayout()
     scheduleIntrinsicHostSizeResolution()
     composeView.requestLayout()
+  }
+
+  private fun seedExpandedChromeGeometry() {
+    if (lastTopInsetPx < 0) return
+
+    val appBarHeightDp = when (state.value.variant) {
+      "small" -> 64f
+      "large" -> 152f
+      else -> 112f
+    }
+    val density = resources.displayMetrics.density
+    if (density <= 0f) return
+
+    val targetHeightPx = lastTopInsetPx + (appBarHeightDp * density).roundToInt()
+    if (targetHeightPx <= 0) return
+
+    expandedChromeHeightPx = targetHeightPx
+    if (topAppBarScrollConsumer.updateExpandedChromeHeight(targetHeightPx)) {
+      NativeNestedScrollRegistry.topBarStateChanged(this)
+    }
+
+    if (BuildConfig.DEBUG) {
+      android.util.Log.d(
+        NATIVE_SCROLL_LOG_TAG,
+        "topappbar seedExpanded variant=${state.value.variant} topInset=$lastTopInsetPx " +
+          "height=$targetHeightPx density=$density",
+      )
+    }
   }
 
   private fun scheduleIntrinsicHostSizeResolution() {
@@ -239,10 +270,14 @@ class ExpoMaterialTopAppBarView(
       "small", "large" -> variant
       else -> "medium"
     }
-    if (state.value.variant != normalized) {
+    val changed = state.value.variant != normalized
+    if (changed) {
       resetExpandedChromeGeometry()
     }
     updateState { it.copy(variant = normalized) }
+    if (changed) {
+      seedExpandedChromeGeometry()
+    }
   }
 
   fun setScrollBehavior(behavior: String) = updateState {
@@ -327,7 +362,14 @@ class ExpoMaterialTopAppBarView(
       if (uiState.visible) {
         val navigationIcon: @Composable () -> Unit = {
           if (uiState.navigationIcon == "back") {
-            IconButton(onClick = { onNavigationPress(mapOf()) }) {
+            IconButton(
+              onClick = {
+                if (BuildConfig.DEBUG) {
+                  android.util.Log.d(NATIVE_SCROLL_LOG_TAG, "TOPAPPBAR_NAV_PRESS")
+                }
+                onNavigationPress(emptyMap<String, Any>())
+              },
+            ) {
               Icon(
                 painter = painterResource(R.drawable.react_native_scroll_interop_arrow_back),
                 contentDescription = uiState.navigationAccessibilityLabel,
