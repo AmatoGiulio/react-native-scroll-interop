@@ -13,9 +13,11 @@ import com.facebook.react.uimanager.UIManagerHelper
  * install visual chrome geometry before the first gesture; if more than one ReactScrollView is
  * present, that preparation fails closed rather than choosing one heuristically.
  *
- * Chrome lookup is fail-closed too: at most one eligible consumer of each kind on the same Fabric
- * surface may participate, and ambiguity resolves to nothing. Picking "the largest visible
- * ScrollView" is how this kind of code starts producing bug reports nobody can reproduce.
+ * TopAppBar lookup prefers the native screen that owns the scroll source. This matters during
+ * native-stack transitions, when the outgoing and incoming screens can both remain attached on the
+ * same Fabric surface. A persistent/global TopAppBar can still participate as a surface-scoped
+ * fallback when no screen-local TopAppBar exists. FloatingToolbar remains surface-scoped because a
+ * toolbar may intentionally live outside the Stack and persist across route changes.
  *
  * Registration belongs here only because the module has nowhere better to put it. In the upstream
  * shape the screen layer owns it: a screen already knows which content is its own, and no app-level
@@ -36,6 +38,12 @@ internal object NativeNestedScrollRegistry {
   private val topBars = LinkedHashSet<TopBarEntry>()
   private val toolbars = LinkedHashSet<ToolbarEntry>()
 
+  private val nativeScreenClassNames = setOf(
+    "com.swmansion.rnscreens.Screen",
+    "com.swmansion.rnscreens.legacy.Screen",
+    "com.swmansion.rnscreens.stack.screen.StackScreen",
+  )
+
   fun registerHost(host: ReactNativeNestedScrollHostView) {
     hosts += host
     host.requestNestedChromeBindingRefresh()
@@ -48,7 +56,7 @@ internal object NativeNestedScrollRegistry {
   fun registerTopBar(owner: ExpoMaterialTopAppBarView, consumer: TopAppBarScrollConsumer) {
     topBars.removeAll { it.owner === owner }
     topBars += TopBarEntry(owner, consumer)
-    refreshHostsFor(owner)
+    refreshHostsForTopBar(owner)
   }
 
   fun unregisterTopBar(owner: ExpoMaterialTopAppBarView) {
@@ -58,7 +66,7 @@ internal object NativeNestedScrollRegistry {
   fun registerToolbar(owner: ExpoMaterialToolbarView, consumer: FloatingToolbarScrollConsumer) {
     toolbars.removeAll { it.owner === owner }
     toolbars += ToolbarEntry(owner, consumer)
-    refreshHostsFor(owner)
+    refreshHostsForSurface(owner)
   }
 
   fun unregisterToolbar(owner: ExpoMaterialToolbarView) {
@@ -66,19 +74,43 @@ internal object NativeNestedScrollRegistry {
   }
 
   /** Call whenever Compose binds/unbinds behavior or expanded chrome geometry changes. */
-  fun topBarStateChanged(owner: ExpoMaterialTopAppBarView) = refreshHostsFor(owner)
+  fun topBarStateChanged(owner: ExpoMaterialTopAppBarView) = refreshHostsForTopBar(owner)
 
-  fun toolbarStateChanged(owner: ExpoMaterialToolbarView) = refreshHostsFor(owner)
+  fun toolbarStateChanged(owner: ExpoMaterialToolbarView) = refreshHostsForSurface(owner)
 
   fun resolveTopBar(source: View): TopAppBarScrollConsumer? {
     cleanupDetached()
-    val candidates = topBars.filter { isEligible(it.owner, source) && it.consumer.hasChrome }
-    return single(candidates.map { it.consumer }, "TopAppBar", source)
+
+    val surfaceCandidates = topBars.filter {
+      isSurfaceEligible(it.owner, source) && it.consumer.hasChrome
+    }
+    val sourceScreen = findNativeScreenAncestor(source)
+
+    if (sourceScreen != null) {
+      val screenCandidates = surfaceCandidates.filter {
+        findNativeScreenAncestor(it.owner) === sourceScreen
+      }
+      if (screenCandidates.isNotEmpty()) {
+        return single(screenCandidates.map { it.consumer }, "TopAppBarScreen", source)
+      }
+
+      // Preserve the standalone/persistent TopAppBar case, but never fall through to a TopAppBar
+      // owned by a different native-stack screen.
+      val globalCandidates = surfaceCandidates.filter {
+        findNativeScreenAncestor(it.owner) == null
+      }
+      return single(globalCandidates.map { it.consumer }, "TopAppBarGlobal", source)
+    }
+
+    val globalCandidates = surfaceCandidates.filter {
+      findNativeScreenAncestor(it.owner) == null
+    }
+    return single(globalCandidates.map { it.consumer }, "TopAppBarGlobal", source)
   }
 
   fun resolveToolbar(source: View): FloatingToolbarScrollConsumer? {
     cleanupDetached()
-    val candidates = toolbars.filter { isEligible(it.owner, source) && it.consumer.isBound }
+    val candidates = toolbars.filter { isSurfaceEligible(it.owner, source) && it.consumer.isBound }
     return single(candidates.map { it.consumer }, "FloatingToolbar", source)
   }
 
@@ -88,19 +120,35 @@ internal object NativeNestedScrollRegistry {
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
         "TX_REGISTRY ambiguous$kind count=${candidates.size} " +
-          "source=${source.javaClass.name}#${source.id}",
+          "source=${source.javaClass.name}#${source.id} screen=${screenScopeLabel(source)}",
       )
     }
     return null
   }
 
-  private fun isEligible(owner: View, source: View): Boolean =
+  private fun isSurfaceEligible(owner: View, source: View): Boolean =
     owner.isAttachedToWindow &&
       owner.isShown &&
       owner.windowVisibility == View.VISIBLE &&
       sameNativeScope(owner, source)
 
-  private fun refreshHostsFor(owner: View) {
+  private fun refreshHostsForTopBar(owner: View) {
+    val ownerScreen = findNativeScreenAncestor(owner)
+    hosts.forEach { host ->
+      if (!sameNativeScope(owner, host)) return@forEach
+
+      val sameTopBarScope = if (ownerScreen != null) {
+        findNativeScreenAncestor(host) === ownerScreen
+      } else {
+        true
+      }
+      if (sameTopBarScope) {
+        host.requestNestedChromeBindingRefresh()
+      }
+    }
+  }
+
+  private fun refreshHostsForSurface(owner: View) {
     hosts.forEach { host ->
       if (sameNativeScope(owner, host)) {
         host.requestNestedChromeBindingRefresh()
@@ -112,6 +160,20 @@ internal object NativeNestedScrollRegistry {
     hosts.removeAll { !it.isAttachedToWindow }
     topBars.removeAll { !it.owner.isAttachedToWindow }
     toolbars.removeAll { !it.owner.isAttachedToWindow }
+  }
+
+  private fun findNativeScreenAncestor(view: View): View? {
+    var current: View? = view
+    while (current != null) {
+      if (current.javaClass.name in nativeScreenClassNames) return current
+      current = current.parent as? View
+    }
+    return null
+  }
+
+  private fun screenScopeLabel(view: View): String {
+    val screen = findNativeScreenAncestor(view) ?: return "none"
+    return "${screen.javaClass.name}#${screen.id}"
   }
 
   private fun sameNativeScope(first: View, second: View): Boolean {
