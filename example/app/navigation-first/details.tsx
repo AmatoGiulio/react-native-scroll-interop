@@ -33,7 +33,6 @@ const styles = StyleSheet.create({
   host: { flex: 1, backgroundColor: '#101318' },
   content: { paddingHorizontal: 20, paddingBottom: 160 },
   card: {
-    marginTop: 16,
     marginBottom: 12,
     padding: 20,
     borderRadius: 20,
