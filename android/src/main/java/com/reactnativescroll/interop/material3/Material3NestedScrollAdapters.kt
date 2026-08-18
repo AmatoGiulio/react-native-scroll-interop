@@ -5,7 +5,6 @@ import com.reactnativescroll.interop.core.VerticalNestedPostScrollConsumer
 import com.reactnativescroll.interop.core.VerticalNestedPostScrollObserver
 import com.reactnativescroll.interop.core.VerticalNestedPreScrollConsumer
 import expo.modules.materialtoolbar.FloatingToolbarScrollConsumer
-import expo.modules.materialtoolbar.NativeNestedInputType
 import expo.modules.materialtoolbar.TopAppBarScrollConsumer
 
 /**
