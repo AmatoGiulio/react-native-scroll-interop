@@ -20,10 +20,6 @@ import type {
 } from './src/MaterialTopAppBar.types';
 import type { MaterialToolbarThemeMode } from './src/MaterialToolbar.types';
 
-/**
- * Android Material3 options layered on top of Expo Router's existing native-stack options.
- * Standard Expo Router / React Navigation options remain the primary API.
- */
 export type Material3TopAppBarNavigationOptions = {
   variant?: MaterialTopAppBarVariant;
   scrollBehavior?: MaterialTopAppBarScrollBehavior;
@@ -33,7 +29,7 @@ export type Material3TopAppBarNavigationOptions = {
 };
 
 export type Material3StackNavigationOptions = {
-  /** Keep the platform-native Expo/React Navigation header on Android. */
+  /** Keep the platform-native Expo Router header on Android. */
   topAppBar?: false | Material3TopAppBarNavigationOptions;
 };
 
@@ -74,32 +70,30 @@ type SplitMaterial3Options = {
   navigationOptions: ExpoStackScreenOptionsObject;
 };
 
-const UNSUPPORTED_MATERIAL_HEADER_KEYS = [
-  'headerLeft',
-  'headerRight',
-  'unstable_headerLeftItems',
-  'unstable_headerRightItems',
-  'headerBackground',
-  'headerSearchBarOptions',
-  'headerBackIcon',
-  'headerBackImageSource',
-  'headerStyle',
-  'headerTintColor',
-  'headerTitleAlign',
-  'headerTitleStyle',
-  'headerShadowVisible',
-] as const satisfies readonly (keyof ExpoStackScreenOptionsObject)[];
+const SUPPORTED_HEADER_KEYS = new Set([
+  'header',
+  'headerShown',
+  'headerTransparent',
+  'headerTitle',
+  'headerLargeTitle',
+  'headerLargeTitleEnabled',
+  'headerBackVisible',
+]);
 
 function splitMaterial3(options: RuntimeNavigationOptions): SplitMaterial3Options {
   const { material3, ...navigationOptions } = options;
   return { material3, navigationOptions };
 }
 
-function hasUnsupportedMaterialHeaderOptions(
-  options: ExpoStackScreenOptionsObject
-): boolean {
+function hasUnsupportedHeaderOptions(options: ExpoStackScreenOptionsObject): boolean {
   if (typeof options.headerTitle === 'function') return true;
-  return UNSUPPORTED_MATERIAL_HEADER_KEYS.some((key) => options[key] !== undefined);
+  if (options.unstable_nativeProps !== undefined) return true;
+
+  return Object.keys(options).some(
+    (key) =>
+      (key.startsWith('header') || key.startsWith('unstable_header')) &&
+      !SUPPORTED_HEADER_KEYS.has(key)
+  );
 }
 
 function resolveTitle(headerProps: NativeStackHeaderProps): string {
@@ -152,19 +146,15 @@ function nativeHeaderFallback(
   };
 }
 
-/** Root screenOptions establish Material3 as the Android default. */
 function applyRootMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
   const { material3, navigationOptions } = splitMaterial3(options);
 
   if (Platform.OS !== 'android') return navigationOptions;
   if (navigationOptions.header !== undefined) return navigationOptions;
+  if (navigationOptions.headerShown === false) return navigationOptions;
+  if (navigationOptions.headerTransparent === false) return navigationOptions;
   if (material3?.topAppBar === false) return navigationOptions;
-  if (
-    navigationOptions.headerTransparent === false ||
-    hasUnsupportedMaterialHeaderOptions(navigationOptions)
-  ) {
-    return navigationOptions;
-  }
+  if (hasUnsupportedHeaderOptions(navigationOptions)) return navigationOptions;
 
   return {
     ...navigationOptions,
@@ -173,7 +163,6 @@ function applyRootMaterial3(options: RuntimeNavigationOptions): RuntimeNavigatio
   };
 }
 
-/** Per-screen Material3 is an explicit override; unsupported header options fall back losslessly. */
 function applyScreenMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
   const { material3, navigationOptions } = splitMaterial3(options);
 
@@ -181,8 +170,9 @@ function applyScreenMaterial3(options: RuntimeNavigationOptions): RuntimeNavigat
   if (navigationOptions.header !== undefined) return navigationOptions;
 
   const needsNativeHeader =
+    navigationOptions.headerShown === false ||
     navigationOptions.headerTransparent === false ||
-    hasUnsupportedMaterialHeaderOptions(navigationOptions);
+    hasUnsupportedHeaderOptions(navigationOptions);
 
   if (material3 === undefined) {
     return needsNativeHeader ? nativeHeaderFallback(navigationOptions) : navigationOptions;
@@ -262,13 +252,7 @@ type MaterialStackComponent = typeof ExpoStack & {
   Screen: typeof ExpoStack.Screen & ((props: MaterialStackScreenProps) => ReactNode);
 };
 
-/**
- * Expo Router Stack with Android Material3 TopAppBar translation.
- *
- * Navigation remains owned by Expo Router / React Navigation / react-native-screens. iOS and web
- * preserve the existing native-stack behavior; Android replaces the default header only when its
- * options can be translated without dropping behavior.
- */
+/** Expo Router Stack with Android Material3 TopAppBar translation. */
 export const Stack = Object.assign(MaterialStack, ExpoStack) as MaterialStackComponent;
 
 export default Stack;
