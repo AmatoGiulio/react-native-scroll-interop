@@ -183,6 +183,36 @@ if (floatingToolbarSource != null) {
       violations.push(`${floatingToolbarRelativePath}: FloatingToolbar consumer depends on Expo runtime/view API: ${pattern}`);
     }
   }
+
+  const prepareStart = floatingToolbarSource.indexOf('fun prepareNestedSource(source: ViewGroup): Boolean');
+  const prepareEnd = floatingToolbarSource.indexOf('private fun restoreRetainedBehaviorState', prepareStart);
+  if (prepareStart < 0 || prepareEnd < 0) {
+    violations.push(`${floatingToolbarRelativePath}: cannot isolate prepareNestedSource for source-state ordering check`);
+  } else {
+    const prepareBody = floatingToolbarSource.slice(prepareStart, prepareEnd);
+    const retainedRead = prepareBody.indexOf('val retained = sourceStates[source]');
+    const geometrySync = prepareBody.indexOf('syncGeometryNow()');
+    const firstAuthoritySwitch = prepareBody.indexOf('preparedSource = source');
+    const finalAuthoritySwitch = prepareBody.lastIndexOf('preparedSource = source');
+    const restoredPersist = prepareBody.indexOf('rememberBehaviorState(current)', finalAuthoritySwitch);
+
+    if (
+      retainedRead < 0 ||
+      geometrySync < 0 ||
+      firstAuthoritySwitch < 0 ||
+      finalAuthoritySwitch < 0 ||
+      restoredPersist < 0 ||
+      firstAuthoritySwitch <= retainedRead ||
+      geometrySync <= retainedRead ||
+      finalAuthoritySwitch <= geometrySync ||
+      restoredPersist <= finalAuthoritySwitch
+    ) {
+      violations.push(
+        `${floatingToolbarRelativePath}: incoming source state must be captured before preparedSource switches, ` +
+          'while outgoing geometry/state must be saved before the incoming source becomes authoritative',
+      );
+    }
+  }
 }
 
 for (const legacyPath of [
@@ -240,5 +270,6 @@ console.log('  FloatingToolbar consumer source is owned by the Material3 package
 console.log('  FloatingToolbar placement remains in the Expo view layer');
 console.log('  FloatingToolbar remains observation-only');
 console.log('  persistent FloatingToolbar scroll state is scoped to the frontmost RN source');
+console.log('  incoming FloatingToolbar state is captured before source authority switches');
 console.log('  pop refresh restores the newly frontmost screen state without source sampling');
 console.log('  no source physics, position sampling, timers or concrete RN source typing in adapters');
