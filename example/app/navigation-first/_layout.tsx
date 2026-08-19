@@ -1,41 +1,36 @@
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
-import {
-  MaterialToolbar,
-  MaterialTopAppBar,
-} from 'react-native-scroll-interop';
+import { MaterialToolbar } from 'react-native-scroll-interop';
+import { Stack } from 'react-native-scroll-interop/router';
 
 export default function NavigationFirstLayout() {
   const router = useRouter();
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerTransparent: true }}>
-        <Stack.Screen name="index">
-          <Stack.Header asChild>
-            <MaterialTopAppBar
-              placement="header"
-              title="Navigation first"
-              variant="large"
-              scrollBehavior="exitUntilCollapsed"
-            />
-          </Stack.Header>
-        </Stack.Screen>
+      <Stack>
+        <Stack.Screen
+          name="index"
+          options={{
+            title: 'Navigation first',
+            headerLargeTitle: true,
+          }}
+        />
 
-        <Stack.Screen name="details">
-          <Stack.Header asChild>
-            <MaterialTopAppBar
-              placement="header"
-              title="Details"
-              variant="medium"
-              scrollBehavior="enterAlways"
-              navigationIcon="back"
-              navigationAccessibilityLabel="Back"
-              onNavigationPress={() => router.back()}
-            />
-          </Stack.Header>
-        </Stack.Screen>
+        <Stack.Screen
+          name="details"
+          options={{
+            title: 'Details',
+            material3: {
+              topAppBar: {
+                variant: 'medium',
+                scrollBehavior: 'enterAlways',
+                navigationAccessibilityLabel: 'Back',
+              },
+            },
+          }}
+        />
       </Stack>
 
       <MaterialToolbar.Root
