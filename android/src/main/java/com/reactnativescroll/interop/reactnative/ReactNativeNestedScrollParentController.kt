@@ -41,10 +41,14 @@ class ReactNativeNestedScrollParentController(
   private var preCount = 0L
   private var postCount = 0L
 
+  private var preparedSource: ViewGroup? = null
   private var activeTopBar: TopAppBarScrollConsumer? = null
   private var activeToolbar: FloatingToolbarScrollConsumer? = null
   private var activeSourceCapabilities: ReactVerticalScrollSourceCapabilities? = null
   private var nestedTransactionActive = false
+
+  internal val ownerView: ViewGroup
+    get() = owner
 
   private val activeSource: ViewGroup?
     get() = sourceLifecycle.activeSource
@@ -85,6 +89,7 @@ class ReactNativeNestedScrollParentController(
    * resolved again when [onStartNestedScroll] begins the actual synchronous transaction.
    */
   fun prepareNestedSource(source: ViewGroup): Boolean {
+    preparedSource = source
     ensureNestedScrollingEnabled(source)
     val topBar = NativeNestedScrollRegistry.resolveTopBar(source)
     val toolbar = NativeNestedScrollRegistry.resolveToolbar(source)
@@ -98,9 +103,25 @@ class ReactNativeNestedScrollParentController(
     return true
   }
 
+  /** Register a navigation-screen owner for chrome refreshes after it becomes a native ancestor. */
+  fun onOwnerAttached() {
+    NativeNestedScrollRegistry.registerScreenParent(this)
+    requestNestedChromeBindingRefresh()
+  }
+
   fun onOwnerDetached() {
+    NativeNestedScrollRegistry.unregisterScreenParent(this)
+    preparedSource = null
     flushPendingLedger("detach")
     clearActiveSession()
+  }
+
+  /** Re-prepare the source already owned by a navigation screen when native chrome changes. */
+  internal fun requestNestedChromeBindingRefresh() {
+    if (!owner.isAttachedToWindow) return
+    val source = preparedSource ?: return
+    if (!source.isAttachedToWindow) return
+    prepareNestedSource(source)
   }
 
   // ---------------------------------------------------------------------------

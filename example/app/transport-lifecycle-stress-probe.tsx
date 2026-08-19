@@ -1,4 +1,4 @@
-import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'expo-material-toolbar';
+import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'react-native-scroll-interop';
 import { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 

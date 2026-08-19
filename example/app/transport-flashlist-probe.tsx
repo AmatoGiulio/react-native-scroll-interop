@@ -1,5 +1,5 @@
 import { FlashList } from '@shopify/flash-list';
-import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'expo-material-toolbar';
+import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'react-native-scroll-interop';
 import { StyleSheet, Text, View } from 'react-native';
 
 const ROWS = Array.from({ length: 600 }, (_, index) => ({

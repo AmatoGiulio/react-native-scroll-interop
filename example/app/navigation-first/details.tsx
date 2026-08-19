@@ -1,31 +1,28 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { NativeScrollHost } from 'react-native-scroll-interop';
-
 const ROWS = Array.from({ length: 64 }, (_, index) => `Details row ${index + 1}`);
 
 export default function NavigationFirstDetails() {
   return (
-    <NativeScrollHost style={styles.host}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Details screen</Text>
-          <Text style={styles.cardBody}>
-            This screen declares no TopAppBar and no FloatingToolbar. Both come from the navigation layout.
-          </Text>
-        </View>
+    <ScrollView
+      style={styles.host}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Details screen</Text>
+        <Text style={styles.cardBody}>
+          This screen declares no TopAppBar, FloatingToolbar or scroll host. The native StackScreen owns the interop.
+        </Text>
+      </View>
 
-        {ROWS.map((row, index) => (
-          <View key={row} style={styles.row}>
-            <Text style={styles.number}>{String(index + 1).padStart(2, '0')}</Text>
-            <Text style={styles.text}>{row}</Text>
-          </View>
-        ))}
-      </ScrollView>
-    </NativeScrollHost>
+      {ROWS.map((row, index) => (
+        <View key={row} style={styles.row}>
+          <Text style={styles.number}>{String(index + 1).padStart(2, '0')}</Text>
+          <Text style={styles.text}>{row}</Text>
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 

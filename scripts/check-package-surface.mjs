@@ -60,8 +60,14 @@ if (packageJson.scripts?.prepublishOnly !== 'npm run check') {
 if (packageJson.scripts?.['check:navigation-integration'] !== 'node scripts/check-navigation-integration.mjs') {
   violations.push('navigation integration guard must remain in the package gate');
 }
+if (packageJson.scripts?.['check:rnscreens-interop-plugin'] !== 'node scripts/check-rnscreens-interop-plugin.mjs') {
+  violations.push('react-native-screens interop guard must remain in the package gate');
+}
 if (!packageJson.scripts?.check?.includes('check:navigation-integration')) {
   violations.push('npm run check must execute the navigation integration guard');
+}
+if (!packageJson.scripts?.check?.includes('check:rnscreens-interop-plugin')) {
+  violations.push('npm run check must execute the react-native-screens interop guard');
 }
 if (JSON.stringify(packageJson.files) !== JSON.stringify(expectedFiles)) {
   violations.push('package files allowlist must stay narrow and release-controlled');
@@ -114,6 +120,7 @@ const required = [
   'expo-module.config.json',
   'plugin/withRn086AndroidXScroll.js',
   'plugin/rn086AndroidXPatch.js',
+  'plugin/reactNativeScreensInteropPatch.js',
   'src/NativeScrollHost.tsx',
   'src/NativeScrollHost.android.tsx',
   'src/MaterialTopAppBar.types.ts',
@@ -123,6 +130,7 @@ const required = [
   'android/src/main/AndroidManifest.xml',
   'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt',
   'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParentController.kt',
   'android/src/main/res/drawable/react_native_scroll_interop_arrow_back.xml',
   'android-shared/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt',
@@ -182,5 +190,5 @@ console.log('  license: MIT');
 console.log('  npm dist-tag: next');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
-console.log('  runtime Android/JS/plugin/navigation-header surface included');
+console.log('  runtime Android/JS/plugin/navigation-header/screens-interoperability surface included');
 console.log('  generated Android artifacts, debug sources and repository-only files excluded');

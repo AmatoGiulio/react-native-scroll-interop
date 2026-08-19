@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const violations = [];
@@ -17,8 +19,22 @@ function forbidText(path, content, needle, label) {
   }
 }
 
+function collectSourceFiles(directory) {
+  const files = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const absolutePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectSourceFiles(absolutePath));
+    } else if (/\.(?:ts|tsx)$/.test(entry.name)) {
+      files.push(absolutePath);
+    }
+  }
+  return files;
+}
+
 const index = read('index.ts');
 const pkg = read('package.json');
+const appJson = read('example/app.json');
 const topTypes = read('src/MaterialTopAppBar.types.ts');
 const topAndroid = read('src/MaterialTopAppBar.android.tsx');
 const topNative = read('src/ExpoMaterialTopAppBarNativeView.tsx');
@@ -57,6 +73,7 @@ requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopA
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'R.drawable.react_native_scroll_interop_arrow_back', 'packaged back drawable');
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'navigationIcon = navigationIcon', 'Material3 TopAppBar navigation slot');
 
+requireText('example/app.json', appJson, '"reactNativeScreensInterop": true', 'direct react-native-screens interop option');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, '<Stack screenOptions={{ headerTransparent: true }}>', 'Expo Router transparent custom-header scope');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, '<Stack.Header asChild>', 'Expo Router custom header');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'placement="header"', 'TopAppBar-owned navigator sizing');
@@ -67,13 +84,24 @@ forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'useSafeAreaI
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'TOP_APP_BAR_HEIGHT', 'app-owned TopAppBar height constants');
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, "position: 'relative'", 'app-owned TopAppBar positioning');
 
-for (const [path, content] of [
+for (const [filePath, content] of [
   ['example/app/navigation-first/index.tsx', expoHome],
   ['example/app/navigation-first/details.tsx', expoDetails],
 ]) {
-  requireText(path, content, '<NativeScrollHost', 'screen-local NativeScrollHost');
-  forbidText(path, content, 'MaterialTopAppBar', 'screen-local TopAppBar declaration');
-  forbidText(path, content, 'MaterialToolbar', 'screen-local FloatingToolbar declaration');
+  requireText(filePath, content, '<ScrollView', 'screen-local React Native ScrollView');
+  forbidText(filePath, content, 'NativeScrollHost', 'app-level NativeScrollHost');
+  forbidText(filePath, content, 'MaterialTopAppBar', 'screen-local TopAppBar declaration');
+  forbidText(filePath, content, 'MaterialToolbar', 'screen-local FloatingToolbar declaration');
+}
+
+const repositoryRoot = fileURLToPath(new URL('../', import.meta.url));
+const exampleAppRoot = path.join(repositoryRoot, 'example', 'app');
+for (const absolutePath of collectSourceFiles(exampleAppRoot)) {
+  const content = readFileSync(absolutePath, 'utf8');
+  if (content.includes('expo-material-toolbar')) {
+    const relativePath = path.relative(repositoryRoot, absolutePath);
+    violations.push(`${relativePath}: contains legacy package import expo-material-toolbar`);
+  }
 }
 
 requireText('README.md', readme, '## Expo Router SDK 57', 'Expo Router integration docs');
@@ -92,5 +120,7 @@ if (violations.length > 0) {
 
 console.log('Navigation integration invariant: PASS');
 console.log('  Expo Router: Stack-owned MaterialTopAppBar + layout-owned MaterialToolbar');
+console.log('  navigation screens contain plain RN ScrollView without NativeScrollHost');
+console.log('  all example routes use canonical react-native-scroll-interop package identity');
 console.log('  navigator header sizing is owned by MaterialTopAppBar placement="header"');
 console.log('  native Material back action wired without scroll-frame JS transport');
