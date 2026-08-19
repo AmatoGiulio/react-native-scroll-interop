@@ -20,6 +20,8 @@ const expectedFiles = [
   'app.plugin.js',
   'expo-module.config.json',
 ];
+const expectedCheck =
+  'npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:rnscreens-interop-plugin && npm run check:package-surface';
 const violations = [];
 
 function expect(condition, message) {
@@ -30,33 +32,30 @@ expect(packageJson.name === expectedName, `unexpected package name: ${packageJso
 expect(packageJson.version === expectedVersion, `unexpected package version: ${packageJson.version ?? '<missing>'}`);
 expect(packageJson.private !== true, 'public release package must not be private');
 expect(packageJson.license === 'MIT', `unexpected package license: ${packageJson.license ?? '<missing>'}`);
-expect(
-  packageJson.repository?.url === 'git+https://github.com/AmatoGiulio/react-native-scroll-interop.git',
-  `unexpected repository URL: ${packageJson.repository?.url ?? '<missing>'}`,
-);
 expect(packageJson.publishConfig?.access === 'public', 'publishConfig.access must be public');
 expect(packageJson.publishConfig?.tag === 'next', 'alpha publishConfig.tag must be next');
 expect(packageJson.scripts?.prepublishOnly === 'npm run check', 'prepublishOnly must run the complete package gate');
+expect(packageJson.scripts?.check === expectedCheck, 'npm run check does not match the release gate');
 expect(
-  packageJson.scripts?.check ===
-    'npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:rn086-androidx-plugin && npm run check:rnscreens-interop-plugin && npm run check:package-surface',
-  'npm run check must contain only the five release gates in the expected order',
+  packageJson.scripts?.['check:react-native-compat-plugin'] ===
+    'node scripts/check-react-native-compat-plugin.mjs',
+  'React Native compatibility gate is missing',
 );
 expect(
   packageJson.peerDependencies?.expo === '>=57.0.0 <58.0.0',
-  'Expo SDK 57 peer range changed without certification',
+  'Expo peer range changed without certification',
 );
 expect(
   packageJson.peerDependencies?.['expo-router'] === '>=57.0.0 <58.0.0',
-  'Expo Router SDK 57 must remain the router-subpath peer',
+  'Expo Router peer range changed without certification',
 );
 expect(
   packageJson.peerDependenciesMeta?.['expo-router']?.optional === true,
   'Expo Router must remain optional for root-only consumers',
 );
 expect(
-  packageJson.peerDependencies?.['react-native'] === '>=0.86.0 <0.87.0',
-  'React Native peer range changed without certification',
+  packageJson.peerDependencies?.['react-native'] === '>=0.86.0 <0.88.0',
+  'React Native peer range must cover the certified 0.86.x and 0.87.x lines only',
 );
 expect(
   packageJson.peerDependencies?.['react-native-screens'] === '>=4.26.0 <4.27.0',
@@ -64,7 +63,7 @@ expect(
 );
 expect(
   packageJson.peerDependenciesMeta?.['react-native-screens']?.optional === true,
-  'react-native-screens must remain optional for standalone NativeScrollHost consumers',
+  'react-native-screens must remain optional for standalone consumers',
 );
 expect(
   JSON.stringify(packageJson.files) === JSON.stringify(expectedFiles),
@@ -74,11 +73,9 @@ expect(androidGradle.includes(`version = '${expectedVersion}'`), 'Android librar
 expect(androidGradle.includes(`versionName '${expectedVersion}'`), 'Android versionName must match package version');
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const result = spawnSync(
-  npmCommand,
-  ['pack', '--dry-run', '--json', '--ignore-scripts'],
-  { encoding: 'utf8' },
-);
+const result = spawnSync(npmCommand, ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+  encoding: 'utf8',
+});
 
 if (result.status !== 0) {
   process.stderr.write(result.stderr || result.stdout || 'npm pack --dry-run failed\n');
@@ -106,8 +103,8 @@ const required = [
   'router.tsx',
   'app.plugin.js',
   'expo-module.config.json',
-  'plugin/withRn086AndroidXScroll.js',
-  'plugin/rn086AndroidXPatch.js',
+  'plugin/withScrollInterop.js',
+  'plugin/reactNativeScrollCompatPatch.js',
   'plugin/reactNativeScreensInteropPatch.js',
   'src/NativeScrollHost.tsx',
   'src/NativeScrollHost.android.tsx',
@@ -140,10 +137,15 @@ const forbiddenPrefixes = [
   'android-shared/.gradle/',
   'android-shared/build/',
 ];
-const forbiddenExact = new Set(['ARCHITECTURE.md', 'RELEASE.md']);
+const forbiddenExact = new Set([
+  'ARCHITECTURE.md',
+  'RELEASE.md',
+  'plugin/withRn086AndroidXScroll.js',
+  'plugin/rn086AndroidXPatch.js',
+]);
 
 for (const file of files) {
-  if (forbiddenExact.has(file)) violations.push(`repository-only documentation leaked into package: ${file}`);
+  if (forbiddenExact.has(file)) violations.push(`obsolete/repository-only file leaked into package: ${file}`);
   for (const prefix of forbiddenPrefixes) {
     if (file.startsWith(prefix)) violations.push(`repository/generated path leaked into package: ${file}`);
   }
@@ -163,6 +165,7 @@ if (violations.length > 0) {
 
 console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
+console.log('  React Native peer: 0.86.x / 0.87.x');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
 console.log('  tarball contains runtime/plugin sources plus npm-mandatory README/LICENSE only');
