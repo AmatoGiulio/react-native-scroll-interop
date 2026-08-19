@@ -360,12 +360,23 @@ requested = preConsumed + childConsumed + postConsumed + remaining
 The maintained repository surface is intentionally small:
 
 ```text
-android/          Expo/native Android integration + Material3 consumers
-android-shared/   neutral nested-scroll core + RN source compatibility boundary
-plugin/           config-plugin source patches
-src/              public React Native components/types
-scripts/          invariant/release gates
-example/          navigation-first + standalone smoke app
+android/   complete Android runtime: neutral core, RN boundary, Material3 and Expo integration
+plugin/    fail-closed RN and react-native-screens source patches
+src/       public React Native components and types
+scripts/   invariant and package/release gates
+example/   navigation-first + standalone smoke app
+```
+
+The neutral core now lives in the standard Android source tree:
+
+```text
+android/src/main/java/com/reactnativescroll/interop/core/
+```
+
+The React Native compatibility boundary lives beside it:
+
+```text
+android/src/main/java/com/reactnativescroll/interop/reactnative/
 ```
 
 Historical probes and research documents are intentionally kept in Git history rather than the active tree.
@@ -391,7 +402,7 @@ The repository example is the RN 0.86 / Expo Router runtime smoke test. Release 
 
 ## Package contents
 
-The npm allowlist contains only runtime/plugin sources and entry files. npm adds `README.md`, `LICENSE` and `package.json` to the tarball. Example code, scripts, CI configuration, architecture/release notes and generated Android build output are excluded.
+The npm allowlist contains one Android runtime tree plus plugin/JS entry sources. npm adds `README.md`, `LICENSE` and `package.json` to the tarball. Example code, scripts, CI configuration, architecture/release notes and generated Android build output are excluded.
 
 ## License
 
