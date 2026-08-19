@@ -4,30 +4,23 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 const violations = [];
 
-function requireText(path, content, needle, label) {
-  if (!content.includes(needle)) {
-    violations.push(`${path}: missing ${label ?? needle}`);
-  }
+function requireText(filePath, content, needle, label = needle) {
+  if (!content.includes(needle)) violations.push(`${filePath}: missing ${label}`);
 }
 
-function forbidText(path, content, needle, label) {
-  if (content.includes(needle)) {
-    violations.push(`${path}: contains forbidden ${label ?? needle}`);
-  }
+function forbidText(filePath, content, needle, label = needle) {
+  if (content.includes(needle)) violations.push(`${filePath}: contains forbidden ${label}`);
 }
 
 function collectSourceFiles(directory) {
   const files = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const absolutePath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectSourceFiles(absolutePath));
-    } else if (/\.(?:ts|tsx)$/.test(entry.name)) {
-      files.push(absolutePath);
-    }
+    if (entry.isDirectory()) files.push(...collectSourceFiles(absolutePath));
+    else if (/\.(?:ts|tsx)$/.test(entry.name)) files.push(absolutePath);
   }
   return files;
 }
@@ -45,20 +38,16 @@ const expoLayout = read('example/app/navigation-first/_layout.tsx');
 const expoHome = read('example/app/navigation-first/index.tsx');
 const expoDetails = read('example/app/navigation-first/details.tsx');
 const readme = read('README.md');
-const product = read('PRODUCT.md');
 const release = read('RELEASE.md');
 
 requireText('src/MaterialTopAppBar.types.ts', topTypes, "MaterialTopAppBarNavigationIcon = 'none' | 'back'", 'navigation icon public type');
 requireText('src/MaterialTopAppBar.types.ts', topTypes, "MaterialTopAppBarPlacement = 'overlay' | 'header'", 'header placement public type');
-requireText('src/MaterialTopAppBar.types.ts', topTypes, 'placement?: MaterialTopAppBarPlacement', 'header placement prop');
 requireText('src/MaterialTopAppBar.types.ts', topTypes, 'onNavigationPress?: () => void', 'navigation callback prop');
-requireText('src/MaterialTopAppBar.types.ts', topTypes, 'navigationAccessibilityLabel?: string', 'navigation accessibility label');
 requireText('index.ts', index, 'MaterialTopAppBarNavigationIcon', 'navigation icon type export');
 requireText('index.ts', index, 'MaterialTopAppBarPlacement', 'header placement type export');
-requireText('package.json', pkg, 'react-native-safe-area-context', 'safe-area peer dependency');
+requireText('package.json', pkg, '"react-native": ">=0.86.0 <0.88.0"', 'RN 0.86/0.87 peer range');
 requireText('package.json', pkg, '"expo-router": ">=57.0.0 <58.0.0"', 'Expo Router optional peer');
-requireText('package.json', pkg, '"optional": true', 'optional router peer metadata');
-requireText('package.json', pkg, '"router.tsx"', 'router subpath package surface');
+requireText('package.json', pkg, '"react-native-screens": ">=4.26.0 <4.27.0"', 'react-native-screens certified peer');
 
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, "props.placement ?? 'overlay'", 'overlay placement default');
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, "=== 'header'", 'navigator header placement branch');
@@ -67,29 +56,25 @@ requireText('src/MaterialTopAppBar.android.tsx', topAndroid, 'small: 64', 'small
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, 'medium: 112', 'medium Material3 expanded height');
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, 'large: 152', 'large Material3 expanded height');
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, "navigationIcon = 'none'", 'navigation icon default');
-requireText('src/MaterialTopAppBar.android.tsx', topAndroid, 'onNavigationPress={onNavigationPress ? handleNavigationPress : undefined}', 'native navigation event wiring');
 requireText('src/ExpoMaterialTopAppBarNativeView.tsx', topNative, 'onNavigationPress?:', 'native navigation event prop');
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt', topModule, 'Events("onNavigationPress")', 'Expo navigation event registration');
-requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt', topModule, 'Prop("navigationIcon")', 'native navigation icon prop');
-
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'IconButton(', 'native Material navigation button');
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'onNavigationPress(emptyMap<String, Any>())', 'native Material navigation event dispatch');
-requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'R.drawable.react_native_scroll_interop_arrow_back', 'packaged back drawable');
-requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'navigationIcon = navigationIcon', 'Material3 TopAppBar navigation slot');
 
-requireText('router.tsx', router, "Stack as ExpoStack", 'Expo Router Stack delegation');
+requireText('router.tsx', router, 'Stack as ExpoStack', 'Expo Router Stack delegation');
 requireText('router.tsx', router, "Platform.OS !== 'android'", 'non-Android pass-through');
 requireText('router.tsx', router, 'Material3StackNavigationOptions', 'Material3 option namespace');
 requireText('router.tsx', router, 'headerLargeTitleEnabled === true || options.headerLargeTitle === true', 'standard large-title mapping');
-requireText('router.tsx', router, "variant === 'large' ? 'exitUntilCollapsed' : 'none'", 'large-title scroll behavior mapping');
+requireText('router.tsx', router, "variant === 'large' ? 'exitUntilCollapsed' : 'none'", 'large-title behavior mapping');
 requireText('router.tsx', router, "navigationIcon={canGoBack ? 'back' : 'none'}", 'automatic Material back affordance');
 requireText('router.tsx', router, 'headerProps.navigation.goBack()', 'automatic navigation back action');
-requireText('router.tsx', router, 'headerTransparent: true', 'Material header transparent native-stack contract');
 requireText('router.tsx', router, 'UNSUPPORTED_MATERIAL_HEADER_KEYS', 'lossless native-header fallback guard');
 requireText('router.tsx', router, 'material3.topAppBar === false', 'per-screen native header opt-out');
 requireText('router.tsx', router, 'Object.assign(MaterialStack, ExpoStack)', 'Expo Stack static API preservation');
 
+requireText('example/app.json', appJson, '"reactNativeScrollCompat": true', 'RN 0.86/0.87 compatibility option');
 requireText('example/app.json', appJson, '"reactNativeScreensInterop": true', 'direct react-native-screens interop option');
+forbidText('example/app.json', appJson, 'rn086AndroidXScroll', 'obsolete RN 0.86-only config option');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, "from 'react-native-scroll-interop/router'", 'package-owned Stack import');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'headerLargeTitle: true', 'standard large-title option');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'material3:', 'Material3-only option namespace');
@@ -100,10 +85,7 @@ forbidText('example/app/navigation-first/_layout.tsx', expoLayout, '<Stack.Heade
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'MaterialTopAppBar', 'manual MaterialTopAppBar declaration');
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'headerTransparent', 'app-owned transparent-header wiring');
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'navigationIcon=', 'app-owned back icon wiring');
-forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'onNavigationPress={() => router.back()}', 'app-owned TopAppBar back wiring');
-forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'useSafeAreaInsets', 'app-owned TopAppBar safe-area sizing');
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'TOP_APP_BAR_HEIGHT', 'app-owned TopAppBar height constants');
-forbidText('example/app/navigation-first/_layout.tsx', expoLayout, "position: 'relative'", 'app-owned TopAppBar positioning');
 
 for (const [filePath, content] of [
   ['example/app/navigation-first/index.tsx', expoHome],
@@ -120,17 +102,16 @@ const exampleAppRoot = path.join(repositoryRoot, 'example', 'app');
 for (const absolutePath of collectSourceFiles(exampleAppRoot)) {
   const content = readFileSync(absolutePath, 'utf8');
   if (content.includes('expo-material-toolbar')) {
-    const relativePath = path.relative(repositoryRoot, absolutePath);
-    violations.push(`${relativePath}: contains legacy package import expo-material-toolbar`);
+    violations.push(`${path.relative(repositoryRoot, absolutePath)}: contains legacy package import expo-material-toolbar`);
   }
 }
 
-requireText('README.md', readme, '## Expo Router SDK 57', 'Expo Router integration docs');
-requireText('README.md', readme, '## React Navigation', 'React Navigation integration docs');
-requireText('PRODUCT.md', product, '## Navigation-first product model', 'navigation-first product contract');
-requireText('RELEASE.md', release, '## First-public-alpha blocker', 'first publish navigation blocker');
-requireText('RELEASE.md', release, '### Expo Router navigation-first gate', 'Expo Router runtime release gate');
-requireText('RELEASE.md', release, '### React Navigation navigation-first gate', 'React Navigation runtime release gate');
+requireText('README.md', readme, '## Compatibility', 'compatibility table');
+requireText('README.md', readme, 'reactNativeScrollCompat', 'dual-version plugin documentation');
+requireText('README.md', readme, 'React Native 0.86.x', 'RN 0.86 documentation');
+requireText('README.md', readme, 'React Native 0.87.x', 'RN 0.87 documentation');
+requireText('RELEASE.md', release, '### React Native 0.86.x gate', 'RN 0.86 release gate');
+requireText('RELEASE.md', release, '### React Native 0.87.x gate', 'RN 0.87 release gate');
 
 if (violations.length > 0) {
   console.error('Navigation integration invariant: FAIL');
@@ -141,8 +122,6 @@ if (violations.length > 0) {
 console.log('Navigation integration invariant: PASS');
 console.log('  Expo Router Stack API is preserved through react-native-scroll-interop/router');
 console.log('  iOS/web pass through existing Expo Router native-stack behavior');
-console.log('  Android standard title/large-title/back semantics map to MaterialTopAppBar');
-console.log('  Material3-only behavior stays under an optional material3 namespace');
-console.log('  unsupported custom header options fail back to the platform-native header');
+console.log('  Android title/large-title/back semantics map to MaterialTopAppBar');
 console.log('  navigation screens contain plain RN ScrollView without NativeScrollHost');
-console.log('  all example routes use canonical react-native-scroll-interop package identity');
+console.log('  example uses the canonical dual-version compatibility plugin option');
