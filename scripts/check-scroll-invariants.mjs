@@ -15,32 +15,30 @@ const topBarConsumerPath =
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
 const floatingToolbarConsumerPath =
   'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt';
-const sharedLifecyclePath =
-  'android-shared/src/main/java/com/reactnativescroll/interop/core/SourceScopedNestedScrollLifecycle.kt';
-const sharedLedgerPath =
-  'android-shared/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt';
-const sharedDispatcherPath =
-  'android-shared/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt';
+const lifecyclePath =
+  'android/src/main/java/com/reactnativescroll/interop/core/SourceScopedNestedScrollLifecycle.kt';
+const ledgerPath =
+  'android/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt';
+const dispatcherPath =
+  'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt';
 const registryPath =
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt';
-const sourceAdapter =
-  'android-shared/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt';
+const sourceAdapterPath =
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt';
 
 const files = [
   hostPath,
   controllerPath,
-  sharedLifecyclePath,
-  sharedLedgerPath,
-  sharedDispatcherPath,
+  lifecyclePath,
+  ledgerPath,
+  dispatcherPath,
   topBarConsumerPath,
   floatingToolbarConsumerPath,
   registryPath,
 ];
 
-const legacyPhysicalPaths = [
-  'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt',
-  'android-shared/src/main/java/com/material3scroll/transport/NestedScrollConservationLedger.kt',
-  'android-shared/src/main/java/com/material3scroll/transport/VerticalNestedScrollTransactionDispatcher.kt',
+const obsoletePaths = [
+  'android-shared',
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
 ];
 
@@ -73,9 +71,9 @@ function read(relativePath) {
   return stripComments(fs.readFileSync(absolutePath, 'utf8'));
 }
 
-for (const relativePath of legacyPhysicalPaths) {
+for (const relativePath of obsoletePaths) {
   if (fs.existsSync(path.join(root, relativePath))) {
-    violations.push(`${relativePath}: legacy physical source path must be removed`);
+    violations.push(`${relativePath}: obsolete source path must be removed`);
   }
 }
 
@@ -95,80 +93,80 @@ for (const relativePath of files) {
   lines.forEach((line, index) => {
     if (concreteRnSourceType.test(line)) {
       violations.push(
-        `${relativePath}:${index + 1}: concrete RN scroll source type escaped ${sourceAdapter}: ${line.trim()}`,
+        `${relativePath}:${index + 1}: concrete RN scroll source type escaped ${sourceAdapterPath}: ${line.trim()}`,
       );
     }
   });
 }
 
-const adapter = read(sourceAdapter);
+const adapter = read(sourceAdapterPath);
 if (adapter) {
   if (!adapter.includes('ReactVerticalScrollSourceCapabilities')) {
-    violations.push(`${sourceAdapter}: missing explicit source capability model`);
+    violations.push(`${sourceAdapterPath}: missing explicit source capability model`);
   }
   if (!adapter.includes('ReactScrollView') || !adapter.includes('ReactNestedScrollView')) {
-    violations.push(`${sourceAdapter}: must recognize both supported RN vertical source implementations`);
+    violations.push(`${sourceAdapterPath}: must recognize both supported RN vertical source implementations`);
   }
 }
 
-const lifecycle = read(sharedLifecyclePath);
+const lifecycle = read(lifecyclePath);
 if (lifecycle) {
   if (!lifecycle.includes('class SourceScopedNestedScrollLifecycle')) {
-    violations.push(`${sharedLifecyclePath}: missing shared source-scoped lifecycle kernel`);
+    violations.push(`${lifecyclePath}: missing source-scoped lifecycle kernel`);
   }
   if (!lifecycle.includes('var activeSource: ViewGroup?')) {
-    violations.push(`${sharedLifecyclePath}: missing active source ownership`);
+    violations.push(`${lifecyclePath}: missing active source ownership`);
   }
   if (!lifecycle.includes('var momentumSource: ViewGroup?')) {
-    violations.push(`${sharedLifecyclePath}: missing source-scoped momentum ownership`);
+    violations.push(`${lifecyclePath}: missing source-scoped momentum ownership`);
   }
   if (!lifecycle.includes('StopDecision.Stale')) {
-    violations.push(`${sharedLifecyclePath}: stale stop must fail closed`);
+    violations.push(`${lifecyclePath}: stale stop must fail closed`);
   }
 }
 
-const ledger = read(sharedLedgerPath);
+const ledger = read(ledgerPath);
 if (ledger) {
   if (!ledger.includes('class NestedScrollConservationLedger')) {
-    violations.push(`${sharedLedgerPath}: missing shared conservation ledger`);
+    violations.push(`${ledgerPath}: missing conservation ledger`);
   }
   if (!ledger.includes('sumY == pre.requestedY')) {
-    violations.push(`${sharedLedgerPath}: conservation equation is missing`);
+    violations.push(`${ledgerPath}: conservation equation is missing`);
   }
   if (!ledger.includes('fun flushPending(): OrphanPre?')) {
-    violations.push(`${sharedLedgerPath}: orphan pre-scroll accounting is missing`);
+    violations.push(`${ledgerPath}: orphan pre-scroll accounting is missing`);
   }
 }
 
-const dispatcher = read(sharedDispatcherPath);
+const dispatcher = read(dispatcherPath);
 if (dispatcher) {
   if (!dispatcher.includes('class VerticalNestedScrollTransactionDispatcher')) {
-    violations.push(`${sharedDispatcherPath}: missing shared vertical transaction dispatcher`);
+    violations.push(`${dispatcherPath}: missing vertical transaction dispatcher`);
   }
   for (const phase of ['PreConsumer', 'PostConsumer', 'PostObserver']) {
     if (!dispatcher.includes(`fun interface ${phase}`)) {
-      violations.push(`${sharedDispatcherPath}: missing ${phase} dispatch port`);
+      violations.push(`${dispatcherPath}: missing ${phase} dispatch port`);
     }
   }
   if (!dispatcher.includes('fun bindParticipants(')) {
-    violations.push(`${sharedDispatcherPath}: missing neutral participant binding API`);
+    violations.push(`${dispatcherPath}: missing neutral participant binding API`);
   }
   if (!dispatcher.includes('ledger.beginFrame(requestedY, consumedY)')) {
-    violations.push(`${sharedDispatcherPath}: PRE dispatch must feed shared conservation accounting`);
+    violations.push(`${dispatcherPath}: PRE dispatch must feed conservation accounting`);
   }
   if (!dispatcher.includes('ledger.completeFrame(childConsumedY, availableY, consumedY)')) {
-    violations.push(`${sharedDispatcherPath}: POST dispatch must complete shared conservation accounting`);
+    violations.push(`${dispatcherPath}: POST dispatch must complete conservation accounting`);
   }
   const postConsumer = dispatcher.indexOf('for (consumer in postConsumers)');
   const postObserver = dispatcher.indexOf('for (observer in postObservers)');
   if (postConsumer < 0 || postObserver < 0 || postConsumer > postObserver) {
-    violations.push(`${sharedDispatcherPath}: POST observers must run after consuming POST participants`);
+    violations.push(`${dispatcherPath}: POST observers must run after consuming POST participants`);
   }
 }
 
 const androidGradle = fs.readFileSync(path.join(root, 'android/build.gradle'), 'utf8');
-if (!androidGradle.includes('android-shared/src/main/java')) {
-  violations.push('android/build.gradle: shared Android transport source set is not compiled');
+if (androidGradle.includes('android-shared')) {
+  violations.push('android/build.gradle: obsolete external source-set wiring must be removed');
 }
 
 const host = read(hostPath);
@@ -215,7 +213,7 @@ if (controller) {
     !controller.includes('transactionDispatcher.dispatchPre(') ||
     !controller.includes('transactionDispatcher.dispatchPost(')
   ) {
-    violations.push(`${controllerPath}: controller PRE/POST must route through shared dispatcher`);
+    violations.push(`${controllerPath}: controller PRE/POST must route through dispatcher`);
   }
   if (!controller.includes('Material3TopAppBarNestedScrollAdapter')) {
     violations.push(`${controllerPath}: TopAppBar must bind through the Material3 neutral adapter`);
@@ -304,9 +302,10 @@ if (violations.length > 0) {
 }
 
 console.log('Native scroll invariant: PASS');
+console.log('  core and RN compatibility boundary live in the standard Android source tree');
 console.log('  no parent-owned scroller or child scroll mutation');
-console.log('  concrete RN scroll source types confined to compatibility adapter');
-console.log('  shared lifecycle, conservation ledger and PRE/POST dispatcher preserved');
+console.log('  concrete RN scroll source types confined to compatibility boundary');
+console.log('  lifecycle, conservation ledger and PRE/POST dispatcher preserved');
 console.log('  standalone host is source-discovery + delegation only');
 console.log('  reusable parent controller owns nested lifecycle and transaction dispatch');
 console.log('  Material3 consumers bind through neutral participant adapters');
