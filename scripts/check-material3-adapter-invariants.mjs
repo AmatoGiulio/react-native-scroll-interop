@@ -14,15 +14,16 @@ const topBarRelativePath =
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
 const floatingToolbarRelativePath =
   'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt';
+const legacyTopBarRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt';
+const legacyFloatingToolbarRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt';
 const consumerBindingsRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerBindings.kt';
+const legacyConsumerBindingsRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerAliases.kt';
 const placementRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/NativeFloatingToolbarPlacement.kt';
-const obsoletePaths = [
-  'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt',
-  'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
-  'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerAliases.kt',
-];
 const violations = [];
 
 function read(relativePath) {
@@ -36,7 +37,7 @@ function read(relativePath) {
 
 const source = read(adapterRelativePath);
 if (source != null) {
-  for (const marker of [
+  const required = [
     'package com.reactnativescroll.interop.material3',
     'VerticalNestedPreScrollConsumer',
     'VerticalNestedPostScrollConsumer',
@@ -46,13 +47,15 @@ if (source != null) {
     'class Material3FloatingToolbarNestedScrollAdapter',
     ': VerticalNestedPostScrollObserver',
     'ViewCompat.TYPE_NON_TOUCH',
-  ]) {
+  ];
+
+  for (const marker of required) {
     if (!source.includes(marker)) {
       violations.push(`${adapterRelativePath}: missing required adapter marker: ${marker}`);
     }
   }
 
-  for (const [name, pattern] of [
+  const forbidden = [
     ['parent-owned OverScroller', /\bOverScroller\b/],
     ['parent-owned Scroller', /\bScroller\b/],
     ['child scrollBy mutation', /\.scrollBy\s*\(/],
@@ -66,7 +69,9 @@ if (source != null) {
     ['Expo Modules API dependency', /expo\.modules\.kotlin/],
     ['Expo TopAppBar consumer import', /expo\.modules\.materialtoolbar\.TopAppBarScrollConsumer/],
     ['Expo FloatingToolbar consumer import', /expo\.modules\.materialtoolbar\.FloatingToolbarScrollConsumer/],
-  ]) {
+  ];
+
+  for (const [name, pattern] of forbidden) {
     if (pattern.test(source)) violations.push(`${adapterRelativePath}: forbidden ${name}`);
   }
 
@@ -112,6 +117,17 @@ if (registrySource != null) {
       violations.push(`${registryRelativePath}: Material3 transaction type remains in Expo registry: ${typeName}`);
     }
   }
+
+  for (const marker of [
+    'frontmostScreenParentFor(departingOwner)?.requestNestedChromeBindingRefresh()',
+    'if (!isFrontmostScreenSource(source)) return null',
+    'consumer.prepareNestedSource(sourceGroup)',
+    'private fun sameScreenStackScope(first: View, second: View): Boolean',
+  ]) {
+    if (!registrySource.includes(marker)) {
+      violations.push(`${registryRelativePath}: missing source-scoped FloatingToolbar lifecycle marker: ${marker}`);
+    }
+  }
 }
 
 const topBarSource = read(topBarRelativePath);
@@ -130,6 +146,7 @@ if (topBarSource != null) {
       violations.push(`${topBarRelativePath}: missing moved TopAppBar marker: ${marker}`);
     }
   }
+
   for (const pattern of [/ExpoMaterialTopAppBarView/, /NativeNestedScrollRegistry/, /expo\.modules\.kotlin/]) {
     if (pattern.test(topBarSource)) {
       violations.push(`${topBarRelativePath}: TopAppBar consumer depends on Expo runtime/view API: ${pattern}`);
@@ -146,11 +163,16 @@ if (floatingToolbarSource != null) {
     'current.onPostScroll(',
     'Velocity.Zero',
     'placementInsets() ?: visibleFrameInsets()',
+    'WeakHashMap<ViewGroup, RetainedBehaviorState>()',
+    'fun prepareNestedSource(source: ViewGroup): Boolean',
+    'preparedSource !== source',
+    'sourceStates[source]',
   ]) {
     if (!floatingToolbarSource.includes(marker)) {
-      violations.push(`${floatingToolbarRelativePath}: missing moved FloatingToolbar marker: ${marker}`);
+      violations.push(`${floatingToolbarRelativePath}: missing moved/source-scoped FloatingToolbar marker: ${marker}`);
     }
   }
+
   for (const pattern of [
     /ExpoMaterialToolbarView/,
     /NativeFloatingToolbarPlacement/,
@@ -163,9 +185,13 @@ if (floatingToolbarSource != null) {
   }
 }
 
-for (const obsoletePath of obsoletePaths) {
-  if (fs.existsSync(path.join(process.cwd(), obsoletePath))) {
-    violations.push(`${obsoletePath}: obsolete Expo Material3 binding source must be removed`);
+for (const legacyPath of [
+  legacyTopBarRelativePath,
+  legacyFloatingToolbarRelativePath,
+  legacyConsumerBindingsRelativePath,
+]) {
+  if (fs.existsSync(path.join(process.cwd(), legacyPath))) {
+    violations.push(`${legacyPath}: legacy Expo Material3 source must be removed`);
   }
 }
 
@@ -213,4 +239,6 @@ console.log('  TopAppBar consumer source is owned by the Material3 package');
 console.log('  FloatingToolbar consumer source is owned by the Material3 package');
 console.log('  FloatingToolbar placement remains in the Expo view layer');
 console.log('  FloatingToolbar remains observation-only');
+console.log('  persistent FloatingToolbar scroll state is scoped to the frontmost RN source');
+console.log('  pop refresh restores the newly frontmost screen state without source sampling');
 console.log('  no source physics, position sampling, timers or concrete RN source typing in adapters');
