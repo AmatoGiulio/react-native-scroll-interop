@@ -12,7 +12,6 @@ const expectedVersion = '0.1.0-alpha.1';
 const expectedFiles = [
   'android/build.gradle',
   'android/src/main',
-  'android-shared/src/main',
   'plugin',
   'src',
   'index.ts',
@@ -68,6 +67,7 @@ expect(
 );
 expect(androidGradle.includes(`version = '${expectedVersion}'`), 'Android library version must match package version');
 expect(androidGradle.includes(`versionName '${expectedVersion}'`), 'Android versionName must match package version');
+expect(!androidGradle.includes('android-shared'), 'Android build must not use an external shared source tree');
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const result = spawnSync(npmCommand, ['pack', '--dry-run', '--json', '--ignore-scripts'], {
@@ -113,8 +113,13 @@ const required = [
   'src/MaterialToolbar.android.tsx',
   'android/build.gradle',
   'android/src/main/AndroidManifest.xml',
+  'android/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt',
+  'android/src/main/java/com/reactnativescroll/interop/core/SourceScopedNestedScrollLifecycle.kt',
+  'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollParticipants.kt',
+  'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeVerticalScrollSourceLocator.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParentController.kt',
-  'android-shared/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
 ];
 
 for (const file of required) {
@@ -131,8 +136,7 @@ const forbiddenPrefixes = [
   'android/.kotlin/',
   'android/build/',
   'android/src/debug/',
-  'android-shared/.gradle/',
-  'android-shared/build/',
+  'android-shared/',
 ];
 const forbiddenExact = new Set(['ARCHITECTURE.md', 'RELEASE.md']);
 
@@ -161,4 +165,4 @@ console.log('  React Native peer: 0.86.x / 0.87.x');
 console.log('  Expo Router adapter: 57.x');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
-console.log('  tarball contains runtime/plugin sources plus npm-mandatory README/LICENSE only');
+console.log('  tarball contains one Android runtime tree plus plugin/JS entry sources');
