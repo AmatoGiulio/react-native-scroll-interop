@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'expo-material-toolbar';
+import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'react-native-scroll-interop';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const rows = Array.from({ length: 200 }, (_, i) => String(i + 1));
