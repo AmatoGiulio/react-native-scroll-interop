@@ -1,4 +1,4 @@
-import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'expo-material-toolbar';
+import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'react-native-scroll-interop';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 const ROWS = Array.from({ length: 80 }, (_, index) => `Native transport row ${index + 1}`);
