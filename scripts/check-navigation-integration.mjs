@@ -29,6 +29,13 @@ function exportedTypeNames(source) {
   return [...names];
 }
 
+function declaredMemberNames(source) {
+  const names = new Set();
+  for (const match of source.matchAll(/^\s*([A-Za-z_$][\w$]*)\??:\s/gm)) names.add(match[1]);
+  for (const match of source.matchAll(/^\s*([A-Za-z_$][\w$]*)\([^)]*\):\s/gm)) names.add(match[1]);
+  return [...names];
+}
+
 function collectSourceFiles(directory) {
   const files = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -45,6 +52,7 @@ const sources = {
   package: read('package.json'),
   appJson: read('example/app.json'),
   topTypes: read('src/MaterialTopAppBar.types.ts'),
+  toolbarTypes: read('src/MaterialToolbar.types.ts'),
   topAndroid: read('src/MaterialTopAppBar.android.tsx'),
   topNative: read('src/ExpoMaterialTopAppBarNativeView.tsx'),
   topModule: read('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt'),
@@ -164,6 +172,12 @@ for (const absolutePath of collectSourceFiles(path.join(root, 'example', 'app'))
 for (const typeName of [...exportedTypeNames(sources.index), ...exportedTypeNames(sources.router)]) {
   requireText('README.md', sources.readme, typeName, `public type ${typeName}`);
 }
+for (const memberName of new Set([
+  ...declaredMemberNames(sources.topTypes),
+  ...declaredMemberNames(sources.toolbarTypes),
+])) {
+  requireText('README.md', sources.readme, memberName, `public component prop/member ${memberName}`);
+}
 for (const valueName of ['MaterialTopAppBar', 'MaterialToolbar', 'NativeScrollHost', 'Stack']) {
   requireText('README.md', sources.readme, valueName, `public value ${valueName}`);
 }
@@ -190,4 +204,4 @@ console.log('  Android navigation semantics map to MaterialTopAppBar without own
 console.log('  unsupported header behavior falls back to the platform-native header');
 console.log('  mirrored JS/native TopAppBar geometry is guarded');
 console.log('  navigation pages are plain RN ScrollView content');
-console.log('  README covers every exported public type from root and router entrypoints');
+console.log('  README covers every exported type and every declared public component prop/member');
