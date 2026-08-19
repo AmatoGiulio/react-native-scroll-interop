@@ -5,6 +5,7 @@
     "typeRoots": ["./node_modules/@types", "../node_modules/@types"],
     "paths": {
       "react-native-scroll-interop": ["../index"],
+      "react-native-scroll-interop/router": ["../router"],
       "react-native-scroll-interop/*": ["../src/*"]
     }
   },
