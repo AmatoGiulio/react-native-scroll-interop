@@ -13,7 +13,6 @@
     },
     "plugins": [
       "expo-router",
-      "expo-image",
       [
         "../app.plugin.js",
         {
