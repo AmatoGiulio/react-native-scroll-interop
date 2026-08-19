@@ -18,6 +18,7 @@ const expectedFiles = [
   'plugin',
   'src',
   'index.ts',
+  'router.tsx',
   'app.plugin.js',
   'expo-module.config.json',
   'ARCHITECTURE.md',
@@ -69,6 +70,12 @@ if (!packageJson.scripts?.check?.includes('check:navigation-integration')) {
 if (!packageJson.scripts?.check?.includes('check:rnscreens-interop-plugin')) {
   violations.push('npm run check must execute the react-native-screens interop guard');
 }
+if (packageJson.peerDependencies?.['expo-router'] !== '>=57.0.0 <58.0.0') {
+  violations.push('Expo Router SDK 57 must remain an explicit optional peer for the router subpath');
+}
+if (packageJson.peerDependenciesMeta?.['expo-router']?.optional !== true) {
+  violations.push('Expo Router peer must remain optional for non-router consumers');
+}
 if (JSON.stringify(packageJson.files) !== JSON.stringify(expectedFiles)) {
   violations.push('package files allowlist must stay narrow and release-controlled');
 }
@@ -116,6 +123,7 @@ const required = [
   'ARCHITECTURE.md',
   'PRODUCT.md',
   'index.ts',
+  'router.tsx',
   'app.plugin.js',
   'expo-module.config.json',
   'plugin/withRn086AndroidXScroll.js',
@@ -190,5 +198,5 @@ console.log('  license: MIT');
 console.log('  npm dist-tag: next');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
-console.log('  runtime Android/JS/plugin/navigation-header/screens-interoperability surface included');
+console.log('  runtime Android/JS/plugin/navigation-header/screens/router interoperability surface included');
 console.log('  generated Android artifacts, debug sources and repository-only files excluded');
