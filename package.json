@@ -49,7 +49,7 @@
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
-    "expo": ">=57.0.0 <58.0.0",
+    "expo": "*",
     "expo-router": ">=57.0.0 <58.0.0",
     "react": ">=19.2.0 <20.0.0",
     "react-native": ">=0.86.0 <0.88.0",
