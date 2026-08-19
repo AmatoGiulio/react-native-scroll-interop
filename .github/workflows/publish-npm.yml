@@ -12,22 +12,17 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false
 
-      - name: Verify release tag matches package version
-        shell: bash
-        run: |
-          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-          test "${GITHUB_REF_NAME}" = "v${PACKAGE_VERSION}"
+      - name: Verify release tag
+        run: test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
 
-      - name: Verify package before publish
+      - name: Verify package
         run: npm run check
 
-      - name: Publish alpha to npm
+      - name: Publish alpha
         run: npm publish --access public --tag next
