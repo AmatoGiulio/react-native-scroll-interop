@@ -14,14 +14,15 @@ const topBarRelativePath =
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
 const floatingToolbarRelativePath =
   'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt';
-const legacyTopBarRelativePath =
-  'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt';
-const legacyFloatingToolbarRelativePath =
-  'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt';
 const consumerBindingsRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerBindings.kt';
 const placementRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/NativeFloatingToolbarPlacement.kt';
+const obsoletePaths = [
+  'android/src/main/java/expo/modules/materialtoolbar/TopAppBarScrollConsumer.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerAliases.kt',
+];
 const violations = [];
 
 function read(relativePath) {
@@ -35,7 +36,7 @@ function read(relativePath) {
 
 const source = read(adapterRelativePath);
 if (source != null) {
-  const required = [
+  for (const marker of [
     'package com.reactnativescroll.interop.material3',
     'VerticalNestedPreScrollConsumer',
     'VerticalNestedPostScrollConsumer',
@@ -45,15 +46,13 @@ if (source != null) {
     'class Material3FloatingToolbarNestedScrollAdapter',
     ': VerticalNestedPostScrollObserver',
     'ViewCompat.TYPE_NON_TOUCH',
-  ];
-
-  for (const marker of required) {
+  ]) {
     if (!source.includes(marker)) {
       violations.push(`${adapterRelativePath}: missing required adapter marker: ${marker}`);
     }
   }
 
-  const forbidden = [
+  for (const [name, pattern] of [
     ['parent-owned OverScroller', /\bOverScroller\b/],
     ['parent-owned Scroller', /\bScroller\b/],
     ['child scrollBy mutation', /\.scrollBy\s*\(/],
@@ -67,9 +66,7 @@ if (source != null) {
     ['Expo Modules API dependency', /expo\.modules\.kotlin/],
     ['Expo TopAppBar consumer import', /expo\.modules\.materialtoolbar\.TopAppBarScrollConsumer/],
     ['Expo FloatingToolbar consumer import', /expo\.modules\.materialtoolbar\.FloatingToolbarScrollConsumer/],
-  ];
-
-  for (const [name, pattern] of forbidden) {
+  ]) {
     if (pattern.test(source)) violations.push(`${adapterRelativePath}: forbidden ${name}`);
   }
 
@@ -133,7 +130,6 @@ if (topBarSource != null) {
       violations.push(`${topBarRelativePath}: missing moved TopAppBar marker: ${marker}`);
     }
   }
-
   for (const pattern of [/ExpoMaterialTopAppBarView/, /NativeNestedScrollRegistry/, /expo\.modules\.kotlin/]) {
     if (pattern.test(topBarSource)) {
       violations.push(`${topBarRelativePath}: TopAppBar consumer depends on Expo runtime/view API: ${pattern}`);
@@ -155,7 +151,6 @@ if (floatingToolbarSource != null) {
       violations.push(`${floatingToolbarRelativePath}: missing moved FloatingToolbar marker: ${marker}`);
     }
   }
-
   for (const pattern of [
     /ExpoMaterialToolbarView/,
     /NativeFloatingToolbarPlacement/,
@@ -168,9 +163,9 @@ if (floatingToolbarSource != null) {
   }
 }
 
-for (const legacyPath of [legacyTopBarRelativePath, legacyFloatingToolbarRelativePath]) {
-  if (fs.existsSync(path.join(process.cwd(), legacyPath))) {
-    violations.push(`${legacyPath}: legacy Expo Material3 consumer source must be removed`);
+for (const obsoletePath of obsoletePaths) {
+  if (fs.existsSync(path.join(process.cwd(), obsoletePath))) {
+    violations.push(`${obsoletePath}: obsolete Expo Material3 binding source must be removed`);
   }
 }
 
