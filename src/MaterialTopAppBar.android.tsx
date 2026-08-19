@@ -1,28 +1,81 @@
-import React from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import {
+  StyleSheet,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ExpoMaterialTopAppBarNativeView from './ExpoMaterialTopAppBarNativeView';
-import type { MaterialTopAppBarProps } from './MaterialTopAppBar.types';
+import type {
+  MaterialTopAppBarProps,
+  MaterialTopAppBarVariant,
+} from './MaterialTopAppBar.types';
 
-export function MaterialTopAppBar({
+const TOP_APP_BAR_HEIGHT: Record<MaterialTopAppBarVariant, number> = {
+  small: 64,
+  medium: 112,
+  large: 152,
+};
+
+type MaterialTopAppBarNativeProps = MaterialTopAppBarProps & {
+  layoutStyle: StyleProp<ViewStyle>;
+};
+
+export function MaterialTopAppBar(props: MaterialTopAppBarProps) {
+  if ((props.placement ?? 'overlay') === 'header') {
+    return <MaterialTopAppBarHeader {...props} />;
+  }
+
+  return <MaterialTopAppBarNative {...props} layoutStyle={styles.topOverlay} />;
+}
+
+function MaterialTopAppBarHeader(props: MaterialTopAppBarProps) {
+  const insets = useSafeAreaInsets();
+  const variant = props.variant ?? 'medium';
+
+  return (
+    <MaterialTopAppBarNative
+      {...props}
+      layoutStyle={[
+        styles.header,
+        { height: insets.top + TOP_APP_BAR_HEIGHT[variant] },
+      ]}
+    />
+  );
+}
+
+function MaterialTopAppBarNative({
   title,
   visible = true,
   variant = 'medium',
   scrollBehavior = 'none',
+  navigationIcon = 'none',
+  navigationAccessibilityLabel = 'Back',
+  onNavigationPress,
+  placement: _placement,
   themeMode = 'system',
   dynamicColor = false,
   style,
-}: MaterialTopAppBarProps) {
+  layoutStyle,
+}: MaterialTopAppBarNativeProps) {
+  const handleNavigationPress = useCallback(() => {
+    onNavigationPress?.();
+  }, [onNavigationPress]);
+
   return (
     <ExpoMaterialTopAppBarNativeView
-      style={[styles.topOverlay, style]}
+      style={[layoutStyle, style]}
       pointerEvents="box-none"
       title={title}
       visible={visible}
       variant={variant}
       scrollBehavior={scrollBehavior}
+      navigationIcon={navigationIcon}
+      navigationAccessibilityLabel={navigationAccessibilityLabel}
       themeMode={themeMode}
       dynamicColor={dynamicColor}
+      onNavigationPress={onNavigationPress ? handleNavigationPress : undefined}
     />
   );
 }
@@ -33,5 +86,9 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+  },
+  header: {
+    position: 'relative',
+    alignSelf: 'stretch',
   },
 });

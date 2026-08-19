@@ -13,12 +13,12 @@
     },
     "plugins": [
       "expo-router",
-      "expo-image",
       [
         "../app.plugin.js",
         {
           "android": {
-            "rn086AndroidXScroll": true
+            "reactNativeScrollCompat": true,
+            "reactNativeScreensInterop": true
           }
         }
       ]

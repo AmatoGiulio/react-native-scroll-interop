@@ -1,89 +1,98 @@
-# Release process
+# Release status
 
-Public package: `react-native-scroll-interop`
+Package: `react-native-scroll-interop`
 
-Current release line: `0.1.0-alpha.x`
+Current version:
 
-Alpha releases use the npm dist-tag `next`. Do not publish an alpha as `latest`.
-
-## Release candidate gate
-
-Before publishing a version, freeze and validate one exact commit:
-
-1. `npm run check`;
-2. `npm pack --dry-run` and inspect the package surface;
-3. install the exact tarball in the external RN 0.86.2 fresh consumer under the public package name;
-4. verify the Expo config plugin resolves as `react-native-scroll-interop`;
-5. build/install Android and run the release smoke for ordinary scroll, NON_TOUCH fling, NativeTabs away/return, TopAppBar and FloatingToolbar/FAB;
-6. create a new immutable `*-pass` checkpoint for the exact tested commit.
-
-Do not repoint a frozen release checkpoint.
-
-## First npm publish
-
-The first publish bootstraps the package on npm and must be performed manually from the exact frozen release commit.
-
-Before publishing, check the registry name again:
-
-```bash
-npm view react-native-scroll-interop
+```text
+0.1.0-alpha.1
 ```
 
-For an unpublished name npm should report that the package is not present. If the name exists unexpectedly, stop rather than publishing under a different identity.
+GitHub source status: ready for public review.
 
-Authenticate to npm and verify the active account before publishing:
+npm status: **not published yet**. Publication is intentionally deferred until the final public-package checks are completed from the documentation-frozen commit.
 
-```bash
-npm login
-npm whoami
+## Current compatibility matrix
+
+```text
+Expo SDK 57 + React Native 0.86.x
+  exact package / clean prebuild / Android build+install / Material navigation runtime   PASS
+
+bare React Native 0.87.0-rc.3
+  package / shipped RN patch / RN source build / Android build+install / RN runtime      PASS
+
+Expo + React Native 0.87
+  not claimed until an officially supported Expo/RN pairing exists
 ```
 
-`npm whoami` must print the intended maintainer account. If it returns `E401`, do not publish yet.
+The package manifest declares React Native `>=0.86.0 <0.88.0`, Expo Router `>=57.0.0 <58.0.0`, `react-native-screens >=4.26.0 <4.27.0` and `react-native-safe-area-context >=5.0.0 <6.0.0`.
 
-Run one final publish dry-run with the release tag and access flags explicit:
+## Release artifact boundary
+
+Runtime and compatibility code for `0.1.0-alpha.1` passed the device/build gates before this documentation-only freeze. Because npm includes `README.md` automatically, the final npm tarball generated from the public documentation commit will have different bytes from the previously tested candidate even though runtime/plugin/package source is unchanged.
+
+Before npm publication, generate a fresh tarball from the final commit and rerun the static/package checks. Device runtime gates only need to be repeated if runtime code, plugin code, dependency metadata or another packaged source changes.
+
+### React Native 0.86.x gate
+
+Status: **PASS** on Expo SDK 57.
+
+Certified scope:
+
+- package installation from the release candidate;
+- clean Expo Android prebuild;
+- ReactAndroid source build;
+- RN 0.86 ordinary non-paging fling patch to AndroidX `super.fling(correctedVelocityY)`;
+- both `MainReactPackage` vertical manager paths using `ReactNestedScrollViewManager`;
+- `react-native-screens 4.26.x` screen-owned nested-scroll integration;
+- Android assemble/install;
+- navigation-first `MaterialTopAppBar` runtime;
+- persistent `MaterialToolbar` / FloatingToolbar runtime;
+- touch and NON_TOUCH fling behavior;
+- push/pop/back source ownership and per-source toolbar state restoration.
+
+Navigation-first screens remain plain React Native vertical scroll content. `NativeScrollHost` is the standalone/fallback API and is not required when the native screen owns the parent integration.
+
+### React Native 0.87.x gate
+
+Status: **PASS for bare RN compatibility** on `react-native@0.87.0-rc.3`.
+
+Certified scope:
+
+- the shipped compatibility patcher selects the RN 0.87 Kotlin source shape;
+- both `MainReactPackage.kt` vertical manager sites are patched;
+- ordinary non-paging `ReactNestedScrollView.kt` fling delegates to AndroidX `super.fling(correctedVelocityY)`;
+- RN 0.86-specific fling markers are absent;
+- React Native is compiled from the installed source tree;
+- Android assemble/install succeeds;
+- the app launches with Hermes on RN `0.87.0-rc.3`;
+- React Native ScrollView touch, inertial fling and reverse fling run without visible regression.
+
+This gate certifies React Native compatibility, source patching and the real RN scroll/fling runtime. It does **not** claim Expo-native `NativeScrollHost`, `MaterialTopAppBar` or `MaterialToolbar` runtime certification on RN 0.87 RC.
+
+## Expo Modules boundary
+
+The Material native views are Expo Modules. There is currently no officially supported Expo SDK pairing for `react-native@0.87.0-rc.3` through the standard Expo Modules installation path.
+
+This release therefore does not force Expo 58/canary or carry host-only Gradle/Kotlin/Prefab shims to manufacture an unsupported pairing. Material/Expo runtime certification remains Expo SDK 57 + RN 0.86.x until Expo officially supports an RN 0.87 line.
+
+## Public-package checks before npm
+
+Run from the final documentation-frozen commit:
 
 ```bash
+npm run check
+npm pack --dry-run
 npm publish --dry-run --access public --tag next
 ```
 
-The publish notice must say `tag next`, and the tarball must contain only the release-controlled source surface. Generated paths such as `android/build`, `android/.gradle`, `android/.cxx`, `android/.kotlin` and `android/src/debug` must never be present.
+Verify before the real publish:
 
-Then publish with the same explicit release flags:
+- package name, version, license, repository and public entry points;
+- peer dependency ranges;
+- tarball file list contains only intended runtime/plugin/JS sources plus npm-mandatory metadata;
+- `README.md` matches the current compatibility claims above;
+- no generated Android output, local consumer files, credentials, keystores or probe artifacts are packaged;
+- the config plugin still fails closed outside the certified source shapes.
 
-```bash
-npm publish --access public --tag next
-```
-
-`prepublishOnly` runs the complete package checks automatically.
-
-The first public version is:
-
-```text
-react-native-scroll-interop@0.1.0-alpha.1
-```
-
-## Trusted publishing after bootstrap
-
-After the first package version exists on npm, configure npm Trusted Publishing for:
-
-```text
-GitHub owner: AmatoGiulio
-Repository: react-native-scroll-interop
-Workflow: publish-npm.yml
-Allowed action: npm publish
-```
-
-The workflow lives at `.github/workflows/publish-npm.yml` and uses GitHub OIDC rather than a long-lived npm publish token.
-
-For future alpha releases:
-
-1. bump `package.json` and Android library version metadata to the same `0.1.0-alpha.N` version;
-2. run the release candidate gate and freeze the exact commit;
-3. create tag `v0.1.0-alpha.N` on that exact commit;
-4. publish a GitHub Release from that tag;
-5. the trusted-publishing workflow verifies the tag/version match and runs `npm publish --access public --tag next`;
-6. confirm the new version is on npm under the `next` dist-tag.
-
-## Stable release
-
-Do not move the npm `latest` dist-tag or publish a stable version until the compatibility/support matrix is intentionally widened and a stable release gate is defined.
+The first npm publication will be performed manually only after these checks are clean.

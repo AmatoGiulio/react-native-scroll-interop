@@ -8,6 +8,8 @@ class ExpoMaterialTopAppBarModule : Module() {
     Name("ExpoMaterialTopAppBar")
 
     View(ExpoMaterialTopAppBarView::class) {
+      Events("onNavigationPress")
+
       Prop("title") { view: ExpoMaterialTopAppBarView, title: String ->
         view.setTitle(title)
       }
@@ -22,6 +24,14 @@ class ExpoMaterialTopAppBarModule : Module() {
 
       Prop("scrollBehavior") { view: ExpoMaterialTopAppBarView, behavior: String ->
         view.setScrollBehavior(behavior)
+      }
+
+      Prop("navigationIcon") { view: ExpoMaterialTopAppBarView, icon: String ->
+        view.setNavigationIcon(icon)
+      }
+
+      Prop("navigationAccessibilityLabel") { view: ExpoMaterialTopAppBarView, label: String ->
+        view.setNavigationAccessibilityLabel(label)
       }
 
       Prop("themeMode") { view: ExpoMaterialTopAppBarView, mode: String ->

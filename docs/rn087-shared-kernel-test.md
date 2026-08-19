@@ -1,1 +1,0 @@
-Run `npm run check:scroll-invariants`, then `cd rn087-bare-probe && npm run android:on-source-multi-chrome-lifecycle`. Verify ordinary TopAppBar + FloatingToolbar behavior and remount during TYPE_NON_TOUCH before wiring the shared lifecycle kernel into the production host.
