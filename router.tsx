@@ -64,7 +64,7 @@ export type MaterialStackScreenProps = Omit<ExpoStackScreenProps, 'options'> & {
   options?: MaterialStackScreenOptions;
 };
 
-type MaterialStackProps = Omit<ExpoStackProps, 'screenOptions' | 'children'> & {
+export type MaterialStackProps = Omit<ExpoStackProps, 'screenOptions' | 'children'> & {
   children?: ReactNode;
   screenOptions?: WithMaterial3<NonNullable<ExpoStackProps['screenOptions']>>;
 };
@@ -138,6 +138,17 @@ function createMaterial3Header(
   };
 }
 
+function nativeHeaderFallback(
+  navigationOptions: RuntimeNavigationOptions
+): RuntimeNavigationOptions {
+  return {
+    ...navigationOptions,
+    // Explicitly cancel the Material header inherited from root screenOptions.
+    header: undefined,
+    headerTransparent: navigationOptions.headerTransparent ?? false,
+  };
+}
+
 /** Root screenOptions establish Material3 as the Android default. */
 function applyRootMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
   const { material3, navigationOptions } = splitMaterial3(options);
@@ -155,21 +166,25 @@ function applyRootMaterial3(options: RuntimeNavigationOptions): RuntimeNavigatio
   };
 }
 
-/** Per-screen material3 is an explicit override; ordinary screen options remain untouched. */
+/** Per-screen Material3 is an explicit override; standard unsupported header options fall back. */
 function applyScreenMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
   const { material3, navigationOptions } = splitMaterial3(options);
 
   if (Platform.OS !== 'android') return navigationOptions;
-  if (material3 === undefined) return navigationOptions;
   if (navigationOptions.header !== undefined) return navigationOptions;
 
+  if (material3 === undefined) {
+    if (
+      hasUnsupportedMaterialHeaderOptions(navigationOptions) ||
+      navigationOptions.headerTransparent === false
+    ) {
+      return nativeHeaderFallback(navigationOptions);
+    }
+    return navigationOptions;
+  }
+
   if (material3.topAppBar === false || hasUnsupportedMaterialHeaderOptions(navigationOptions)) {
-    return {
-      ...navigationOptions,
-      // Explicitly cancel the Material header inherited from root screenOptions.
-      header: undefined,
-      headerTransparent: navigationOptions.headerTransparent ?? false,
-    };
+    return nativeHeaderFallback(navigationOptions);
   }
 
   return {
@@ -213,21 +228,10 @@ function transformScreenChild(child: ReactNode): ReactNode {
 }
 
 function MaterialStack({ children, screenOptions, ...props }: MaterialStackProps) {
-  if (Platform.OS !== 'android') {
-    return (
-      <ExpoStack
-        {...(props as ExpoStackProps)}
-        screenOptions={screenOptions as ExpoStackProps['screenOptions']}
-      >
-        {Children.map(children, transformScreenChild)}
-      </ExpoStack>
-    );
-  }
-
-  const resolvedScreenOptions = transformOptions(
-    screenOptions,
-    applyRootMaterial3
-  ) as ExpoStackProps['screenOptions'];
+  const resolvedScreenOptions =
+    screenOptions === undefined && Platform.OS !== 'android'
+      ? undefined
+      : (transformOptions(screenOptions, applyRootMaterial3) as ExpoStackProps['screenOptions']);
 
   return (
     <ExpoStack
@@ -248,8 +252,9 @@ type MaterialStackComponent = typeof ExpoStack & {
  * Expo Router Stack with Android Material3 TopAppBar translation.
  *
  * Runtime navigation still belongs to Expo Router / React Navigation / react-native-screens. On
- * iOS and web this is a pass-through. On Android the default native-stack header is replaced with
- * MaterialTopAppBar only when the existing options can be translated without losing behavior.
+ * iOS and web the existing native-stack behavior is preserved and Material3-only options are
+ * stripped. On Android the default native-stack header is replaced with MaterialTopAppBar only
+ * when the existing options can be translated without losing behavior.
  */
 export const Stack = Object.assign(MaterialStack, ExpoStack) as MaterialStackComponent;
 
