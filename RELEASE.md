@@ -8,23 +8,23 @@ Alpha releases use the npm dist-tag `next`. Do not publish an alpha as `latest`.
 
 ## First-public-alpha blocker
 
-Do **not** publish `0.1.0-alpha.1` until the navigation-first product shape is validated on the exact release candidate.
+Do **not** publish `0.1.0-alpha.1` until the navigation-first product shape is validated on the exact release tarball.
 
-The required public shape is:
+Required public shape:
 
 ```text
-Stack / navigator
-└── MaterialTopAppBar per route
-
 navigation layout
+├── Stack / navigator
+│   └── MaterialTopAppBar per route
 └── one persistent MaterialToolbar
 
-screen
-└── NativeScrollHost
-    └── React Native vertical scroll source
+native screen
+└── plain React Native vertical scroll source
 ```
 
-The screen must not need to repeat TopAppBar or FloatingToolbar declarations.
+On the certified Android navigation path, `react-native-screens` owns the real nested-scroll parent/controller relationship. Screen components must not need `NativeScrollHost`, repeated TopAppBar declarations or repeated FloatingToolbar declarations.
+
+`NativeScrollHost` remains a standalone/fallback API and is not the normal navigation-first page wrapper.
 
 ## Release candidate gate
 
@@ -32,55 +32,79 @@ Before publishing a version, freeze and validate one exact commit:
 
 1. `npm run check`;
 2. `npm pack --dry-run` and inspect the package surface;
-3. install the exact tarball in an external RN 0.86.2 consumer under the public package name;
+3. install the exact tarball in an external RN 0.86.x consumer under the public package name;
 4. verify the Expo config plugin resolves as `react-native-scroll-interop`;
-5. run the Expo Router SDK 57 navigation-first gate;
-6. run the React Navigation native-stack navigation-first gate;
-7. create a new immutable `*-pass` checkpoint for the exact tested commit.
+5. verify both version-scoped Android patches apply cleanly where required;
+6. run the Expo Router SDK 57 navigation-first gate;
+7. run the React Navigation native-stack navigation-first gate;
+8. create a new immutable `*-pass` checkpoint for the exact tested commit.
 
 Do not repoint a frozen release checkpoint.
 
 ### Expo Router navigation-first gate
 
-Use the exact release tarball in an Expo SDK 57 / RN 0.86.2 consumer.
+Use the exact release tarball in an Expo SDK 57 / RN 0.86.x consumer.
+
+Required configuration:
+
+```json
+[
+  "react-native-scroll-interop",
+  {
+    "android": {
+      "rn086AndroidXScroll": true,
+      "reactNativeScreensInterop": true
+    }
+  }
+]
+```
 
 Required structure:
 
-- `MaterialTopAppBar` declared directly in `Stack.Screen` through `Stack.Header asChild`;
-- transparent custom Stack header;
-- one persistent `MaterialToolbar.Root` in the route layout;
-- screen files contain `NativeScrollHost` + scroll source, with no repeated TopAppBar/FloatingToolbar.
+- import `Stack` from `react-native-scroll-interop/router`;
+- use ordinary `Stack` / `Stack.Screen` declarations;
+- use standard options such as `title` and `headerLargeTitle` where possible;
+- use `material3.topAppBar` only for Material-only behavior;
+- one persistent `MaterialToolbar.Root` in the navigation layout;
+- screen files contain plain React Native scroll sources and no `NativeScrollHost`;
+- no app-owned TopAppBar sizing/safe-area constants or manual Material back wiring.
 
 Runtime validation:
 
-- Android prebuild/build/install;
+- Android prebuild/build/install from the exact tarball;
+- first frame shows the correct TopAppBar geometry;
 - Home ordinary scroll + fling;
 - navigate Home -> Details;
 - Details ordinary scroll + fling;
-- native Material back button returns to Home;
+- automatic Material back returns to Home;
+- repeated push/pop/back;
 - new Home scroll after return;
-- persistent FloatingToolbar/FAB still responds to the active screen source;
+- persistent FloatingToolbar/FAB still responds to the active source;
+- no vertical transition jump;
 - no duplicate/ambiguous chrome binding or stale transaction behavior.
+
+Also verify the local-package resolver does not load a second React/Expo Router graph. This is a repository-example concern; published packages must resolve peers from the consumer app normally.
 
 ### React Navigation navigation-first gate
 
-Use the exact same release tarball with React Navigation native stack.
+Use the exact same release tarball with React Navigation native stack and the certified `react-native-screens` line.
 
 Required structure:
 
-- `MaterialTopAppBar` supplied through the native stack custom `header` option;
-- `headerTransparent: true`;
+- `MaterialTopAppBar` supplied through the native stack custom `header` option for this first alpha;
+- `headerTransparent: true` for the custom Material header path;
 - one persistent `MaterialToolbar.Root` around the navigator;
-- host navigator supplies back ownership through `navigation.goBack()`;
-- screen content does not declare duplicate chrome.
+- host navigator supplies real navigation/back ownership through `navigation.goBack()`;
+- screen content is a plain React Native vertical scroll source with no `NativeScrollHost` on the screen-owned path;
+- no duplicate chrome inside screen components.
 
-Runtime validation matches the Expo Router gate: scroll/fling on both screens, forward navigation, native Material back, return/new scroll, persistent toolbar and no ambiguous binding.
+Runtime validation matches the Expo Router gate: scroll/fling on both screens, forward navigation, native Material back, return/new scroll, repeated transitions, persistent toolbar and no ambiguous/stale binding.
 
-`screenLayout` may be tested as an optional React Navigation convenience for centralizing `NativeScrollHost`; it is not required for first-alpha transport correctness.
+The React Navigation gate remains required even though both stacks use `react-native-screens`; API/navigation lifecycle behavior must be certified independently.
 
 ## First npm publish
 
-The first publish bootstraps the package on npm and must be performed manually only after the exact navigation-first release candidate has passed all gates above.
+The first publish bootstraps the package on npm and must be performed manually only after the exact navigation-first release candidate passes all gates above.
 
 Before publishing, check the registry name again:
 
@@ -88,26 +112,26 @@ Before publishing, check the registry name again:
 npm view react-native-scroll-interop
 ```
 
-For an unpublished name npm should report that the package is not present. If the name exists unexpectedly, stop rather than publishing under a different identity.
+If the name exists unexpectedly, stop rather than publishing under a different identity.
 
-Authenticate to npm and verify the active account before publishing:
+Authenticate to npm and verify the active account:
 
 ```bash
 npm login
 npm whoami
 ```
 
-`npm whoami` must print the intended maintainer account. If it returns `E401`, do not publish yet.
+`npm whoami` must print the intended maintainer account. If it returns `E401`, do not publish.
 
-Run one final publish dry-run with the release tag and access flags explicit:
+Run one final publish dry-run with release flags explicit:
 
 ```bash
 npm publish --dry-run --access public --tag next
 ```
 
-The publish notice must say `tag next`, and the tarball must contain only the release-controlled source surface. Generated paths such as `android/build`, `android/.gradle`, `android/.cxx`, `android/.kotlin` and `android/src/debug` must never be present.
+The notice must say `tag next`, and the tarball must contain only the release-controlled source surface. Generated paths such as `android/build`, `android/.gradle`, `android/.cxx`, `android/.kotlin` and `android/src/debug` must never be present.
 
-Then publish with the same explicit release flags:
+Then publish with the same flags:
 
 ```bash
 npm publish --access public --tag next
@@ -145,4 +169,4 @@ For future alpha releases:
 
 ## Stable release
 
-Do not move the npm `latest` dist-tag or publish a stable version until the compatibility/support matrix is intentionally widened and a stable release gate is defined.
+Do not move npm `latest` or publish a stable version until the compatibility/support matrix is intentionally widened and a stable release gate is defined.
