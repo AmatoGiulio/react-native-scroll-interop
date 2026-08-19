@@ -66,8 +66,5 @@
     "expo-router": {
       "optional": true
     }
-  },
-  "devDependencies": {
-    "expo-router": "~57.0.9"
   }
 }
