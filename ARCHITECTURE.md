@@ -29,6 +29,16 @@ Conservation is checked against the real synchronous Android callback values:
 requested = preConsumed + childConsumed + postConsumed + remaining
 ```
 
+## Android source tree
+
+All Android runtime code lives under the standard module source root:
+
+```text
+android/src/main/java/
+```
+
+There is no secondary/shared Android source set.
+
 ## Layers
 
 ### Neutral core
@@ -42,7 +52,7 @@ com.reactnativescroll.interop.core
 Source:
 
 ```text
-android-shared/src/main/java/com/reactnativescroll/interop/core/
+android/src/main/java/com/reactnativescroll/interop/core/
 ```
 
 Owns:
@@ -60,6 +70,12 @@ Package:
 
 ```text
 com.reactnativescroll.interop.reactnative
+```
+
+Source:
+
+```text
+android/src/main/java/com/reactnativescroll/interop/reactnative/
 ```
 
 `ReactVerticalScrollSourceInterop` recognizes the supported React Native vertical source implementations at the compatibility boundary and exposes only Android-level capabilities to the rest of the transport.
@@ -82,6 +98,12 @@ Package:
 
 ```text
 com.reactnativescroll.interop.material3
+```
+
+Source:
+
+```text
+android/src/main/java/com/reactnativescroll/interop/material3/
 ```
 
 `TopAppBarScrollConsumer` is a PRE/POST consumer.
@@ -223,6 +245,7 @@ On iOS/web it removes the `material3` namespace and otherwise forwards the exist
 - FloatingToolbar consuming PRE/POST distance
 - page-level `NativeScrollHost` on the certified screen-owned navigation path
 - duplicate navigation state inside this package
+- secondary Android source trees for the runtime core
 
 ## Gates
 
@@ -233,6 +256,7 @@ On iOS/web it removes the `material3` namespace and otherwise forwards the exist
 - navigation API shape
 - RN 0.86.x and RN 0.87.x source compatibility transformations
 - `react-native-screens 4.26.x` source transformation
+- single Android runtime source tree
 - npm tarball surface
 
 Runtime release gates remain device/build tests; static gates do not replace them.
