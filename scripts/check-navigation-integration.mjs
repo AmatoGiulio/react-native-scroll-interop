@@ -25,6 +25,23 @@ function collectSourceFiles(directory) {
   return files;
 }
 
+function exportedTypeNames(source) {
+  const names = new Set();
+
+  for (const match of source.matchAll(/export type\s*\{([\s\S]*?)\}\s*from/g)) {
+    for (const entry of match[1].split(',')) {
+      const name = entry.trim().match(/^([A-Za-z_$][\w$]*)/)?.[1];
+      if (name) names.add(name);
+    }
+  }
+
+  for (const match of source.matchAll(/export type\s+([A-Za-z_$][\w$]*)\s*=/g)) {
+    names.add(match[1]);
+  }
+
+  return [...names].sort();
+}
+
 const index = read('index.ts');
 const router = read('router.tsx');
 const pkg = read('package.json');
@@ -117,6 +134,14 @@ requireText('README.md', readme, 'React Native 0.87.x', 'RN 0.87 documentation')
 requireText('RELEASE.md', release, '### React Native 0.86.x gate', 'RN 0.86 release gate');
 requireText('RELEASE.md', release, '### React Native 0.87.x gate', 'RN 0.87 release gate');
 
+for (const publicType of [...exportedTypeNames(index), ...exportedTypeNames(router)]) {
+  requireText('README.md', readme, publicType, `public type ${publicType}`);
+}
+
+for (const publicValue of ['MaterialTopAppBar', 'MaterialToolbar', 'NativeScrollHost', 'Stack']) {
+  requireText('README.md', readme, publicValue, `public value ${publicValue}`);
+}
+
 if (violations.length > 0) {
   console.error('Navigation integration invariant: FAIL');
   for (const violation of violations) console.error(`  ${violation}`);
@@ -129,4 +154,5 @@ console.log('  iOS/web pass through existing Expo Router native-stack behavior')
 console.log('  Android title/large-title/back semantics map to MaterialTopAppBar');
 console.log('  mirrored JS/native TopAppBar header geometry is guarded');
 console.log('  navigation screens contain plain RN ScrollView without NativeScrollHost');
+console.log('  README covers every exported public type from the root and router entrypoints');
 console.log('  example uses the canonical dual-version compatibility plugin option');
