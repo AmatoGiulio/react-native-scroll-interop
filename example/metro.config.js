@@ -1,25 +1,36 @@
 // Metro config for the local-library example.
 //
 // The example consumes the library through a `file:..` dependency, which npm installs as a
-// symlink. Metro must therefore watch the parent folder and must NOT resolve a second copy of
-// react / react-native from it, or the app would load two React instances.
+// symlink. Runtime peers must always resolve from the example app, never from the linked library
+// root, or Metro can load duplicate React / Expo Router module graphs.
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const config = getDefaultConfig(__dirname);
+const appNodeModules = path.resolve(__dirname, 'node_modules');
+const libraryNodeModules = path.resolve(__dirname, '..', 'node_modules');
+
+function blockLibraryPackage(packageName) {
+  return new RegExp(
+    path.resolve(libraryNodeModules, packageName).replace(/[\\/]/g, '[\\\\/]')
+  );
+}
 
 config.resolver.blockList = [
   ...Array.from(config.resolver.blockList ?? []),
-  new RegExp(path.resolve('..', 'node_modules', 'react').replace(/\\/g, '\\\\')),
-  new RegExp(path.resolve('..', 'node_modules', 'react-native').replace(/\\/g, '\\\\')),
+  blockLibraryPackage('react'),
+  blockLibraryPackage('react-native'),
+  blockLibraryPackage('expo-router'),
 ];
 
 config.resolver.nodeModulesPaths = [
-  path.resolve(__dirname, './node_modules'),
-  path.resolve(__dirname, '../node_modules'),
+  appNodeModules,
+  libraryNodeModules,
 ];
 
 config.resolver.extraNodeModules = {
+  ...config.resolver.extraNodeModules,
+  'expo-router': path.resolve(appNodeModules, 'expo-router'),
   'react-native-scroll-interop': path.resolve(__dirname, '..'),
 };
 
