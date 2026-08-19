@@ -33,6 +33,7 @@ function collectSourceFiles(directory) {
 }
 
 const index = read('index.ts');
+const router = read('router.tsx');
 const pkg = read('package.json');
 const appJson = read('example/app.json');
 const topTypes = read('src/MaterialTopAppBar.types.ts');
@@ -55,6 +56,9 @@ requireText('src/MaterialTopAppBar.types.ts', topTypes, 'navigationAccessibility
 requireText('index.ts', index, 'MaterialTopAppBarNavigationIcon', 'navigation icon type export');
 requireText('index.ts', index, 'MaterialTopAppBarPlacement', 'header placement type export');
 requireText('package.json', pkg, 'react-native-safe-area-context', 'safe-area peer dependency');
+requireText('package.json', pkg, '"expo-router": ">=57.0.0 <58.0.0"', 'Expo Router optional peer');
+requireText('package.json', pkg, '"optional": true', 'optional router peer metadata');
+requireText('package.json', pkg, '"router.tsx"', 'router subpath package surface');
 
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, "props.placement ?? 'overlay'", 'overlay placement default');
 requireText('src/MaterialTopAppBar.android.tsx', topAndroid, "=== 'header'", 'navigator header placement branch');
@@ -73,13 +77,30 @@ requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopA
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'R.drawable.react_native_scroll_interop_arrow_back', 'packaged back drawable');
 requireText('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt', topView, 'navigationIcon = navigationIcon', 'Material3 TopAppBar navigation slot');
 
+requireText('router.tsx', router, "Stack as ExpoStack", 'Expo Router Stack delegation');
+requireText('router.tsx', router, "Platform.OS !== 'android'", 'non-Android pass-through');
+requireText('router.tsx', router, 'Material3StackNavigationOptions', 'Material3 option namespace');
+requireText('router.tsx', router, 'headerLargeTitleEnabled === true || options.headerLargeTitle === true', 'standard large-title mapping');
+requireText('router.tsx', router, "variant === 'large' ? 'exitUntilCollapsed' : 'none'", 'large-title scroll behavior mapping');
+requireText('router.tsx', router, "navigationIcon={canGoBack ? 'back' : 'none'}", 'automatic Material back affordance');
+requireText('router.tsx', router, 'headerProps.navigation.goBack()', 'automatic navigation back action');
+requireText('router.tsx', router, 'headerTransparent: true', 'Material header transparent native-stack contract');
+requireText('router.tsx', router, 'UNSUPPORTED_MATERIAL_HEADER_KEYS', 'lossless native-header fallback guard');
+requireText('router.tsx', router, 'material3.topAppBar === false', 'per-screen native header opt-out');
+requireText('router.tsx', router, 'Object.assign(MaterialStack, ExpoStack)', 'Expo Stack static API preservation');
+
 requireText('example/app.json', appJson, '"reactNativeScreensInterop": true', 'direct react-native-screens interop option');
-requireText('example/app/navigation-first/_layout.tsx', expoLayout, '<Stack screenOptions={{ headerTransparent: true }}>', 'Expo Router transparent custom-header scope');
-requireText('example/app/navigation-first/_layout.tsx', expoLayout, '<Stack.Header asChild>', 'Expo Router custom header');
-requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'placement="header"', 'TopAppBar-owned navigator sizing');
+requireText('example/app/navigation-first/_layout.tsx', expoLayout, "from 'react-native-scroll-interop/router'", 'package-owned Stack import');
+requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'headerLargeTitle: true', 'standard large-title option');
+requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'material3:', 'Material3-only option namespace');
+requireText('example/app/navigation-first/_layout.tsx', expoLayout, "variant: 'medium'", 'Material3 medium TopAppBar override');
+requireText('example/app/navigation-first/_layout.tsx', expoLayout, "scrollBehavior: 'enterAlways'", 'Material3 behavior override');
 requireText('example/app/navigation-first/_layout.tsx', expoLayout, '<MaterialToolbar.Root', 'layout-owned persistent FloatingToolbar');
-requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'navigationIcon="back"', 'details back affordance');
-requireText('example/app/navigation-first/_layout.tsx', expoLayout, 'onNavigationPress={() => router.back()}', 'Expo Router back ownership');
+forbidText('example/app/navigation-first/_layout.tsx', expoLayout, '<Stack.Header', 'manual Expo Router custom header');
+forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'MaterialTopAppBar', 'manual MaterialTopAppBar declaration');
+forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'headerTransparent', 'app-owned transparent-header wiring');
+forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'navigationIcon=', 'app-owned back icon wiring');
+forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'onNavigationPress={() => router.back()}', 'app-owned TopAppBar back wiring');
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'useSafeAreaInsets', 'app-owned TopAppBar safe-area sizing');
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, 'TOP_APP_BAR_HEIGHT', 'app-owned TopAppBar height constants');
 forbidText('example/app/navigation-first/_layout.tsx', expoLayout, "position: 'relative'", 'app-owned TopAppBar positioning');
@@ -106,7 +127,6 @@ for (const absolutePath of collectSourceFiles(exampleAppRoot)) {
 
 requireText('README.md', readme, '## Expo Router SDK 57', 'Expo Router integration docs');
 requireText('README.md', readme, '## React Navigation', 'React Navigation integration docs');
-requireText('README.md', readme, 'headerTransparent: true', 'React Navigation transparent header contract');
 requireText('PRODUCT.md', product, '## Navigation-first product model', 'navigation-first product contract');
 requireText('RELEASE.md', release, '## First-public-alpha blocker', 'first publish navigation blocker');
 requireText('RELEASE.md', release, '### Expo Router navigation-first gate', 'Expo Router runtime release gate');
@@ -119,8 +139,10 @@ if (violations.length > 0) {
 }
 
 console.log('Navigation integration invariant: PASS');
-console.log('  Expo Router: Stack-owned MaterialTopAppBar + layout-owned MaterialToolbar');
+console.log('  Expo Router Stack API is preserved through react-native-scroll-interop/router');
+console.log('  iOS/web pass through existing Expo Router native-stack behavior');
+console.log('  Android standard title/large-title/back semantics map to MaterialTopAppBar');
+console.log('  Material3-only behavior stays under an optional material3 namespace');
+console.log('  unsupported custom header options fail back to the platform-native header');
 console.log('  navigation screens contain plain RN ScrollView without NativeScrollHost');
 console.log('  all example routes use canonical react-native-scroll-interop package identity');
-console.log('  navigator header sizing is owned by MaterialTopAppBar placement="header"');
-console.log('  native Material back action wired without scroll-frame JS transport');
