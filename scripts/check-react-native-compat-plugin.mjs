@@ -41,7 +41,7 @@ assert.equal(
 );
 assert.throws(
   () => ensureReactNativeSourceBuildSettings(`${settingsFixture}\nincludeBuild(expoAutolinking.reactNative) {}\n`),
-  /partial, duplicate or unexpected/
+  /partial or duplicate/
 );
 assert.throws(
   () => ensureReactNativeSourceBuildSettings('pluginManagement {}\n'),
@@ -57,10 +57,10 @@ assert.doesNotMatch(patchedManager, /useNestedScrollViewAndroid/);
 assert.equal(patchMainReactPackage(patchedManager), patchedManager);
 assert.throws(
   () => patchMainReactPackage(managerFixture.replace(mapManagerGate, 'ReactScrollViewManager()')),
-  /Expected 2 remaining ScrollView manager feature gate\(s\).*found 1/
+  /Expected 2 remaining ScrollView manager feature gate\(s\); found 1/
 );
 
-const rn086Fixture = `class ReactNestedScrollView {\n  @Override\n  public void fling(int velocityY) {\n    final int correctedVelocityY = correctFlingVelocityY(velocityY);\n\n    if (mPagingEnabled) {\n      flingAndSnap(correctedVelocityY);\n    } else if (mScroller != null) {\n      mScroller.fling(getScrollX(), getScrollY(), 0, correctedVelocityY, 0, 0, 0, Integer.MAX_VALUE);\n      ViewCompat.postInvalidateOnAnimation(this);\n    } else {\n      super.fling(correctedVelocityY);\n    }\n    handlePostTouchScrolling(0, correctedVelocityY);\n  }\n\n  private int correctFlingVelocityY(int velocityY) { return velocityY; }\n}\n`;
+const rn086Fixture = `class ReactNestedScrollView {\n  @Override\n  public void fling(int velocityY) {\n    final int correctedVelocityY = correctFlingVelocityY(velocityY);\n\n    if (mPagingEnabled) {\n      flingAndSnap(correctedVelocityY);\n    } else if (mScroller != null) {\n      int scrollWindowHeight = getHeight() - getPaddingBottom() - getPaddingTop();\n      mScroller.fling(\n          getScrollX(), getScrollY(), 0, correctedVelocityY, 0, 0, 0, Integer.MAX_VALUE, 0, scrollWindowHeight / 2);\n      ViewCompat.postInvalidateOnAnimation(this);\n    } else {\n      super.fling(correctedVelocityY);\n    }\n    handlePostTouchScrolling(0, correctedVelocityY);\n  }\n\n  private int correctFlingVelocityY(int velocityY) { return velocityY; }\n}\n`;
 const patched086 = patchReactNestedScrollView086(rn086Fixture);
 assert.match(patched086, new RegExp(RN086_FLING_MARKER));
 assert.doesNotMatch(patched086, /mScroller\.fling\(/);
@@ -70,14 +70,12 @@ assert.throws(
   () => patchReactNestedScrollView086('class ReactNestedScrollView {}\n'),
   /Could not locate ReactNestedScrollView\.fling/
 );
-
-const legacy086 = patched086.replace(
-  RN086_FLING_MARKER,
-  'EXPO_MATERIAL_TOOLBAR_RN086_ANDROIDX_FLING'
+assert.throws(
+  () => patchReactNestedScrollView086(rn086Fixture.replace('mScroller.fling(', 'unknownScroller.fling(')),
+  /unexpected RN 0\.86 shape/
 );
-assert.match(patchReactNestedScrollView086(legacy086), new RegExp(RN086_FLING_MARKER));
 
-const rn087Fixture = `internal open class ReactNestedScrollView {\n  override fun fling(velocityY: Int) {\n    val correctedVelocityY = correctFlingVelocityY(velocityY)\n\n    if (pagingEnabled) {\n      flingAndSnap(correctedVelocityY)\n    } else if (scroller != null) {\n      scroller.fling(\n          scrollX, scrollY, 0, correctedVelocityY, 0, 0, 0, Int.MAX_VALUE, 0, height / 2)\n      ViewCompat.postInvalidateOnAnimation(this)\n    } else {\n      super.fling(correctedVelocityY)\n    }\n    handlePostTouchScrolling(0, correctedVelocityY)\n  }\n\n  private fun correctFlingVelocityY(velocityY: Int): Int = velocityY\n}\n`;
+const rn087Fixture = `internal open class ReactNestedScrollView {\n  override fun fling(velocityY: Int) {\n    val correctedVelocityY = correctFlingVelocityY(velocityY)\n\n    if (pagingEnabled) {\n      flingAndSnap(correctedVelocityY)\n    } else if (scroller != null) {\n      val scrollWindowHeight = height - paddingBottom - paddingTop\n      scroller.fling(\n          scrollX, scrollY, 0, correctedVelocityY, 0, 0, 0, Int.MAX_VALUE, 0, scrollWindowHeight / 2)\n      postInvalidateOnAnimation()\n    } else {\n      super.fling(correctedVelocityY)\n    }\n    handlePostTouchScrolling(0, correctedVelocityY)\n  }\n\n  private fun correctFlingVelocityY(velocityY: Int): Int = velocityY\n}\n`;
 const patched087 = patchReactNestedScrollView087(rn087Fixture);
 assert.match(patched087, new RegExp(RN087_FLING_MARKER));
 assert.doesNotMatch(patched087, /scroller\.fling\(/);
@@ -87,20 +85,14 @@ assert.throws(
   () => patchReactNestedScrollView087('internal class ReactNestedScrollView {}\n'),
   /Could not locate ReactNestedScrollView\.fling/
 );
-
-const legacy087 = patched087
-  .replace(RN087_FLING_MARKER, 'RN087_NESTED_FLING_SOURCE_PATCH')
-  .replace(
-    'super.fling(correctedVelocityY)',
-    'android.util.Log.i("Rn087NestedScroll", "SOURCE_FLING_PATCH")\n      super.fling(correctedVelocityY)'
-  );
-const normalized087 = patchReactNestedScrollView087(legacy087);
-assert.match(normalized087, new RegExp(RN087_FLING_MARKER));
-assert.doesNotMatch(normalized087, /SOURCE_FLING_PATCH/);
+assert.throws(
+  () => patchReactNestedScrollView087(rn087Fixture.replace('postInvalidateOnAnimation()', 'invalidate()')),
+  /unexpected RN 0\.87 shape/
+);
 
 console.log('React Native 0.86/0.87 AndroidX compatibility plugin invariant: PASS');
 console.log('  source-build configuration is idempotent and fail-closed');
 console.log('  nested ScrollView manager selection is deterministic');
-console.log('  RN 0.86 Java fling delegates ordinary motion to AndroidX');
-console.log('  RN 0.87 Kotlin fling delegates ordinary motion to AndroidX');
+console.log('  RN 0.86 Java fling shape is guarded');
+console.log('  RN 0.87 Kotlin fling shape is guarded');
 console.log('  paging/snap remains on the existing React Native branch');
