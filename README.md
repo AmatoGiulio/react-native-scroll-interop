@@ -45,12 +45,14 @@ The package manifest currently declares:
 | Dependency / platform | Current contract |
 |---|---|
 | React Native | `>=0.86.0 <0.88.0` — RN 0.86.x and RN 0.87.x |
-| Expo | `>=57.0.0 <58.0.0` |
+| Expo module runtime | `*`; the core package does not pin an Expo SDK line |
 | Expo Router | `>=57.0.0 <58.0.0`, optional unless `/router` is imported |
 | react-native-screens | `>=4.26.0 <4.27.0`, optional unless direct screen ownership is enabled |
 | react-native-safe-area-context | `>=5.0.0 <6.0.0` |
 | Android | native Material3 and nested-scroll implementation |
 | iOS / web | safe fallback/no-op Material surfaces; Expo Router options pass through |
+
+The Expo peer follows the normal Expo-module contract and is intentionally separate from the narrower Expo Router adapter certification. The repository Router example is Expo SDK 57 / RN 0.86.
 
 ### React Native 0.86.x
 
@@ -62,7 +64,7 @@ The same `reactNativeScrollCompat` option patches the RN 0.87 Kotlin `ReactNeste
 
 Both RN lines therefore use the same ownership model: React Native starts and owns the fling, while AndroidX supplies the real typed nested-scroll lifecycle consumed by this package.
 
-The repository Expo Router example remains on Expo SDK 57 / RN 0.86. RN 0.87 support is implemented in the package compatibility layer and has its own release gate; it is not represented by changing that example to an unsupported Expo/RN pairing.
+RN 0.87 support is part of the package compatibility layer and has its own release gate. It does not imply that an arbitrary Expo SDK can be paired with an arbitrary React Native version.
 
 ## Expo config plugin
 
