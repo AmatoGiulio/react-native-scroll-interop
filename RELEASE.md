@@ -8,12 +8,17 @@ Alpha releases use npm dist-tag `next`.
 
 ## First-public-alpha blocker
 
-Do not publish `0.1.0-alpha.1` until one exact tarball passes both supported React Native lines:
+Do not publish `0.1.0-alpha.1` until one exact tarball passes both supported React Native lines in the correct host for each line:
 
 ```text
-React Native 0.86.x
-React Native 0.87.x
+Expo integration
+└── Expo SDK 57 + React Native 0.86.x
+
+React Native compatibility
+└── bare React Native 0.87.x
 ```
+
+The RN 0.87 gate is a bare React Native compatibility gate. It is not an Expo SDK 58/canary gate. Do not introduce an unsupported Expo SDK/RN pairing just to exercise RN 0.87 support.
 
 The supported Android navigation shape is:
 
@@ -62,9 +67,11 @@ For standalone `NativeScrollHost`, `reactNativeScreensInterop` may be omitted.
 
 Both source-patching options are fail-closed and version-scoped.
 
-### React Native 0.86.x gate
+### React Native 0.86.x / Expo SDK 57 gate
 
-Use the exact release tarball in the repository's supported Expo SDK 57 / RN 0.86.x host or an equivalent fresh consumer.
+Use the exact release tarball in the repository's supported Expo SDK 57 / RN 0.86.x host or an equivalent fresh Expo SDK 57 consumer.
+
+This is the Expo integration gate for `0.1.0-alpha.1`.
 
 Required build checks:
 
@@ -87,9 +94,11 @@ Required runtime checks:
 
 The current repository navigation-first example is the RN 0.86 smoke app.
 
-### React Native 0.87.x gate
+### React Native 0.87.x bare gate
 
-Use the exact same release tarball in a fresh native host that is compatible with RN 0.87.x.
+Use the exact same release tarball in a bare React Native 0.87.x host.
+
+This gate certifies RN 0.87 compatibility of the library and source patcher. It does not certify Expo SDK 58 or any Expo canary. Expo SDK compatibility is tested only on an Expo SDK that officially targets the selected React Native line.
 
 Required build checks:
 
@@ -107,7 +116,7 @@ Required runtime checks:
 - `NativeScrollHost` standalone transport works;
 - when a compatible `react-native-screens 4.26.x` navigation host is used, the screen-owned path also works without page-level `NativeScrollHost`.
 
-Do not interpret RN 0.87 support as permission to force RN 0.87 into an Expo SDK that targets another RN line. The release gate must use a host stack that supports the selected RN version.
+Do not install or force Expo SDK 58/canary into the RN 0.87 bare gate. A future Expo/RN 0.87 integration gate is separate and should only be added when Expo officially supports that RN line.
 
 ### Expo Router navigation-first gate
 
@@ -180,7 +189,7 @@ After the package exists on npm, `.github/workflows/publish-npm.yml` is the rele
 For each subsequent alpha:
 
 1. bump package and Android version metadata together;
-2. run both RN release gates on the exact candidate;
+2. run both RN release gates on the exact candidate in their correct hosts;
 3. freeze the commit;
 4. tag `v0.1.0-alpha.N`;
 5. publish the GitHub Release;
