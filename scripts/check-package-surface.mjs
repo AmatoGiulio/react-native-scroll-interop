@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import process from 'node:process';
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -68,6 +68,24 @@ expect(
 expect(androidGradle.includes(`version = '${expectedVersion}'`), 'Android library version must match package version');
 expect(androidGradle.includes(`versionName '${expectedVersion}'`), 'Android versionName must match package version');
 expect(!androidGradle.includes('android-shared'), 'Android build must not use an external shared source tree');
+
+for (const obsoletePath of [
+  'android-shared',
+  'rn087-bare-probe',
+  'docs',
+  'assets',
+  'android/src/debug',
+  'example/src',
+  'example/scripts',
+  'example/app/(tabs)',
+  'plugin/withRn086AndroidXScroll.js',
+  'plugin/rn086AndroidXPatch.js',
+  'scripts/check-rn086-androidx-plugin.mjs',
+]) {
+  if (existsSync(new URL(`../${obsoletePath}`, import.meta.url))) {
+    violations.push(`obsolete repository path must stay removed: ${obsoletePath}`);
+  }
+}
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const result = spawnSync(npmCommand, ['pack', '--dry-run', '--json', '--ignore-scripts'], {
@@ -163,6 +181,7 @@ console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
 console.log('  React Native peer: 0.86.x / 0.87.x');
 console.log('  Expo Router adapter: 57.x');
+console.log('  historical/debug repository trees remain removed');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
 console.log('  tarball contains one Android runtime tree plus plugin/JS entry sources');
