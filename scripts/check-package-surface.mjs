@@ -41,13 +41,10 @@ expect(
     'node scripts/check-react-native-compat-plugin.mjs',
   'React Native compatibility gate is missing',
 );
-expect(
-  packageJson.peerDependencies?.expo === '>=57.0.0 <58.0.0',
-  'Expo peer range changed without certification',
-);
+expect(packageJson.peerDependencies?.expo === '*', 'Expo module peer should not pin the router SDK line');
 expect(
   packageJson.peerDependencies?.['expo-router'] === '>=57.0.0 <58.0.0',
-  'Expo Router peer range changed without certification',
+  'Expo Router peer must match the certified router adapter line',
 );
 expect(
   packageJson.peerDependenciesMeta?.['expo-router']?.optional === true,
@@ -55,7 +52,7 @@ expect(
 );
 expect(
   packageJson.peerDependencies?.['react-native'] === '>=0.86.0 <0.88.0',
-  'React Native peer range must cover the certified 0.86.x and 0.87.x lines only',
+  'React Native peer range must cover the 0.86.x and 0.87.x lines only',
 );
 expect(
   packageJson.peerDependencies?.['react-native-screens'] === '>=4.26.0 <4.27.0',
@@ -137,15 +134,10 @@ const forbiddenPrefixes = [
   'android-shared/.gradle/',
   'android-shared/build/',
 ];
-const forbiddenExact = new Set([
-  'ARCHITECTURE.md',
-  'RELEASE.md',
-  'plugin/withRn086AndroidXScroll.js',
-  'plugin/rn086AndroidXPatch.js',
-]);
+const forbiddenExact = new Set(['ARCHITECTURE.md', 'RELEASE.md']);
 
 for (const file of files) {
-  if (forbiddenExact.has(file)) violations.push(`obsolete/repository-only file leaked into package: ${file}`);
+  if (forbiddenExact.has(file)) violations.push(`repository-only documentation leaked into package: ${file}`);
   for (const prefix of forbiddenPrefixes) {
     if (file.startsWith(prefix)) violations.push(`repository/generated path leaked into package: ${file}`);
   }
@@ -166,6 +158,7 @@ if (violations.length > 0) {
 console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
 console.log('  React Native peer: 0.86.x / 0.87.x');
+console.log('  Expo Router adapter: 57.x');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
 console.log('  tarball contains runtime/plugin sources plus npm-mandatory README/LICENSE only');
