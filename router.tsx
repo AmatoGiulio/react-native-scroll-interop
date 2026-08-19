@@ -2,12 +2,16 @@ import {
   Children,
   cloneElement,
   isValidElement,
+  useMemo,
   type ComponentProps,
   type ReactElement,
   type ReactNode,
 } from 'react';
 import { Platform } from 'react-native';
-import { Stack as ExpoStack } from 'expo-router';
+import {
+  Stack as ExpoStack,
+  type NativeStackHeaderProps,
+} from 'expo-router';
 
 import { MaterialTopAppBar } from './src/MaterialTopAppBar';
 import type {
@@ -18,9 +22,7 @@ import type { MaterialToolbarThemeMode } from './src/MaterialToolbar.types';
 
 /**
  * Android Material3 options layered on top of Expo Router's existing native-stack options.
- *
- * Standard Expo Router / React Navigation options remain the primary API. This namespace is only
- * for Material3 behavior that does not have a cross-platform navigation equivalent yet.
+ * Standard Expo Router / React Navigation options remain the primary API.
  */
 export type Material3TopAppBarNavigationOptions = {
   variant?: MaterialTopAppBarVariant;
@@ -31,7 +33,7 @@ export type Material3TopAppBarNavigationOptions = {
 };
 
 export type Material3StackNavigationOptions = {
-  /** Set to false to keep the platform-native Expo/React Navigation header on Android. */
+  /** Keep the platform-native Expo/React Navigation header on Android. */
   topAppBar?: false | Material3TopAppBarNavigationOptions;
 };
 
@@ -39,16 +41,14 @@ type WithMaterial3<T> = T extends (...args: infer TArgs) => infer TResult
   ? (...args: TArgs) => TResult & { material3?: Material3StackNavigationOptions }
   : T & { material3?: Material3StackNavigationOptions };
 
+type NonFunction<T> = T extends (...args: infer _TArgs) => infer _TResult ? never : T;
+type FunctionArgs<T> = T extends (...args: infer TArgs) => infer _TResult ? TArgs : never;
+
 type ExpoStackProps = ComponentProps<typeof ExpoStack>;
 type ExpoStackScreenProps = ComponentProps<typeof ExpoStack.Screen>;
-
 type ExpoStackScreenOptions = NonNullable<ExpoStackScreenProps['options']>;
-type ExpoStackScreenOptionsObject = Exclude<ExpoStackScreenOptions, (...args: any[]) => any>;
-
-type ExpoStackScreenOptionsFactory = Extract<
-  ExpoStackScreenOptions,
-  (...args: any[]) => any
->;
+type ExpoStackScreenOptionsObject = NonFunction<ExpoStackScreenOptions>;
+type ExpoStackScreenOptionsArgs = FunctionArgs<ExpoStackScreenOptions>;
 
 export type MaterialStackNavigationOptions = ExpoStackScreenOptionsObject & {
   material3?: Material3StackNavigationOptions;
@@ -56,9 +56,7 @@ export type MaterialStackNavigationOptions = ExpoStackScreenOptionsObject & {
 
 export type MaterialStackScreenOptions =
   | MaterialStackNavigationOptions
-  | (ExpoStackScreenOptionsFactory extends (...args: infer TArgs) => any
-      ? (...args: TArgs) => MaterialStackNavigationOptions
-      : never);
+  | ((...args: ExpoStackScreenOptionsArgs) => MaterialStackNavigationOptions);
 
 export type MaterialStackScreenProps = Omit<ExpoStackScreenProps, 'options'> & {
   options?: MaterialStackScreenOptions;
@@ -69,8 +67,11 @@ export type MaterialStackProps = Omit<ExpoStackProps, 'screenOptions' | 'childre
   screenOptions?: WithMaterial3<NonNullable<ExpoStackProps['screenOptions']>>;
 };
 
-type RuntimeNavigationOptions = Record<string, any> & {
-  material3?: Material3StackNavigationOptions;
+type RuntimeNavigationOptions = MaterialStackNavigationOptions;
+
+type SplitMaterial3Options = {
+  material3: Material3StackNavigationOptions | undefined;
+  navigationOptions: ExpoStackScreenOptionsObject;
 };
 
 const UNSUPPORTED_MATERIAL_HEADER_KEYS = [
@@ -87,33 +88,35 @@ const UNSUPPORTED_MATERIAL_HEADER_KEYS = [
   'headerTitleAlign',
   'headerTitleStyle',
   'headerShadowVisible',
-] as const;
+] as const satisfies readonly (keyof ExpoStackScreenOptionsObject)[];
 
-function splitMaterial3(options: RuntimeNavigationOptions) {
+function splitMaterial3(options: RuntimeNavigationOptions): SplitMaterial3Options {
   const { material3, ...navigationOptions } = options;
   return { material3, navigationOptions };
 }
 
-function hasUnsupportedMaterialHeaderOptions(options: RuntimeNavigationOptions): boolean {
+function hasUnsupportedMaterialHeaderOptions(
+  options: ExpoStackScreenOptionsObject
+): boolean {
   if (typeof options.headerTitle === 'function') return true;
   return UNSUPPORTED_MATERIAL_HEADER_KEYS.some((key) => options[key] !== undefined);
 }
 
-function resolveTitle(headerProps: any): string {
-  const headerTitle = headerProps.options?.headerTitle;
+function resolveTitle(headerProps: NativeStackHeaderProps): string {
+  const headerTitle = headerProps.options.headerTitle;
   if (typeof headerTitle === 'string') return headerTitle;
 
-  const title = headerProps.options?.title;
+  const title = headerProps.options.title;
   if (typeof title === 'string') return title;
 
-  return headerProps.route?.name ?? '';
+  return headerProps.route.name;
 }
 
 function createMaterial3Header(
   config: Material3TopAppBarNavigationOptions | undefined
-) {
-  return (headerProps: any) => {
-    const options = headerProps.options ?? {};
+): NonNullable<ExpoStackScreenOptionsObject['header']> {
+  return (headerProps: NativeStackHeaderProps) => {
+    const options = headerProps.options;
     const largeTitleEnabled =
       options.headerLargeTitleEnabled === true || options.headerLargeTitle === true;
     const variant: MaterialTopAppBarVariant =
@@ -139,11 +142,11 @@ function createMaterial3Header(
 }
 
 function nativeHeaderFallback(
-  navigationOptions: RuntimeNavigationOptions
-): RuntimeNavigationOptions {
+  navigationOptions: ExpoStackScreenOptionsObject
+): ExpoStackScreenOptionsObject {
   return {
     ...navigationOptions,
-    // Explicitly cancel the Material header inherited from root screenOptions.
+    // Cancel a Material header inherited from root screenOptions.
     header: undefined,
     headerTransparent: navigationOptions.headerTransparent ?? false,
   };
@@ -156,52 +159,56 @@ function applyRootMaterial3(options: RuntimeNavigationOptions): RuntimeNavigatio
   if (Platform.OS !== 'android') return navigationOptions;
   if (navigationOptions.header !== undefined) return navigationOptions;
   if (material3?.topAppBar === false) return navigationOptions;
-  if (hasUnsupportedMaterialHeaderOptions(navigationOptions)) return navigationOptions;
+  if (
+    navigationOptions.headerTransparent === false ||
+    hasUnsupportedMaterialHeaderOptions(navigationOptions)
+  ) {
+    return navigationOptions;
+  }
 
-  const config = material3?.topAppBar || undefined;
   return {
     ...navigationOptions,
     headerTransparent: true,
-    header: createMaterial3Header(config),
+    header: createMaterial3Header(material3?.topAppBar),
   };
 }
 
-/** Per-screen Material3 is an explicit override; standard unsupported header options fall back. */
+/** Per-screen Material3 is an explicit override; unsupported header options fall back losslessly. */
 function applyScreenMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
   const { material3, navigationOptions } = splitMaterial3(options);
 
   if (Platform.OS !== 'android') return navigationOptions;
   if (navigationOptions.header !== undefined) return navigationOptions;
 
+  const needsNativeHeader =
+    navigationOptions.headerTransparent === false ||
+    hasUnsupportedMaterialHeaderOptions(navigationOptions);
+
   if (material3 === undefined) {
-    if (
-      hasUnsupportedMaterialHeaderOptions(navigationOptions) ||
-      navigationOptions.headerTransparent === false
-    ) {
-      return nativeHeaderFallback(navigationOptions);
-    }
-    return navigationOptions;
+    return needsNativeHeader ? nativeHeaderFallback(navigationOptions) : navigationOptions;
   }
 
-  if (material3.topAppBar === false || hasUnsupportedMaterialHeaderOptions(navigationOptions)) {
+  if (material3.topAppBar === false || needsNativeHeader) {
     return nativeHeaderFallback(navigationOptions);
   }
 
   return {
     ...navigationOptions,
     headerTransparent: true,
-    header: createMaterial3Header(material3.topAppBar || undefined),
+    header: createMaterial3Header(material3.topAppBar),
   };
 }
 
-function transformOptions(
-  options: any,
+function transformOptions<T>(
+  options: T | undefined,
   transform: (value: RuntimeNavigationOptions) => RuntimeNavigationOptions
-) {
+): T {
   if (typeof options === 'function') {
-    return (...args: any[]) => transform(options(...args) ?? {});
+    const factory = options as (...args: unknown[]) => RuntimeNavigationOptions;
+    return ((...args: unknown[]) => transform(factory(...args) ?? {})) as T;
   }
-  return transform(options ?? {});
+
+  return transform((options ?? {}) as RuntimeNavigationOptions) as T;
 }
 
 function transformScreenChild(child: ReactNode): ReactNode {
@@ -209,11 +216,10 @@ function transformScreenChild(child: ReactNode): ReactNode {
 
   if (child.type === ExpoStack.Screen) {
     const screen = child as ReactElement<MaterialStackScreenProps>;
-    const options = screen.props.options;
-    if (options === undefined) return child;
+    if (screen.props.options === undefined) return child;
 
     return cloneElement(screen, {
-      options: transformOptions(options, applyScreenMaterial3) as MaterialStackScreenOptions,
+      options: transformOptions(screen.props.options, applyScreenMaterial3),
     });
   }
 
@@ -228,17 +234,25 @@ function transformScreenChild(child: ReactNode): ReactNode {
 }
 
 function MaterialStack({ children, screenOptions, ...props }: MaterialStackProps) {
-  const resolvedScreenOptions =
-    screenOptions === undefined && Platform.OS !== 'android'
-      ? undefined
-      : (transformOptions(screenOptions, applyRootMaterial3) as ExpoStackProps['screenOptions']);
+  const resolvedScreenOptions = useMemo(
+    () =>
+      screenOptions === undefined && Platform.OS !== 'android'
+        ? undefined
+        : (transformOptions(screenOptions, applyRootMaterial3) as ExpoStackProps['screenOptions']),
+    [screenOptions]
+  );
+
+  const resolvedChildren = useMemo(
+    () => Children.map(children, transformScreenChild),
+    [children]
+  );
 
   return (
     <ExpoStack
       {...(props as ExpoStackProps)}
       screenOptions={resolvedScreenOptions}
     >
-      {Children.map(children, transformScreenChild)}
+      {resolvedChildren}
     </ExpoStack>
   );
 }
@@ -251,10 +265,9 @@ type MaterialStackComponent = typeof ExpoStack & {
 /**
  * Expo Router Stack with Android Material3 TopAppBar translation.
  *
- * Runtime navigation still belongs to Expo Router / React Navigation / react-native-screens. On
- * iOS and web the existing native-stack behavior is preserved and Material3-only options are
- * stripped. On Android the default native-stack header is replaced with MaterialTopAppBar only
- * when the existing options can be translated without losing behavior.
+ * Navigation remains owned by Expo Router / React Navigation / react-native-screens. iOS and web
+ * preserve the existing native-stack behavior; Android replaces the default header only when its
+ * options can be translated without dropping behavior.
  */
 export const Stack = Object.assign(MaterialStack, ExpoStack) as MaterialStackComponent;
 
