@@ -1,4 +1,4 @@
-import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'expo-material-toolbar';
+import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'react-native-scroll-interop';
 import { SectionList, StyleSheet, Text, View } from 'react-native';
 
 const SECTIONS = Array.from({ length: 12 }, (_, sectionIndex) => ({
