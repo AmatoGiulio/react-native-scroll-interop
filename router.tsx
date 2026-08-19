@@ -254,5 +254,3 @@ type MaterialStackComponent = typeof ExpoStack & {
 
 /** Expo Router Stack with Android Material3 TopAppBar translation. */
 export const Stack = Object.assign(MaterialStack, ExpoStack) as MaterialStackComponent;
-
-export default Stack;
