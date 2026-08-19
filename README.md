@@ -20,7 +20,7 @@ react-native-scroll-interop@0.1.0-alpha.1
 
 ## Public surface
 
-Root import:
+Root values:
 
 ```ts
 import {
@@ -30,13 +30,57 @@ import {
 } from 'react-native-scroll-interop';
 ```
 
+Root type exports:
+
+```text
+NativeScrollHostProps
+MaterialToolbarAlignment
+MaterialToolbarColors
+MaterialToolbarContentProps
+MaterialToolbarFabPosition
+MaterialToolbarFabShape
+MaterialToolbarFabProps
+MaterialToolbarIconButtonProps
+MaterialToolbarIconProps
+MaterialToolbarImeBehavior
+MaterialToolbarInsets
+MaterialToolbarLeadingContentProps
+MaterialToolbarOrientation
+MaterialToolbarPlacement
+MaterialToolbarRef
+MaterialToolbarRootProps
+MaterialToolbarScrollBehavior
+MaterialToolbarScrollExitDirection
+MaterialToolbarTextButtonProps
+MaterialToolbarTextProps
+MaterialToolbarThemeMode
+MaterialToolbarTrailingContentProps
+MaterialToolbarVariant
+MaterialTopAppBarNavigationIcon
+MaterialTopAppBarPlacement
+MaterialTopAppBarProps
+MaterialTopAppBarScrollBehavior
+MaterialTopAppBarVariant
+```
+
 Optional Expo Router adapter:
 
 ```ts
 import { Stack } from 'react-native-scroll-interop/router';
 ```
 
-The root package exports the three components above plus their public TypeScript types. The `/router` entry is the only JavaScript surface that imports Expo Router.
+`/router` also exports these types:
+
+```text
+Material3TopAppBarNavigationOptions
+Material3StackNavigationOptions
+MaterialStackNavigationOptions
+MaterialStackScreenOptions
+MaterialStackScreenProps
+MaterialStackProps
+```
+
+The `/router` entry is the only JavaScript surface that imports Expo Router.
 
 ## Compatibility
 
@@ -62,7 +106,7 @@ The Expo peer follows the normal Expo-module contract and is intentionally separ
 
 The same `reactNativeScrollCompat` option patches the RN 0.87 Kotlin `ReactNestedScrollView` source and the same two `MainReactPackage` manager creation paths. Ordinary non-paging fling delegates to AndroidX `NestedScrollView.fling()`; paging/snap remains on React Native's existing branch.
 
-Both RN lines therefore use the same ownership model: React Native starts and owns the fling, while AndroidX supplies the real typed nested-scroll lifecycle consumed by this package.
+Both RN lines use the same ownership model: React Native starts and owns the fling, while AndroidX supplies the real typed nested-scroll lifecycle consumed by this package.
 
 RN 0.87 support is part of the package compatibility layer and has its own release gate. It does not imply that an arbitrary Expo SDK can be paired with an arbitrary React Native version.
 
@@ -193,7 +237,7 @@ On Android the adapter maps:
 - `material3.topAppBar` to Material-only TopAppBar options;
 - `material3.topAppBar: false` to the platform-native header.
 
-Material-only navigation options are:
+Material-only navigation options are exactly:
 
 ```ts
 type Material3TopAppBarNavigationOptions = {
@@ -203,7 +247,13 @@ type Material3TopAppBarNavigationOptions = {
   dynamicColor?: boolean;
   navigationAccessibilityLabel?: string;
 };
+
+type Material3StackNavigationOptions = {
+  topAppBar?: false | Material3TopAppBarNavigationOptions;
+};
 ```
+
+`MaterialStackNavigationOptions`, `MaterialStackScreenOptions`, `MaterialStackScreenProps` and `MaterialStackProps` extend/inherit the corresponding Expo Router `Stack` types while adding the `material3` namespace.
 
 The adapter falls back to the platform-native header instead of silently dropping unsupported custom header behavior. That fallback is used for functional `headerTitle`, explicit `headerTransparent: false`, custom left/right items, header background/search/back icon, header style/tint/title style/alignment and header shadow configuration.
 
@@ -258,7 +308,7 @@ On non-Android platforms `MaterialTopAppBar` returns `null`.
 
 ## `MaterialToolbar`
 
-Compound API:
+Compound values:
 
 ```text
 MaterialToolbar.Root
@@ -272,35 +322,135 @@ MaterialToolbar.Text
 MaterialToolbar.Fab
 ```
 
-Root options are defined by `MaterialToolbarRootProps`. The current Android defaults are:
+### Root props
 
-```text
-expanded        true
-visible         true
-orientation     horizontal
-scrollBehavior  none
-variant         standard
-themeMode       system
-dynamicColor    false
-imeBehavior     none
-placement       bottom
-insets          safe
-FAB position    end when horizontal, bottom when vertical
+```ts
+type MaterialToolbarRootProps = {
+  children?: ReactNode;
+  expanded?: boolean;
+  visible?: boolean;
+  orientation?: 'horizontal' | 'vertical';
+  scrollBehavior?: 'none' | 'exitAlways';
+  scrollExitDirection?: 'top' | 'bottom' | 'start' | 'end';
+  variant?: 'standard' | 'vibrant';
+  themeMode?: 'system' | 'light' | 'dark';
+  dynamicColor?: boolean;
+  imeBehavior?: 'none' | 'hide';
+  placement?: 'top' | 'center' | 'bottom';
+  alignment?:
+    | 'topStart' | 'topCenter' | 'topEnd'
+    | 'centerStart' | 'center' | 'centerEnd'
+    | 'bottomStart' | 'bottomCenter' | 'bottomEnd';
+  insets?: 'none' | 'safe';
+  edgeOffset?: number;
+  contentPadding?: number | {
+    horizontal?: number;
+    vertical?: number;
+    start?: number;
+    top?: number;
+    end?: number;
+    bottom?: number;
+  };
+  expandedShadowElevation?: number;
+  collapsedShadowElevation?: number;
+  floatingActionButtonPosition?: 'start' | 'end' | 'top' | 'bottom';
+  colors?: MaterialToolbarColors;
+  style?: StyleProp<ViewStyle>;
+};
+
+type MaterialToolbarColors = {
+  toolbarContainer?: ColorValue;
+  toolbarContent?: ColorValue;
+  fabContainer?: ColorValue;
+  fabContent?: ColorValue;
+  selectedContainer?: ColorValue;
+  selectedContent?: ColorValue;
+  unselectedContent?: ColorValue;
+};
 ```
 
-`placement` accepts `top | center | bottom` and maps to `topCenter | center | bottomCenter` unless `alignment` is supplied.
-
-`alignment` accepts:
+Current Android defaults:
 
 ```text
-topStart | topCenter | topEnd
-centerStart | center | centerEnd
-bottomStart | bottomCenter | bottomEnd
+expanded                    true
+visible                     true
+orientation                 horizontal
+scrollBehavior              none
+scrollExitDirection         inferred natively (`auto` bridge value)
+variant                     standard
+themeMode                   system
+dynamicColor                false
+imeBehavior                 none
+placement                   bottom
+alignment                   derived from placement
+insets                      safe
+edgeOffset                  Material default
+contentPadding              Material default
+expandedShadowElevation     Material default
+collapsedShadowElevation    Material default
+floatingActionButtonPosition end (horizontal) / bottom (vertical)
+style                       StyleSheet.absoluteFill
 ```
 
-`scrollBehavior` accepts `none | exitAlways`. The native FloatingToolbar behavior observes real child-consumed POST distance and consumes zero source distance.
+`alignment` takes precedence over `placement`. `placement` maps `top -> topCenter`, `center -> center`, `bottom -> bottomCenter`.
 
-When no `style` is provided on Android, `MaterialToolbar.Root` uses `StyleSheet.absoluteFill`.
+`contentPadding` uses dp. A number applies to every side; object `start/top/end/bottom` values override `horizontal/vertical` shorthands.
+
+`scrollBehavior="exitAlways"` observes the real child-consumed POST distance. The FloatingToolbar participant consumes zero source distance.
+
+### Content groups and actions
+
+`MaterialToolbar.Content`, `LeadingContent` and `TrailingContent` each accept only `children?: ReactNode` as their public props.
+
+`MaterialToolbar.IconButton` and `TextButton` share:
+
+```ts
+type MaterialToolbarButtonCommonProps = {
+  children?: ReactNode;
+  id?: string;
+  enabled?: boolean;
+  accessibilityLabel?: string;
+  onPress?: () => void;
+  selected?: boolean;
+};
+```
+
+`enabled` defaults to `true`; `selected` defaults to `false`. If `id` is omitted, the bridge creates a group/index identifier. For text actions, the text becomes the default accessibility label when one is not supplied.
+
+Icon props:
+
+```ts
+type MaterialToolbarIconProps = {
+  source?: ImageSourcePropType;
+  resource?: string;
+  tint?: 'content' | 'none';
+  size?: number;
+  fallback?: 'initial' | 'none';
+};
+```
+
+`resource` is an Android drawable/mipmap resource name. `source` is resolved through React Native's image source resolver. `tint="none"` disables content tinting. IconButton icons default to 24dp, TextButton icons to 18dp, and normal action icon fallback defaults to `none`.
+
+Text props:
+
+```ts
+type MaterialToolbarTextProps = {
+  children: string;
+};
+```
+
+FAB props:
+
+```ts
+type MaterialToolbarFabProps = {
+  children?: ReactNode;
+  accessibilityLabel?: string;
+  onPress?: () => void;
+  shape?: 'default' | 'circle';
+};
+```
+
+FAB shape defaults to `default`; FAB icon size defaults to 24dp. If the FAB has no icon marker, its icon fallback is `initial`.
 
 Imperative ref:
 
@@ -316,6 +466,8 @@ type MaterialToolbarRef = {
 On non-Android platforms the toolbar renders nothing and those ref methods resolve as no-ops.
 
 ## `NativeScrollHost`
+
+`NativeScrollHostProps` is `PropsWithChildren<ViewProps>`.
 
 Standalone/fallback usage:
 
@@ -367,13 +519,13 @@ scripts/   invariant and package/release gates
 example/   navigation-first + standalone smoke app
 ```
 
-The neutral core now lives in the standard Android source tree:
+The neutral core lives in:
 
 ```text
 android/src/main/java/com/reactnativescroll/interop/core/
 ```
 
-The React Native compatibility boundary lives beside it:
+The React Native compatibility boundary lives in:
 
 ```text
 android/src/main/java/com/reactnativescroll/interop/reactnative/
@@ -393,7 +545,7 @@ It verifies:
 
 - scroll ownership and conservation invariants;
 - Material3 adapter boundaries;
-- navigation API shape;
+- navigation API shape and README public-type coverage;
 - RN 0.86.x and RN 0.87.x compatibility patch shapes;
 - `react-native-screens 4.26.x` patch shape;
 - npm tarball contents.
@@ -402,7 +554,7 @@ The repository example is the RN 0.86 / Expo Router runtime smoke test. Release 
 
 ## Package contents
 
-The npm allowlist contains one Android runtime tree plus plugin/JS entry sources. npm adds `README.md`, `LICENSE` and `package.json` to the tarball. Example code, scripts, CI configuration, architecture/release notes and generated Android build output are excluded.
+The npm allowlist contains one Android runtime tree plus plugin/JS entry sources. npm adds `README.md`, `LICENSE` and `package.json` to the tarball. Example code, scripts, workflow configuration, architecture/release notes and generated Android build output are excluded.
 
 ## License
 
