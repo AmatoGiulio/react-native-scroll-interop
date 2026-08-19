@@ -1,4 +1,4 @@
-import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'expo-material-toolbar';
+import { MaterialToolbar, MaterialTopAppBar, NativeScrollHost } from 'react-native-scroll-interop';
 import { FlatList, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 const ROWS = Array.from({ length: 420 }, (_, index) => ({
