@@ -9,7 +9,6 @@
   "files": [
     "android/build.gradle",
     "android/src/main",
-    "android-shared/src/main",
     "plugin",
     "src",
     "index.ts",
