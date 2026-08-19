@@ -1,3 +1,3 @@
 'use strict';
 
-module.exports = require('./plugin/withRn086AndroidXScroll');
+module.exports = require('./plugin/withScrollInterop');

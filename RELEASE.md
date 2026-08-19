@@ -4,118 +4,179 @@ Public package: `react-native-scroll-interop`
 
 Current release line: `0.1.0-alpha.x`
 
-Alpha releases use the npm dist-tag `next`. Do not publish an alpha as `latest`.
+Alpha releases use npm dist-tag `next`.
 
 ## First-public-alpha blocker
 
-Do **not** publish `0.1.0-alpha.1` until the navigation-first product shape is validated on the exact release candidate.
-
-The required public shape is:
+Do not publish `0.1.0-alpha.1` until one exact tarball passes both supported React Native lines in the correct host for each line:
 
 ```text
-Stack / navigator
-└── MaterialTopAppBar per route
+Expo integration
+└── Expo SDK 57 + React Native 0.86.x
 
-navigation layout
-└── one persistent MaterialToolbar
-
-screen
-└── NativeScrollHost
-    └── React Native vertical scroll source
+React Native compatibility
+└── bare React Native 0.87.x
 ```
 
-The screen must not need to repeat TopAppBar or FloatingToolbar declarations.
+The RN 0.87 gate is a bare React Native compatibility gate. It is not an Expo SDK 58/canary gate. Do not introduce an unsupported Expo SDK/RN pairing just to exercise RN 0.87 support.
 
-## Release candidate gate
+The supported Android navigation shape is:
 
-Before publishing a version, freeze and validate one exact commit:
+```text
+navigation layout
+├── Stack / navigator
+│   └── MaterialTopAppBar per route
+└── persistent MaterialToolbar
 
-1. `npm run check`;
-2. `npm pack --dry-run` and inspect the package surface;
-3. install the exact tarball in an external RN 0.86.2 consumer under the public package name;
-4. verify the Expo config plugin resolves as `react-native-scroll-interop`;
-5. run the Expo Router SDK 57 navigation-first gate;
-6. run the React Navigation native-stack navigation-first gate;
-7. create a new immutable `*-pass` checkpoint for the exact tested commit.
+native screen
+└── plain React Native vertical source
+```
 
-Do not repoint a frozen release checkpoint.
+`NativeScrollHost` remains the standalone/fallback API; it is not required inside normal screens when `reactNativeScreensInterop` owns the native screen parent.
+
+## Static/package gate
+
+From the release commit:
+
+```bash
+npm run check
+npm pack --dry-run
+```
+
+`npm run check` must cover scroll invariants, Material3 adapter boundaries, navigation integration, the RN 0.86/0.87 compatibility patcher, the `react-native-screens 4.26.x` patcher and tarball contents.
+
+The tarball must contain runtime/plugin source only, plus npm-mandatory `README.md`, `LICENSE` and `package.json`.
+
+## Shared Android plugin configuration
+
+For a navigation-first consumer:
+
+```json
+[
+  "react-native-scroll-interop",
+  {
+    "android": {
+      "reactNativeScrollCompat": true,
+      "reactNativeScreensInterop": true
+    }
+  }
+]
+```
+
+For standalone `NativeScrollHost`, `reactNativeScreensInterop` may be omitted.
+
+Both source-patching options are fail-closed and version-scoped.
+
+### React Native 0.86.x / Expo SDK 57 gate
+
+Use the exact release tarball in the repository's supported Expo SDK 57 / RN 0.86.x host or an equivalent fresh Expo SDK 57 consumer.
+
+This is the Expo integration gate for `0.1.0-alpha.1`.
+
+Required build checks:
+
+- plugin resolves through the public package name;
+- ReactAndroid is built from source;
+- `ReactNestedScrollView.java` ordinary non-paging fling is patched to `super.fling(correctedVelocityY)`;
+- both `MainReactPackage` ScrollView manager paths select `ReactNestedScrollViewManager`;
+- `react-native-screens 4.26.x` patch applies when navigation ownership is enabled;
+- Android compile/install succeeds.
+
+Required runtime checks:
+
+- TOUCH scroll works normally;
+- ordinary fling produces the real NON_TOUCH nested-scroll lifecycle;
+- TopAppBar scroll behavior is correct;
+- FloatingToolbar behavior is correct;
+- Home -> Details -> Back works;
+- repeated push/pop/back has no vertical jump or stale binding;
+- a new transaction works after returning to a previous screen.
+
+The current repository navigation-first example is the RN 0.86 smoke app.
+
+### React Native 0.87.x bare gate
+
+Use the exact same release tarball in a bare React Native 0.87.x host.
+
+This gate certifies RN 0.87 compatibility of the library and source patcher. It does not certify Expo SDK 58 or any Expo canary. Expo SDK compatibility is tested only on an Expo SDK that officially targets the selected React Native line.
+
+Required build checks:
+
+- `reactNativeScrollCompat` accepts the installed 0.87.x version;
+- ReactAndroid is built from source;
+- `ReactNestedScrollView.kt` ordinary non-paging fling is patched to `super.fling(correctedVelocityY)`;
+- both `MainReactPackage` ScrollView manager paths select `ReactNestedScrollViewManager`;
+- the package native module compiles and installs without an RN 0.86-only shim/path assumption.
+
+Required runtime checks:
+
+- TOUCH and NON_TOUCH sessions are balanced;
+- ordinary fling is driven by the RN source and AndroidX nested-scroll lifecycle;
+- no parent-owned motion or source mutation is introduced;
+- `NativeScrollHost` standalone transport works;
+- when a compatible `react-native-screens 4.26.x` navigation host is used, the screen-owned path also works without page-level `NativeScrollHost`.
+
+Do not install or force Expo SDK 58/canary into the RN 0.87 bare gate. A future Expo/RN 0.87 integration gate is separate and should only be added when Expo officially supports that RN line.
 
 ### Expo Router navigation-first gate
 
-Use the exact release tarball in an Expo SDK 57 / RN 0.86.2 consumer.
+For the current Expo SDK 57 / RN 0.86 example:
 
-Required structure:
+- import `Stack` from `react-native-scroll-interop/router`;
+- use standard `Stack` / `Stack.Screen` declarations;
+- use `title` and `headerLargeTitle` for standard semantics;
+- use `material3.topAppBar` only for Material-only options;
+- keep one persistent `MaterialToolbar.Root` in the navigation layout;
+- keep screen files as plain RN scroll content;
+- do not add manual TopAppBar sizing/safe-area/back wiring.
 
-- `MaterialTopAppBar` declared directly in `Stack.Screen` through `Stack.Header asChild`;
-- transparent custom Stack header;
-- one persistent `MaterialToolbar.Root` in the route layout;
-- screen files contain `NativeScrollHost` + scroll source, with no repeated TopAppBar/FloatingToolbar.
+Runtime:
 
-Runtime validation:
+```text
+Home scroll/fling
+Home -> Details
+Details scroll/fling
+Back
+repeat push/pop
+new Home scroll
+```
 
-- Android prebuild/build/install;
-- Home ordinary scroll + fling;
-- navigate Home -> Details;
-- Details ordinary scroll + fling;
-- native Material back button returns to Home;
-- new Home scroll after return;
-- persistent FloatingToolbar/FAB still responds to the active screen source;
-- no duplicate/ambiguous chrome binding or stale transaction behavior.
+No initial jump, transition jump, duplicate chrome binding or stale transaction is allowed.
 
-### React Navigation navigation-first gate
+### React Navigation native-stack gate
 
-Use the exact same release tarball with React Navigation native stack.
+Before publication, install the exact tarball in a React Navigation native-stack consumer using the certified `react-native-screens` line.
 
-Required structure:
+For this alpha, custom `MaterialTopAppBar` may be supplied through the normal native-stack `header` option. Screen content stays plain RN scroll content and one `MaterialToolbar.Root` may live outside the navigator when persistent chrome is desired.
 
-- `MaterialTopAppBar` supplied through the native stack custom `header` option;
-- `headerTransparent: true`;
-- one persistent `MaterialToolbar.Root` around the navigator;
-- host navigator supplies back ownership through `navigation.goBack()`;
-- screen content does not declare duplicate chrome.
+Run the same scroll/fling/push/pop/back checks as the Expo Router gate.
 
-Runtime validation matches the Expo Router gate: scroll/fling on both screens, forward navigation, native Material back, return/new scroll, persistent toolbar and no ambiguous binding.
+## Freeze
 
-`screenLayout` may be tested as an optional React Navigation convenience for centralizing `NativeScrollHost`; it is not required for first-alpha transport correctness.
+After all required gates pass, create an immutable checkpoint/tag for the exact tested commit. Do not repoint a passing release checkpoint after code changes.
 
 ## First npm publish
 
-The first publish bootstraps the package on npm and must be performed manually only after the exact navigation-first release candidate has passed all gates above.
-
-Before publishing, check the registry name again:
+Before the first publish:
 
 ```bash
 npm view react-native-scroll-interop
-```
-
-For an unpublished name npm should report that the package is not present. If the name exists unexpectedly, stop rather than publishing under a different identity.
-
-Authenticate to npm and verify the active account before publishing:
-
-```bash
 npm login
 npm whoami
-```
-
-`npm whoami` must print the intended maintainer account. If it returns `E401`, do not publish yet.
-
-Run one final publish dry-run with the release tag and access flags explicit:
-
-```bash
 npm publish --dry-run --access public --tag next
 ```
 
-The publish notice must say `tag next`, and the tarball must contain only the release-controlled source surface. Generated paths such as `android/build`, `android/.gradle`, `android/.cxx`, `android/.kotlin` and `android/src/debug` must never be present.
+If the package name is unexpectedly occupied or authentication is not the intended maintainer account, stop.
 
-Then publish with the same explicit release flags:
+Publish:
 
 ```bash
 npm publish --access public --tag next
 ```
 
-`prepublishOnly` runs the complete package checks automatically.
+`prepublishOnly` runs `npm run check`.
 
-The first public version is:
+First public version:
 
 ```text
 react-native-scroll-interop@0.1.0-alpha.1
@@ -123,26 +184,15 @@ react-native-scroll-interop@0.1.0-alpha.1
 
 ## Trusted publishing after bootstrap
 
-After the first package version exists on npm, configure npm Trusted Publishing for:
+After the package exists on npm, `.github/workflows/publish-npm.yml` is the release workflow for later tagged alpha releases using GitHub OIDC/npm trusted publishing.
 
-```text
-GitHub owner: AmatoGiulio
-Repository: react-native-scroll-interop
-Workflow: publish-npm.yml
-Allowed action: npm publish
-```
+For each subsequent alpha:
 
-The workflow lives at `.github/workflows/publish-npm.yml` and uses GitHub OIDC rather than a long-lived npm publish token.
+1. bump package and Android version metadata together;
+2. run both RN release gates on the exact candidate in their correct hosts;
+3. freeze the commit;
+4. tag `v0.1.0-alpha.N`;
+5. publish the GitHub Release;
+6. allow the trusted-publishing workflow to publish with dist-tag `next`.
 
-For future alpha releases:
-
-1. bump `package.json` and Android library version metadata to the same `0.1.0-alpha.N` version;
-2. run the release candidate gate and freeze the exact commit;
-3. create tag `v0.1.0-alpha.N` on that exact commit;
-4. publish a GitHub Release from that tag;
-5. the trusted-publishing workflow verifies the tag/version match and runs `npm publish --access public --tag next`;
-6. confirm the new version is on npm under the `next` dist-tag.
-
-## Stable release
-
-Do not move the npm `latest` dist-tag or publish a stable version until the compatibility/support matrix is intentionally widened and a stable release gate is defined.
+Do not publish a stable `latest` until the stable compatibility matrix and release gate are defined separately.

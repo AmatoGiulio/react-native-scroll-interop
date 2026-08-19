@@ -19,6 +19,8 @@ const legacyTopBarRelativePath =
 const legacyFloatingToolbarRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt';
 const consumerBindingsRelativePath =
+  'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerBindings.kt';
+const legacyConsumerBindingsRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/Material3ConsumerAliases.kt';
 const placementRelativePath =
   'android/src/main/java/expo/modules/materialtoolbar/NativeFloatingToolbarPlacement.kt';
@@ -70,9 +72,7 @@ if (source != null) {
   ];
 
   for (const [name, pattern] of forbidden) {
-    if (pattern.test(source)) {
-      violations.push(`${adapterRelativePath}: forbidden ${name}`);
-    }
+    if (pattern.test(source)) violations.push(`${adapterRelativePath}: forbidden ${name}`);
   }
 
   if (source.includes('expo.modules.materialtoolbar.NativeNestedInputType')) {
@@ -95,13 +95,12 @@ if (source != null) {
 
 const transactionSource = read(transactionRelativePath);
 if (transactionSource != null) {
-  const required = [
+  for (const marker of [
     'package com.reactnativescroll.interop.material3',
     'enum class NativeNestedInputType',
     'data class NativeNestedPreResult',
     'data class NativeNestedPostResult',
-  ];
-  for (const marker of required) {
+  ]) {
     if (!transactionSource.includes(marker)) {
       violations.push(`${transactionRelativePath}: missing Material3 transaction marker: ${marker}`);
     }
@@ -113,20 +112,27 @@ if (transactionSource != null) {
 
 const registrySource = read(registryRelativePath);
 if (registrySource != null) {
-  for (const typeName of [
-    'NativeNestedInputType',
-    'NativeNestedPreResult',
-    'NativeNestedPostResult',
-  ]) {
+  for (const typeName of ['NativeNestedInputType', 'NativeNestedPreResult', 'NativeNestedPostResult']) {
     if (registrySource.includes(typeName)) {
       violations.push(`${registryRelativePath}: Material3 transaction type remains in Expo registry: ${typeName}`);
+    }
+  }
+
+  for (const marker of [
+    'frontmostScreenParentFor(departingOwner)?.requestNestedChromeBindingRefresh()',
+    'if (!isFrontmostScreenSource(source)) return null',
+    'consumer.prepareNestedSource(sourceGroup)',
+    'private fun sameScreenStackScope(first: View, second: View): Boolean',
+  ]) {
+    if (!registrySource.includes(marker)) {
+      violations.push(`${registryRelativePath}: missing source-scoped FloatingToolbar lifecycle marker: ${marker}`);
     }
   }
 }
 
 const topBarSource = read(topBarRelativePath);
 if (topBarSource != null) {
-  const required = [
+  for (const marker of [
     'package com.reactnativescroll.interop.material3',
     'enum class TopAppBarInteropMode',
     'class TopAppBarScrollConsumer',
@@ -135,19 +141,13 @@ if (topBarSource != null) {
     'NativeNestedPreResult',
     'NativeNestedPostResult',
     'Velocity.Zero',
-  ];
-  for (const marker of required) {
+  ]) {
     if (!topBarSource.includes(marker)) {
       violations.push(`${topBarRelativePath}: missing moved TopAppBar marker: ${marker}`);
     }
   }
 
-  const forbiddenRuntimeExpo = [
-    /ExpoMaterialTopAppBarView/,
-    /NativeNestedScrollRegistry/,
-    /expo\.modules\.kotlin/,
-  ];
-  for (const pattern of forbiddenRuntimeExpo) {
+  for (const pattern of [/ExpoMaterialTopAppBarView/, /NativeNestedScrollRegistry/, /expo\.modules\.kotlin/]) {
     if (pattern.test(topBarSource)) {
       violations.push(`${topBarRelativePath}: TopAppBar consumer depends on Expo runtime/view API: ${pattern}`);
     }
@@ -156,36 +156,72 @@ if (topBarSource != null) {
 
 const floatingToolbarSource = read(floatingToolbarRelativePath);
 if (floatingToolbarSource != null) {
-  const required = [
+  for (const marker of [
     'package com.reactnativescroll.interop.material3',
     'open class FloatingToolbarScrollConsumer',
     'NativeNestedInputType',
     'current.onPostScroll(',
     'Velocity.Zero',
     'placementInsets() ?: visibleFrameInsets()',
-  ];
-  for (const marker of required) {
+    'WeakHashMap<ViewGroup, RetainedBehaviorState>()',
+    'fun prepareNestedSource(source: ViewGroup): Boolean',
+    'preparedSource !== source',
+    'sourceStates[source]',
+  ]) {
     if (!floatingToolbarSource.includes(marker)) {
-      violations.push(`${floatingToolbarRelativePath}: missing moved FloatingToolbar marker: ${marker}`);
+      violations.push(`${floatingToolbarRelativePath}: missing moved/source-scoped FloatingToolbar marker: ${marker}`);
     }
   }
 
-  const forbiddenRuntimeExpo = [
+  for (const pattern of [
     /ExpoMaterialToolbarView/,
     /NativeFloatingToolbarPlacement/,
     /NativeNestedScrollRegistry/,
     /expo\.modules\.kotlin/,
-  ];
-  for (const pattern of forbiddenRuntimeExpo) {
+  ]) {
     if (pattern.test(floatingToolbarSource)) {
       violations.push(`${floatingToolbarRelativePath}: FloatingToolbar consumer depends on Expo runtime/view API: ${pattern}`);
     }
   }
+
+  const prepareStart = floatingToolbarSource.indexOf('fun prepareNestedSource(source: ViewGroup): Boolean');
+  const prepareEnd = floatingToolbarSource.indexOf('private fun restoreRetainedBehaviorState', prepareStart);
+  if (prepareStart < 0 || prepareEnd < 0) {
+    violations.push(`${floatingToolbarRelativePath}: cannot isolate prepareNestedSource for source-state ordering check`);
+  } else {
+    const prepareBody = floatingToolbarSource.slice(prepareStart, prepareEnd);
+    const retainedRead = prepareBody.indexOf('val retained = sourceStates[source]');
+    const geometrySync = prepareBody.indexOf('syncGeometryNow()');
+    const firstAuthoritySwitch = prepareBody.indexOf('preparedSource = source');
+    const finalAuthoritySwitch = prepareBody.lastIndexOf('preparedSource = source');
+    const restoredPersist = prepareBody.indexOf('rememberBehaviorState(current)', finalAuthoritySwitch);
+
+    if (
+      retainedRead < 0 ||
+      geometrySync < 0 ||
+      firstAuthoritySwitch < 0 ||
+      finalAuthoritySwitch < 0 ||
+      restoredPersist < 0 ||
+      firstAuthoritySwitch <= retainedRead ||
+      geometrySync <= retainedRead ||
+      finalAuthoritySwitch <= geometrySync ||
+      restoredPersist <= finalAuthoritySwitch
+    ) {
+      violations.push(
+        `${floatingToolbarRelativePath}: incoming source state must be captured before preparedSource switches, ` +
+          'while outgoing geometry/state must be saved before the incoming source becomes authoritative',
+      );
+    }
+  }
 }
 
-for (const legacyPath of [legacyTopBarRelativePath, legacyFloatingToolbarRelativePath]) {
+for (const legacyPath of [
+  legacyTopBarRelativePath,
+  legacyFloatingToolbarRelativePath,
+  legacyConsumerBindingsRelativePath,
+]) {
   if (fs.existsSync(path.join(process.cwd(), legacyPath))) {
-    violations.push(`${legacyPath}: legacy Expo Material3 consumer source must be removed`);
+    violations.push(`${legacyPath}: legacy Expo Material3 source must be removed`);
   }
 }
 
@@ -220,7 +256,7 @@ if (placementSource != null) {
   }
 }
 
-if (violations.length > 0) {
+if (violations.length) {
   console.error('Material3 adapter invariant: FAIL');
   for (const violation of violations) console.error(`  ${violation}`);
   process.exit(1);
@@ -228,9 +264,12 @@ if (violations.length > 0) {
 
 console.log('Material3 adapter invariant: PASS');
 console.log('  neutral PRE/POST ports are used');
-console.log('  Material3 transaction types are outside the Expo registry layer');
+console.log('  Material3 transaction types stay outside the Expo registry layer');
 console.log('  TopAppBar consumer source is owned by the Material3 package');
 console.log('  FloatingToolbar consumer source is owned by the Material3 package');
 console.log('  FloatingToolbar placement remains in the Expo view layer');
 console.log('  FloatingToolbar remains observation-only');
+console.log('  persistent FloatingToolbar scroll state is scoped to the frontmost RN source');
+console.log('  incoming FloatingToolbar state is captured before source authority switches');
+console.log('  pop refresh restores the newly frontmost screen state without source sampling');
 console.log('  no source physics, position sampling, timers or concrete RN source typing in adapters');

@@ -56,14 +56,11 @@ export type MaterialToolbarRootProps = {
   /** HorizontalFloatingToolbar or VerticalFloatingToolbar. Default: horizontal. */
   orientation?: MaterialToolbarOrientation;
   /**
-   * Native Material3 FloatingToolbar scroll behavior. `exitAlways` listens directly to
-   * React Native Android ScrollViews (including FlashList 2's default scroller) without
-   * adding a JS onScroll handler. Default: none.
+   * Native Material3 FloatingToolbar scroll behavior driven by the Android nested-scroll
+   * transaction, without adding a JS onScroll handler. Default: none.
    */
   scrollBehavior?: MaterialToolbarScrollBehavior;
-  /**
-   * Mirrors FloatingToolbarExitDirection. Omit to infer from the host alignment/placement.
-   */
+  /** Mirrors FloatingToolbarExitDirection. Omit to infer from host alignment/placement. */
   scrollExitDirection?: MaterialToolbarScrollExitDirection;
   /** Standard or vibrant Material floating-toolbar color treatment. */
   variant?: MaterialToolbarVariant;

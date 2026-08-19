@@ -15,44 +15,40 @@ const topBarConsumerPath =
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
 const floatingToolbarConsumerPath =
   'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt';
-const sharedLifecyclePath =
-  'android-shared/src/main/java/com/reactnativescroll/interop/core/SourceScopedNestedScrollLifecycle.kt';
-const sharedLedgerPath =
-  'android-shared/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt';
-const sharedDispatcherPath =
-  'android-shared/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt';
-const bareHostPath =
-  'rn087-bare-probe/android/app/src/main/java/com/rn087nestedscrollprobe/NestedScrollProbeLayout.kt';
+const lifecyclePath =
+  'android/src/main/java/com/reactnativescroll/interop/core/SourceScopedNestedScrollLifecycle.kt';
+const ledgerPath =
+  'android/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt';
+const dispatcherPath =
+  'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt';
 const registryPath =
   'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt';
-const sourceAdapter =
-  'android-shared/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt';
+const sourceAdapterPath =
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt';
 
 const files = [
   hostPath,
   controllerPath,
-  sharedLifecyclePath,
-  sharedLedgerPath,
-  sharedDispatcherPath,
+  lifecyclePath,
+  ledgerPath,
+  dispatcherPath,
   topBarConsumerPath,
   floatingToolbarConsumerPath,
   registryPath,
 ];
 
-const legacyPhysicalPaths = [
-  'android-shared/src/main/java/com/material3scroll/transport/SourceScopedNestedScrollLifecycle.kt',
-  'android-shared/src/main/java/com/material3scroll/transport/NestedScrollConservationLedger.kt',
-  'android-shared/src/main/java/com/material3scroll/transport/VerticalNestedScrollTransactionDispatcher.kt',
+const obsoletePaths = [
+  'android-shared',
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
 ];
 
 const forbidden = [
-  {name: 'parent-owned OverScroller', pattern: /\bOverScroller\s*\(/},
-  {name: 'parent-owned Scroller', pattern: /\bScroller\s*\(/},
-  {name: 'child scrollBy mutation', pattern: /\.scrollBy\s*\(/},
-  {name: 'child scrollTo mutation', pattern: /\.scrollTo\s*\(/},
-  {name: 'parent-started nested session', pattern: /ViewCompat\.startNestedScroll\s*\(/},
-  {name: 'timer-based scroll reconstruction', pattern: /\b(postDelayed|Timer|scheduleAtFixedRate)\b/},
+  { name: 'parent-owned OverScroller', pattern: /\bOverScroller\s*\(/ },
+  { name: 'parent-owned Scroller', pattern: /\bScroller\s*\(/ },
+  { name: 'child scrollBy mutation', pattern: /\.scrollBy\s*\(/ },
+  { name: 'child scrollTo mutation', pattern: /\.scrollTo\s*\(/ },
+  { name: 'parent-started nested session', pattern: /ViewCompat\.startNestedScroll\s*\(/ },
+  { name: 'timer-based scroll reconstruction', pattern: /\b(postDelayed|Timer|scheduleAtFixedRate)\b/ },
 ];
 
 const concreteRnSourceType = /\b(ReactScrollView|ReactNestedScrollView)\b/;
@@ -62,7 +58,7 @@ function stripComments(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .split(/\r?\n/)
-    .map(line => line.replace(/\/\/.*$/, ''))
+    .map((line) => line.replace(/\/\/.*$/, ''))
     .join('\n');
 }
 
@@ -75,9 +71,9 @@ function read(relativePath) {
   return stripComments(fs.readFileSync(absolutePath, 'utf8'));
 }
 
-for (const relativePath of legacyPhysicalPaths) {
+for (const relativePath of obsoletePaths) {
   if (fs.existsSync(path.join(root, relativePath))) {
-    violations.push(`${relativePath}: legacy physical source path must be removed`);
+    violations.push(`${relativePath}: obsolete source path must be removed`);
   }
 }
 
@@ -97,105 +93,80 @@ for (const relativePath of files) {
   lines.forEach((line, index) => {
     if (concreteRnSourceType.test(line)) {
       violations.push(
-        `${relativePath}:${index + 1}: concrete RN scroll source type escaped ${sourceAdapter}: ${line.trim()}`,
+        `${relativePath}:${index + 1}: concrete RN scroll source type escaped ${sourceAdapterPath}: ${line.trim()}`,
       );
     }
   });
 }
 
-const adapter = read(sourceAdapter);
+const adapter = read(sourceAdapterPath);
 if (adapter) {
   if (!adapter.includes('ReactVerticalScrollSourceCapabilities')) {
-    violations.push(`${sourceAdapter}: missing explicit source capability model`);
+    violations.push(`${sourceAdapterPath}: missing explicit source capability model`);
   }
   if (!adapter.includes('ReactScrollView') || !adapter.includes('ReactNestedScrollView')) {
-    violations.push(`${sourceAdapter}: must recognize both supported RN vertical source implementations`);
+    violations.push(`${sourceAdapterPath}: must recognize both supported RN vertical source implementations`);
   }
 }
 
-const lifecycle = read(sharedLifecyclePath);
+const lifecycle = read(lifecyclePath);
 if (lifecycle) {
   if (!lifecycle.includes('class SourceScopedNestedScrollLifecycle')) {
-    violations.push(`${sharedLifecyclePath}: missing shared source-scoped lifecycle kernel`);
+    violations.push(`${lifecyclePath}: missing source-scoped lifecycle kernel`);
   }
   if (!lifecycle.includes('var activeSource: ViewGroup?')) {
-    violations.push(`${sharedLifecyclePath}: missing active source ownership`);
+    violations.push(`${lifecyclePath}: missing active source ownership`);
   }
   if (!lifecycle.includes('var momentumSource: ViewGroup?')) {
-    violations.push(`${sharedLifecyclePath}: missing source-scoped momentum ownership`);
+    violations.push(`${lifecyclePath}: missing source-scoped momentum ownership`);
   }
   if (!lifecycle.includes('StopDecision.Stale')) {
-    violations.push(`${sharedLifecyclePath}: stale stop must fail closed`);
+    violations.push(`${lifecyclePath}: stale stop must fail closed`);
   }
 }
 
-const ledger = read(sharedLedgerPath);
+const ledger = read(ledgerPath);
 if (ledger) {
   if (!ledger.includes('class NestedScrollConservationLedger')) {
-    violations.push(`${sharedLedgerPath}: missing shared conservation ledger`);
+    violations.push(`${ledgerPath}: missing conservation ledger`);
   }
   if (!ledger.includes('sumY == pre.requestedY')) {
-    violations.push(`${sharedLedgerPath}: conservation equation is missing`);
+    violations.push(`${ledgerPath}: conservation equation is missing`);
   }
   if (!ledger.includes('fun flushPending(): OrphanPre?')) {
-    violations.push(`${sharedLedgerPath}: orphan pre-scroll accounting is missing`);
+    violations.push(`${ledgerPath}: orphan pre-scroll accounting is missing`);
   }
 }
 
-const dispatcher = read(sharedDispatcherPath);
+const dispatcher = read(dispatcherPath);
 if (dispatcher) {
   if (!dispatcher.includes('class VerticalNestedScrollTransactionDispatcher')) {
-    violations.push(`${sharedDispatcherPath}: missing shared vertical transaction dispatcher`);
+    violations.push(`${dispatcherPath}: missing vertical transaction dispatcher`);
   }
   for (const phase of ['PreConsumer', 'PostConsumer', 'PostObserver']) {
     if (!dispatcher.includes(`fun interface ${phase}`)) {
-      violations.push(`${sharedDispatcherPath}: missing ${phase} dispatch port`);
+      violations.push(`${dispatcherPath}: missing ${phase} dispatch port`);
     }
   }
   if (!dispatcher.includes('fun bindParticipants(')) {
-    violations.push(`${sharedDispatcherPath}: missing neutral participant binding API`);
+    violations.push(`${dispatcherPath}: missing neutral participant binding API`);
   }
   if (!dispatcher.includes('ledger.beginFrame(requestedY, consumedY)')) {
-    violations.push(`${sharedDispatcherPath}: PRE dispatch must feed shared conservation accounting`);
+    violations.push(`${dispatcherPath}: PRE dispatch must feed conservation accounting`);
   }
   if (!dispatcher.includes('ledger.completeFrame(childConsumedY, availableY, consumedY)')) {
-    violations.push(`${sharedDispatcherPath}: POST dispatch must complete shared conservation accounting`);
+    violations.push(`${dispatcherPath}: POST dispatch must complete conservation accounting`);
   }
   const postConsumer = dispatcher.indexOf('for (consumer in postConsumers)');
   const postObserver = dispatcher.indexOf('for (observer in postObservers)');
   if (postConsumer < 0 || postObserver < 0 || postConsumer > postObserver) {
-    violations.push(`${sharedDispatcherPath}: POST observers must run after consuming POST participants`);
+    violations.push(`${dispatcherPath}: POST observers must run after consuming POST participants`);
   }
 }
 
-for (const [label, gradlePath] of [
-  ['Expo module', path.join(root, 'android/build.gradle')],
-  ['bare RN 0.87 host', path.join(root, 'rn087-bare-probe/android/app/build.gradle')],
-]) {
-  if (!fs.existsSync(gradlePath)) {
-    violations.push(`${label}: missing Gradle build file`);
-    continue;
-  }
-  const gradle = fs.readFileSync(gradlePath, 'utf8');
-  if (!gradle.includes('android-shared/src/main/java')) {
-    violations.push(`${label}: shared Android transport source set is not compiled`);
-  }
-}
-
-const bareHost = read(bareHostPath);
-if (bareHost) {
-  if (!bareHost.includes('SourceScopedNestedScrollLifecycle')) {
-    violations.push(`${bareHostPath}: bare RN 0.87 host is not using the shared lifecycle kernel`);
-  }
-  if (!bareHost.includes('VerticalNestedScrollTransactionDispatcher')) {
-    violations.push(`${bareHostPath}: bare RN 0.87 host is not using the shared PRE/POST dispatcher`);
-  }
-  if (!bareHost.includes('dispatcher.dispatchPre(') || !bareHost.includes('dispatcher.dispatchPost(')) {
-    violations.push(`${bareHostPath}: bare host PRE/POST callbacks must route through shared dispatcher`);
-  }
-  if (bareHost.includes('NestedScrollConservationLedger')) {
-    violations.push(`${bareHostPath}: bare host must not own the shared ledger outside the dispatcher`);
-  }
+const androidGradle = fs.readFileSync(path.join(root, 'android/build.gradle'), 'utf8');
+if (androidGradle.includes('android-shared')) {
+  violations.push('android/build.gradle: obsolete external source-set wiring must be removed');
 }
 
 const host = read(hostPath);
@@ -206,8 +177,10 @@ if (host) {
   if (!host.includes('nestedScrollController.prepareNestedSource(reactSources.single())')) {
     violations.push(`${hostPath}: discovered source must be prepared through the reusable controller`);
   }
-  if (!host.includes('nestedScrollController.onNestedPreScroll(') ||
-      !host.includes('nestedScrollController.onNestedScroll(')) {
+  if (
+    !host.includes('nestedScrollController.onNestedPreScroll(') ||
+    !host.includes('nestedScrollController.onNestedScroll(')
+  ) {
     violations.push(`${hostPath}: NestedScrollingParent callbacks must delegate to the controller`);
   }
   for (const forbiddenOwnership of [
@@ -220,7 +193,7 @@ if (host) {
     'TX_STALE_POST',
   ]) {
     if (host.includes(forbiddenOwnership)) {
-      violations.push(`${hostPath}: transaction ownership leaked back out of the parent controller: ${forbiddenOwnership}`);
+      violations.push(`${hostPath}: transaction ownership leaked out of the controller: ${forbiddenOwnership}`);
     }
   }
 }
@@ -236,9 +209,11 @@ if (controller) {
   if (!controller.includes('private val transactionDispatcher = VerticalNestedScrollTransactionDispatcher()')) {
     violations.push(`${controllerPath}: controller must own the PRE/POST dispatcher`);
   }
-  if (!controller.includes('transactionDispatcher.dispatchPre(') ||
-      !controller.includes('transactionDispatcher.dispatchPost(')) {
-    violations.push(`${controllerPath}: controller PRE/POST must route through shared dispatcher`);
+  if (
+    !controller.includes('transactionDispatcher.dispatchPre(') ||
+    !controller.includes('transactionDispatcher.dispatchPost(')
+  ) {
+    violations.push(`${controllerPath}: controller PRE/POST must route through dispatcher`);
   }
   if (!controller.includes('Material3TopAppBarNestedScrollAdapter')) {
     violations.push(`${controllerPath}: TopAppBar must bind through the Material3 neutral adapter`);
@@ -252,8 +227,10 @@ if (controller) {
   if (!controller.includes('postObservers = if (toolbarAdapter != null) listOf(toolbarAdapter) else emptyList()')) {
     violations.push(`${controllerPath}: FloatingToolbar must remain observation-only`);
   }
-  if (!controller.includes('preConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList()') ||
-      !controller.includes('postConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList()')) {
+  if (
+    !controller.includes('preConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList()') ||
+    !controller.includes('postConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList()')
+  ) {
     violations.push(`${controllerPath}: TopAppBar PRE/POST participation must be fixed at bind time`);
   }
   if (!controller.includes('TX_ABORT reason=source-replaced')) {
@@ -266,7 +243,7 @@ if (controller) {
     violations.push(`${controllerPath}: controller must use conservation accounting through dispatcher only`);
   }
 
-  const assertStopOrder = ({label, signature, helperCall}) => {
+  const assertStopOrder = ({ label, signature, helperCall }) => {
     const stopStart = controller.indexOf(signature);
     const nextPre = controller.indexOf('fun onNestedPreScroll(', stopStart);
     const stop = stopStart >= 0 && nextPre > stopStart ? controller.slice(stopStart, nextPre) : '';
@@ -275,7 +252,7 @@ if (controller) {
     const helper = stop.indexOf(helperCall);
     if (classify < 0 || staleGuard < 0 || helper < 0 || classify > staleGuard || staleGuard > helper) {
       violations.push(
-        `${controllerPath}: ${label} stale STOP must be classified and rejected before NestedScrollingParentHelper`,
+        `${controllerPath}: ${label} stale STOP must be rejected before NestedScrollingParentHelper`,
       );
     }
   };
@@ -321,17 +298,15 @@ if (topBar) {
 if (violations.length > 0) {
   console.error('Native scroll invariant: FAIL');
   for (const violation of violations) console.error(`  ${violation}`);
-  console.error(
-    '\nRN must remain the sole owner of scroll physics. The standalone host may discover a source, but transaction ownership must stay in the reusable parent controller.',
-  );
   process.exit(1);
 }
 
 console.log('Native scroll invariant: PASS');
+console.log('  core and RN compatibility boundary live in the standard Android source tree');
 console.log('  no parent-owned scroller or child scroll mutation');
-console.log('  concrete RN scroll source types confined to compatibility adapter');
-console.log('  shared lifecycle, conservation ledger and PRE/POST dispatcher preserved');
-console.log('  standalone Expo host is source-discovery + delegation only');
+console.log('  concrete RN scroll source types confined to compatibility boundary');
+console.log('  lifecycle, conservation ledger and PRE/POST dispatcher preserved');
+console.log('  standalone host is source-discovery + delegation only');
 console.log('  reusable parent controller owns nested lifecycle and transaction dispatch');
 console.log('  Material3 consumers bind through neutral participant adapters');
 console.log('  FloatingToolbar remains observation-only');

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import process from 'node:process';
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -9,82 +9,88 @@ const androidGradle = readFileSync(new URL('../android/build.gradle', import.met
 
 const expectedName = 'react-native-scroll-interop';
 const expectedVersion = '0.1.0-alpha.1';
-const expectedRepository = 'git+https://github.com/AmatoGiulio/react-native-scroll-interop.git';
 const expectedFiles = [
   'android/build.gradle',
   'android/src/main',
-  'android-shared/README.md',
-  'android-shared/src/main',
   'plugin',
   'src',
   'index.ts',
+  'router.tsx',
   'app.plugin.js',
   'expo-module.config.json',
-  'ARCHITECTURE.md',
-  'PRODUCT.md',
-  'README.md',
-  'LICENSE',
 ];
+const expectedCheck =
+  'npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:rnscreens-interop-plugin && npm run check:package-surface';
 const violations = [];
 
-if (packageJson.name !== expectedName) {
-  violations.push(`unexpected package name: ${packageJson.name ?? '<missing>'}`);
+function expect(condition, message) {
+  if (!condition) violations.push(message);
 }
-if (packageJson.version !== expectedVersion) {
-  violations.push(`unexpected package version: ${packageJson.version ?? '<missing>'}`);
-}
-if (packageJson.private === true) {
-  violations.push('public release package must not be private');
-}
-if (packageJson.license !== 'MIT') {
-  violations.push(`unexpected package license: ${packageJson.license ?? '<missing>'}`);
-}
-if (packageJson.repository?.url !== expectedRepository) {
-  violations.push(`unexpected repository URL: ${packageJson.repository?.url ?? '<missing>'}`);
-}
-if (packageJson.homepage !== 'https://github.com/AmatoGiulio/react-native-scroll-interop#readme') {
-  violations.push(`unexpected homepage: ${packageJson.homepage ?? '<missing>'}`);
-}
-if (packageJson.bugs?.url !== 'https://github.com/AmatoGiulio/react-native-scroll-interop/issues') {
-  violations.push(`unexpected bugs URL: ${packageJson.bugs?.url ?? '<missing>'}`);
-}
-if (packageJson.publishConfig?.access !== 'public') {
-  violations.push('publishConfig.access must be public');
-}
-if (packageJson.publishConfig?.tag !== 'next') {
-  violations.push('alpha publishConfig.tag must be next');
-}
-if (packageJson.scripts?.prepublishOnly !== 'npm run check') {
-  violations.push('prepublishOnly must run the complete package gate');
-}
-if (packageJson.scripts?.['check:navigation-integration'] !== 'node scripts/check-navigation-integration.mjs') {
-  violations.push('navigation integration guard must remain in the package gate');
-}
-if (packageJson.scripts?.['check:rnscreens-interop-plugin'] !== 'node scripts/check-rnscreens-interop-plugin.mjs') {
-  violations.push('react-native-screens interop guard must remain in the package gate');
-}
-if (!packageJson.scripts?.check?.includes('check:navigation-integration')) {
-  violations.push('npm run check must execute the navigation integration guard');
-}
-if (!packageJson.scripts?.check?.includes('check:rnscreens-interop-plugin')) {
-  violations.push('npm run check must execute the react-native-screens interop guard');
-}
-if (JSON.stringify(packageJson.files) !== JSON.stringify(expectedFiles)) {
-  violations.push('package files allowlist must stay narrow and release-controlled');
-}
-if (!androidGradle.includes(`version = '${expectedVersion}'`)) {
-  violations.push('Android library version must match package version');
-}
-if (!androidGradle.includes(`versionName '${expectedVersion}'`)) {
-  violations.push('Android versionName must match package version');
+
+expect(packageJson.name === expectedName, `unexpected package name: ${packageJson.name ?? '<missing>'}`);
+expect(packageJson.version === expectedVersion, `unexpected package version: ${packageJson.version ?? '<missing>'}`);
+expect(packageJson.private !== true, 'public release package must not be private');
+expect(packageJson.license === 'MIT', `unexpected package license: ${packageJson.license ?? '<missing>'}`);
+expect(packageJson.publishConfig?.access === 'public', 'publishConfig.access must be public');
+expect(packageJson.publishConfig?.tag === 'next', 'alpha publishConfig.tag must be next');
+expect(packageJson.scripts?.prepublishOnly === 'npm run check', 'prepublishOnly must run the complete package gate');
+expect(packageJson.scripts?.check === expectedCheck, 'npm run check does not match the release gate');
+expect(
+  packageJson.scripts?.['check:react-native-compat-plugin'] ===
+    'node scripts/check-react-native-compat-plugin.mjs',
+  'React Native compatibility gate is missing',
+);
+expect(packageJson.peerDependencies?.expo === '*', 'Expo module peer should not pin the router SDK line');
+expect(
+  packageJson.peerDependencies?.['expo-router'] === '>=57.0.0 <58.0.0',
+  'Expo Router peer must match the certified router adapter line',
+);
+expect(
+  packageJson.peerDependenciesMeta?.['expo-router']?.optional === true,
+  'Expo Router must remain optional for root-only consumers',
+);
+expect(
+  packageJson.peerDependencies?.['react-native'] === '>=0.86.0 <0.88.0',
+  'React Native peer range must cover the 0.86.x and 0.87.x lines only',
+);
+expect(
+  packageJson.peerDependencies?.['react-native-screens'] === '>=4.26.0 <4.27.0',
+  'react-native-screens peer range must match the version-scoped direct integration',
+);
+expect(
+  packageJson.peerDependenciesMeta?.['react-native-screens']?.optional === true,
+  'react-native-screens must remain optional for standalone consumers',
+);
+expect(
+  JSON.stringify(packageJson.files) === JSON.stringify(expectedFiles),
+  'package files allowlist must stay runtime-only',
+);
+expect(androidGradle.includes(`version = '${expectedVersion}'`), 'Android library version must match package version');
+expect(androidGradle.includes(`versionName '${expectedVersion}'`), 'Android versionName must match package version');
+expect(!androidGradle.includes('android-shared'), 'Android build must not use an external shared source tree');
+
+for (const obsoletePath of [
+  'android-shared',
+  'rn087-bare-probe',
+  'docs',
+  'assets',
+  'android/src/debug',
+  'example/src',
+  'example/scripts',
+  'example/app/(tabs)',
+  'plugin/withRn086AndroidXScroll.js',
+  'plugin/rn086AndroidXPatch.js',
+  'scripts/check-rn086-androidx-plugin.mjs',
+]) {
+  if (existsSync(new URL(`../${obsoletePath}`, import.meta.url))) {
+    violations.push(`obsolete repository path must stay removed: ${obsoletePath}`);
+  }
 }
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const result = spawnSync(
-  npmCommand,
-  ['pack', '--dry-run', '--json', '--ignore-scripts'],
-  { encoding: 'utf8' },
-);
+const result = spawnSync(npmCommand, ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+  encoding: 'utf8',
+});
 
 if (result.status !== 0) {
   process.stderr.write(result.stderr || result.stdout || 'npm pack --dry-run failed\n');
@@ -93,53 +99,53 @@ if (result.status !== 0) {
 
 let pack;
 try {
-  const parsed = JSON.parse(result.stdout);
-  pack = parsed[0];
+  pack = JSON.parse(result.stdout)[0];
 } catch (error) {
   console.error('Package surface invariant: FAIL');
   console.error(`  unable to parse npm pack output: ${error}`);
   process.exit(1);
 }
 
-if (pack?.name !== expectedName) {
-  violations.push(`npm pack resolved unexpected package name: ${pack?.name ?? '<missing>'}`);
-}
-if (pack?.version !== expectedVersion) {
-  violations.push(`npm pack resolved unexpected package version: ${pack?.version ?? '<missing>'}`);
-}
+expect(pack?.name === expectedName, `npm pack resolved unexpected package name: ${pack?.name ?? '<missing>'}`);
+expect(pack?.version === expectedVersion, `npm pack resolved unexpected package version: ${pack?.version ?? '<missing>'}`);
 
 const files = new Set((pack?.files ?? []).map((entry) => entry.path));
 const required = [
   'package.json',
   'README.md',
   'LICENSE',
-  'ARCHITECTURE.md',
-  'PRODUCT.md',
   'index.ts',
+  'router.tsx',
   'app.plugin.js',
   'expo-module.config.json',
-  'plugin/withRn086AndroidXScroll.js',
-  'plugin/rn086AndroidXPatch.js',
+  'plugin/withScrollInterop.js',
+  'plugin/reactNativeScrollCompatPatch.js',
   'plugin/reactNativeScreensInteropPatch.js',
   'src/NativeScrollHost.tsx',
   'src/NativeScrollHost.android.tsx',
   'src/MaterialTopAppBar.types.ts',
+  'src/MaterialTopAppBar.tsx',
   'src/MaterialTopAppBar.android.tsx',
-  'src/ExpoMaterialTopAppBarNativeView.tsx',
+  'src/MaterialToolbar.types.ts',
+  'src/MaterialToolbar.tsx',
+  'src/MaterialToolbar.android.tsx',
   'android/build.gradle',
   'android/src/main/AndroidManifest.xml',
-  'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt',
-  'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt',
+  'android/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt',
+  'android/src/main/java/com/reactnativescroll/interop/core/SourceScopedNestedScrollLifecycle.kt',
+  'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollParticipants.kt',
+  'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeVerticalScrollSourceLocator.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParentController.kt',
-  'android/src/main/res/drawable/react_native_scroll_interop_arrow_back.xml',
-  'android-shared/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
-  'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt',
-  'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt',
 ];
+
+for (const file of required) {
+  if (!files.has(file)) violations.push(`missing required package file: ${file}`);
+}
 
 const forbiddenPrefixes = [
   'example/',
-  'rn087-bare-probe/',
   'docs/',
   'scripts/',
   '.github/',
@@ -148,34 +154,21 @@ const forbiddenPrefixes = [
   'android/.kotlin/',
   'android/build/',
   'android/src/debug/',
-  'android-shared/.gradle/',
-  'android-shared/build/',
+  'android-shared/',
 ];
-const forbiddenExact = new Set([
-  'AGENTS.md',
-  'ROADMAP.md',
-  'TESTING.md',
-  'RELEASE.md',
-  'bun.lock',
-]);
+const forbiddenExact = new Set(['ARCHITECTURE.md', 'RELEASE.md']);
 
-for (const path of required) {
-  if (!files.has(path)) violations.push(`missing required package file: ${path}`);
-}
-
-for (const path of files) {
-  if (forbiddenExact.has(path)) violations.push(`repository-only file leaked into package: ${path}`);
+for (const file of files) {
+  if (forbiddenExact.has(file)) violations.push(`repository-only documentation leaked into package: ${file}`);
   for (const prefix of forbiddenPrefixes) {
-    if (path.startsWith(prefix)) violations.push(`repository/generated path leaked into package: ${path}`);
+    if (file.startsWith(prefix)) violations.push(`repository/generated path leaked into package: ${file}`);
   }
 }
 
 const unpackedSize = pack?.unpackedSize ?? Number.POSITIVE_INFINITY;
-if (files.size > 100) {
-  violations.push(`package file count unexpectedly high: ${files.size} > 100`);
-}
-if (unpackedSize > 2_000_000) {
-  violations.push(`package unpacked size unexpectedly high: ${unpackedSize} > 2000000 bytes`);
+if (files.size > 80) violations.push(`package file count unexpectedly high: ${files.size} > 80`);
+if (unpackedSize > 1_000_000) {
+  violations.push(`package unpacked size unexpectedly high: ${unpackedSize} > 1000000 bytes`);
 }
 
 if (violations.length > 0) {
@@ -186,9 +179,9 @@ if (violations.length > 0) {
 
 console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
-console.log('  license: MIT');
-console.log('  npm dist-tag: next');
+console.log('  React Native peer: 0.86.x / 0.87.x');
+console.log('  Expo Router adapter: 57.x');
+console.log('  historical/debug repository trees remain removed');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
-console.log('  runtime Android/JS/plugin/navigation-header/screens-interoperability surface included');
-console.log('  generated Android artifacts, debug sources and repository-only files excluded');
+console.log('  tarball contains one Android runtime tree plus plugin/JS entry sources');

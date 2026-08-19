@@ -9,17 +9,12 @@
   "files": [
     "android/build.gradle",
     "android/src/main",
-    "android-shared/README.md",
-    "android-shared/src/main",
     "plugin",
     "src",
     "index.ts",
+    "router.tsx",
     "app.plugin.js",
-    "expo-module.config.json",
-    "ARCHITECTURE.md",
-    "PRODUCT.md",
-    "README.md",
-    "LICENSE"
+    "expo-module.config.json"
   ],
   "keywords": [
     "react-native",
@@ -44,20 +39,28 @@
     "tag": "next"
   },
   "scripts": {
-    "analyze:scroll-log": "node scripts/analyze-scroll-log.mjs",
-    "analyze:rn087-source": "node scripts/analyze-rn087-source-log.mjs",
     "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs && node scripts/check-material3-adapter-invariants.mjs",
     "check:navigation-integration": "node scripts/check-navigation-integration.mjs",
-    "check:rn086-androidx-plugin": "node scripts/check-rn086-androidx-plugin.mjs",
+    "check:react-native-compat-plugin": "node scripts/check-react-native-compat-plugin.mjs",
     "check:rnscreens-interop-plugin": "node scripts/check-rnscreens-interop-plugin.mjs",
     "check:package-surface": "node scripts/check-package-surface.mjs",
-    "check": "npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:rn086-androidx-plugin && npm run check:rnscreens-interop-plugin && npm run check:package-surface",
+    "check": "npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:rnscreens-interop-plugin && npm run check:package-surface",
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
-    "expo": ">=57.0.0 <58.0.0",
+    "expo": "*",
+    "expo-router": ">=57.0.0 <58.0.0",
     "react": ">=19.2.0 <20.0.0",
-    "react-native": ">=0.86.0 <0.87.0",
-    "react-native-safe-area-context": ">=5.0.0 <6.0.0"
+    "react-native": ">=0.86.0 <0.88.0",
+    "react-native-safe-area-context": ">=5.0.0 <6.0.0",
+    "react-native-screens": ">=4.26.0 <4.27.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-router": {
+      "optional": true
+    },
+    "react-native-screens": {
+      "optional": true
+    }
   }
 }

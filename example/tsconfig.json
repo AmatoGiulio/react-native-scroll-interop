@@ -4,7 +4,9 @@
     "strict": true,
     "typeRoots": ["./node_modules/@types", "../node_modules/@types"],
     "paths": {
+      "expo-router": ["./node_modules/expo-router"],
       "react-native-scroll-interop": ["../index"],
+      "react-native-scroll-interop/router": ["../router"],
       "react-native-scroll-interop/*": ["../src/*"]
     }
   },

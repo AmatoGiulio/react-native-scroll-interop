@@ -12,7 +12,7 @@ export default function NavigationFirstDetails() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Details screen</Text>
         <Text style={styles.cardBody}>
-          This screen declares no TopAppBar, FloatingToolbar or scroll host. The native StackScreen owns the interop.
+          This screen declares no TopAppBar, FloatingToolbar or NativeScrollHost. The native react-native-screens Screen owns the interop parent.
         </Text>
       </View>
 
