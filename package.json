@@ -14,6 +14,7 @@
     "plugin",
     "src",
     "index.ts",
+    "router.tsx",
     "app.plugin.js",
     "expo-module.config.json",
     "ARCHITECTURE.md",
@@ -56,8 +57,14 @@
   },
   "peerDependencies": {
     "expo": ">=57.0.0 <58.0.0",
+    "expo-router": ">=57.0.0 <58.0.0",
     "react": ">=19.2.0 <20.0.0",
     "react-native": ">=0.86.0 <0.87.0",
     "react-native-safe-area-context": ">=5.0.0 <6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-router": {
+      "optional": true
+    }
   }
 }
