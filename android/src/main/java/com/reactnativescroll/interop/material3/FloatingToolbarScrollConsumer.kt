@@ -163,10 +163,15 @@ internal open class FloatingToolbarScrollConsumer(
     val previous = preparedSource
     rememberBehaviorState(behavior)
     cancelSettle()
-    preparedSource = source
+
+    // Capture the incoming source state before changing preparedSource. syncGeometryNow() persists
+    // the current Material state through rememberBehaviorState(), so pointing preparedSource at the
+    // incoming source too early would overwrite its retained state with the departing screen state.
+    val retained = sourceStates[source]
 
     val current = behavior
     if (current == null || scope == null) {
+      preparedSource = source
       if (BuildConfig.DEBUG) Log.d(
         NATIVE_SCROLL_LOG_TAG,
         "FLOAT_SOURCE_SWITCH previous=${sourceIdentity(previous)} next=${sourceIdentity(source)} bound=false",
@@ -174,8 +179,9 @@ internal open class FloatingToolbarScrollConsumer(
       return false
     }
 
+    // Geometry still belongs to the currently active/departing source until its state is saved.
     syncGeometryNow()
-    val retained = sourceStates[source]
+
     if (retained != null) {
       restoreRetainedBehaviorState(current, retained)
     } else {
@@ -184,6 +190,9 @@ internal open class FloatingToolbarScrollConsumer(
       current.state.offset = 0f
       current.state.contentOffset = 0f
     }
+
+    // Only now make the incoming source authoritative and persist its restored/new baseline.
+    preparedSource = source
     rememberBehaviorState(current)
     applyOffset(current.state.offset)
     scheduleGeometryResync()
