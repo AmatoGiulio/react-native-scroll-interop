@@ -29,12 +29,12 @@ internal data class ReactVerticalScrollSourceCapabilities(
 )
 
 /**
- * Compatibility boundary between the stable ReactScrollView path and the RN 0.87 generated
- * ReactNestedScrollView path.
+ * Compatibility boundary for React Native's legacy ReactScrollView and generated
+ * ReactNestedScrollView implementations.
  *
- * ReactNestedScrollView is Kotlin-internal in RN 0.87, so app/module code must not import its type.
- * Runtime class identity is used only to decide whether a View is a supported RN vertical source.
- * The actual nested-scroll transaction still comes from Android's target callback.
+ * The generated class is Kotlin-internal, so package code does not import its type. Runtime class
+ * identity is used only to decide whether a View is a supported RN vertical source. The actual
+ * nested-scroll transaction still comes from Android's target callback.
  *
  * Reflection is restricted to RN's unstable scroll-away geometry primitive. It never participates
  * in gesture/fling physics and is never used per frame.
