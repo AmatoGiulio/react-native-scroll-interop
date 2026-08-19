@@ -2,6 +2,7 @@ package expo.modules.materialtoolbar
 
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import com.facebook.react.uimanager.UIManagerHelper
 import com.reactnativescroll.interop.reactnative.ReactNativeNestedScrollParentController
 
@@ -17,8 +18,11 @@ import com.reactnativescroll.interop.reactnative.ReactNativeNestedScrollParentCo
  * TopAppBar lookup prefers the native screen that owns the scroll source. This matters during
  * native-stack transitions, when the outgoing and incoming screens can both remain attached on the
  * same Fabric surface. A persistent/global TopAppBar can still participate as a surface-scoped
- * fallback when no screen-local TopAppBar exists. FloatingToolbar remains surface-scoped because a
- * toolbar may intentionally live outside the Stack and persist across route changes.
+ * fallback when no screen-local TopAppBar exists.
+ *
+ * FloatingToolbar remains a persistent surface-scoped View, but its scroll-derived Material state
+ * is activated only for the frontmost registered screen in a native stack. The consumer retains
+ * that state per concrete RN source, so push/pop cannot leak a hidden toolbar state between screens.
  */
 internal object NativeNestedScrollRegistry {
   private data class TopBarEntry(
@@ -42,6 +46,12 @@ internal object NativeNestedScrollRegistry {
     "com.swmansion.rnscreens.stack.screen.StackScreen",
   )
 
+  private val nativeStackClassNames = setOf(
+    "com.swmansion.rnscreens.ScreenStack",
+    "com.swmansion.rnscreens.legacy.ScreenStack",
+    "com.swmansion.rnscreens.stack.ScreenStack",
+  )
+
   fun registerHost(host: ReactNativeNestedScrollHostView) {
     hosts += host
     host.requestNestedChromeBindingRefresh()
@@ -52,11 +62,20 @@ internal object NativeNestedScrollRegistry {
   }
 
   fun registerScreenParent(parent: ReactNativeNestedScrollParentController) {
+    // Registration order is native-stack presentation order for attached screen Views. Reinsert on
+    // attach so a screen returning after its View was detached becomes the frontmost candidate.
+    screenParents.remove(parent)
     screenParents += parent
   }
 
   fun unregisterScreenParent(parent: ReactNativeNestedScrollParentController) {
+    val departingOwner = parent.ownerView
     screenParents -= parent
+
+    // A persistent toolbar may currently display state produced by the departing screen. The screen
+    // underneath can remain attached and therefore receives no new layout/scroll callback on pop.
+    // Explicitly refresh the newly frontmost parent so its source-scoped toolbar state is restored.
+    frontmostScreenParentFor(departingOwner)?.requestNestedChromeBindingRefresh()
   }
 
   fun registerTopBar(owner: ExpoMaterialTopAppBarView, consumer: TopAppBarScrollConsumer) {
@@ -116,8 +135,18 @@ internal object NativeNestedScrollRegistry {
 
   fun resolveToolbar(source: View): FloatingToolbarScrollConsumer? {
     cleanupDetached()
+
+    // A persistent toolbar follows only the frontmost screen in a registered native stack. This
+    // prevents an outgoing/below-top screen from reactivating its toolbar state during transitions.
+    if (!isFrontmostScreenSource(source)) return null
+
     val candidates = toolbars.filter { isSurfaceEligible(it.owner, source) && it.consumer.isBound }
-    return single(candidates.map { it.consumer }, "FloatingToolbar", source)
+    val consumer = single(candidates.map { it.consumer }, "FloatingToolbar", source)
+    val sourceGroup = source as? ViewGroup
+    if (consumer != null && sourceGroup != null) {
+      consumer.prepareNestedSource(sourceGroup)
+    }
+    return consumer
   }
 
   private fun <T> single(candidates: List<T>, kind: String, source: View): T? {
@@ -131,6 +160,33 @@ internal object NativeNestedScrollRegistry {
     }
     return null
   }
+
+  private fun isFrontmostScreenSource(source: View): Boolean {
+    val sourceScreen = findNativeScreenAncestor(source) ?: return true
+    val scopedParents = screenParents.filter {
+      it.ownerView.isAttachedToWindow && sameScreenStackScope(it.ownerView, sourceScreen)
+    }
+
+    // No direct screen-owned integration exists in this stack: preserve NativeScrollHost fallback.
+    if (scopedParents.isEmpty()) return true
+
+    val sourceParent = scopedParents.firstOrNull { it.ownerView === sourceScreen }
+    val frontmost = scopedParents.last()
+    val active = sourceParent != null && sourceParent === frontmost
+    if (!active && BuildConfig.DEBUG) {
+      Log.d(
+        NATIVE_SCROLL_LOG_TAG,
+        "TX_REGISTRY inactiveFloatingToolbarSource source=${source.javaClass.name}#${source.id} " +
+          "screen=${screenScopeLabel(source)} frontmost=${screenScopeLabel(frontmost.ownerView)}",
+      )
+    }
+    return active
+  }
+
+  private fun frontmostScreenParentFor(scopeOwner: View): ReactNativeNestedScrollParentController? =
+    screenParents.lastOrNull {
+      it.ownerView.isAttachedToWindow && sameScreenStackScope(it.ownerView, scopeOwner)
+    }
 
   private fun isSurfaceEligible(owner: View, source: View): Boolean =
     owner.isAttachedToWindow &&
@@ -196,6 +252,24 @@ internal object NativeNestedScrollRegistry {
       current = current.parent as? View
     }
     return null
+  }
+
+  private fun findNativeStackAncestor(view: View): View? {
+    var current = view.parent as? View
+    while (current != null) {
+      if (current.javaClass.name in nativeStackClassNames) return current
+      current = current.parent as? View
+    }
+    return null
+  }
+
+  private fun sameScreenStackScope(first: View, second: View): Boolean {
+    val firstStack = findNativeStackAncestor(first)
+    val secondStack = findNativeStackAncestor(second)
+    if (firstStack != null || secondStack != null) {
+      return firstStack != null && firstStack === secondStack
+    }
+    return sameNativeScope(first, second)
   }
 
   private fun screenScopeLabel(view: View): String {
