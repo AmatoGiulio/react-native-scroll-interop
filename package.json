@@ -41,9 +41,10 @@
     "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs && node scripts/check-material3-adapter-invariants.mjs",
     "check:navigation-integration": "node scripts/check-navigation-integration.mjs",
     "check:react-native-compat-plugin": "node scripts/check-react-native-compat-plugin.mjs",
+    "check:bare-react-native-compat": "node scripts/check-bare-react-native-compat.mjs",
     "check:rnscreens-interop-plugin": "node scripts/check-rnscreens-interop-plugin.mjs",
     "check:package-surface": "node scripts/check-package-surface.mjs",
-    "check": "npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:rnscreens-interop-plugin && npm run check:package-surface",
+    "check": "npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:bare-react-native-compat && npm run check:rnscreens-interop-plugin && npm run check:package-surface",
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
