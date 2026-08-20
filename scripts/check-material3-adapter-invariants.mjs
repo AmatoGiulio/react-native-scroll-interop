@@ -191,7 +191,7 @@ if (floatingToolbarSource != null) {
   } else {
     const prepareBody = floatingToolbarSource.slice(prepareStart, prepareEnd);
     const retainedRead = prepareBody.indexOf('val retained = sourceStates[source]');
-    const geometrySync = prepareBody.indexOf('syncGeometryNow()');
+    const geometrySync = prepareBody.indexOf('syncGeometryNow()', retainedRead + 1);
     const firstAuthoritySwitch = prepareBody.indexOf('preparedSource = source');
     const finalAuthoritySwitch = prepareBody.lastIndexOf('preparedSource = source');
     const restoredPersist = prepareBody.indexOf('rememberBehaviorState(current)', finalAuthoritySwitch);

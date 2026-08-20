@@ -1,6 +1,10 @@
-import { requireNativeViewManager } from 'expo-modules-core';
-import type { ComponentType, RefAttributes } from 'react';
-import type { ColorValue, NativeSyntheticEvent, ViewProps } from 'react-native';
+import type { ComponentType } from 'react';
+import {
+  requireNativeComponent,
+  type ColorValue,
+  type NativeSyntheticEvent,
+  type ViewProps,
+} from 'react-native';
 
 import type {
   MaterialToolbarAlignment,
@@ -9,7 +13,6 @@ import type {
   MaterialToolbarImeBehavior,
   MaterialToolbarInsets,
   MaterialToolbarOrientation,
-  MaterialToolbarRef,
   MaterialToolbarScrollBehavior,
   MaterialToolbarScrollExitDirection,
   MaterialToolbarThemeMode,
@@ -76,8 +79,6 @@ export type NativeMaterialToolbarProps = ViewProps & {
   onFabPress?: (event: NativeSyntheticEvent<Record<string, never>>) => void;
 };
 
-type NativeComponent = ComponentType<
-  NativeMaterialToolbarProps & RefAttributes<MaterialToolbarRef>
->;
-
-export default requireNativeViewManager('ExpoMaterialToolbar') as NativeComponent;
+export default requireNativeComponent<NativeMaterialToolbarProps>(
+  'RNSIMaterialToolbar'
+) as ComponentType<NativeMaterialToolbarProps>;

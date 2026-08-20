@@ -1,4 +1,11 @@
-import React, { forwardRef, useCallback, useMemo } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useState,
+} from 'react';
 import { Image, StyleSheet } from 'react-native';
 
 import ExpoMaterialToolbarNativeView, {
@@ -220,6 +227,36 @@ const MaterialToolbarRoot = forwardRef<MaterialToolbarRef, MaterialToolbarRootPr
   ) {
     const model = useMemo(() => compileModel(children), [children]);
     const padding = useMemo(() => resolvePadding(contentPadding), [contentPadding]);
+    const [nativeVisible, setNativeVisible] = useState(visible);
+    const [nativeExpanded, setNativeExpanded] = useState(expanded);
+
+    useEffect(() => {
+      setNativeVisible(visible);
+    }, [visible]);
+
+    useEffect(() => {
+      setNativeExpanded(expanded);
+    }, [expanded]);
+
+    useImperativeHandle(
+      forwardedRef,
+      () => ({
+        async show() {
+          setNativeVisible(true);
+        },
+        async hide() {
+          setNativeVisible(false);
+        },
+        async expand() {
+          setNativeExpanded(true);
+        },
+        async collapse() {
+          setNativeExpanded(false);
+        },
+      }),
+      []
+    );
+
     const resolvedFabPosition =
       floatingActionButtonPosition ?? (orientation === 'vertical' ? 'bottom' : 'end');
     const resolvedAlignment =
@@ -243,14 +280,13 @@ const MaterialToolbarRoot = forwardRef<MaterialToolbarRef, MaterialToolbarRootPr
 
     return (
       <ExpoMaterialToolbarNativeView
-        ref={forwardedRef}
         style={style ?? StyleSheet.absoluteFill}
         pointerEvents="box-none"
         content={model.content}
         leadingContent={model.leadingContent}
         trailingContent={model.trailingContent}
-        visible={visible}
-        expanded={expanded}
+        visible={nativeVisible}
+        expanded={nativeExpanded}
         scrollBehavior={scrollBehavior}
         scrollExitDirection={scrollExitDirection ?? 'auto'}
         orientation={orientation}

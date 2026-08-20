@@ -6,7 +6,6 @@
 package expo.modules.materialtoolbar
 
 import android.content.Context
-import android.graphics.Color
 import android.os.Build
 import android.util.Log
 import android.view.View
@@ -14,7 +13,6 @@ import android.view.ViewGroup
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,12 +25,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.FloatingToolbarDefaults
 import androidx.compose.material3.FloatingToolbarExitDirection
-import androidx.compose.material3.FloatingToolbarScrollBehavior
 import androidx.compose.material3.FloatingToolbarHorizontalFabPosition
+import androidx.compose.material3.FloatingToolbarScrollBehavior
 import androidx.compose.material3.FloatingToolbarVerticalFabPosition
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -61,8 +60,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
-import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.viewevent.EventDispatcher
+import com.facebook.react.bridge.Arguments
 import kotlinx.coroutines.CoroutineScope
 
 private data class ToolbarAction(
@@ -120,11 +118,7 @@ private data class ToolbarState(
 
 class ExpoMaterialToolbarView(
   context: Context,
-  appContext: AppContext,
-) : ComposeChromeHostView(context, appContext) {
-
-  internal val onActionPress by EventDispatcher()
-  internal val onFabPress by EventDispatcher()
+) : ComposeChromeHostView(context) {
 
   private val state = mutableStateOf(ToolbarState())
   private var nativeImeVisible = false
@@ -178,6 +172,11 @@ class ExpoMaterialToolbarView(
     composeView.requestLayout()
   }
 
+  private fun emitToolbarActionPress(id: String) {
+    val payload = Arguments.createMap().apply { putString("id", id) }
+    emitDirectEvent("toolbarActionPress", payload)
+  }
+
   private fun syncNativeVisibility(reason: String) {
     val uiState = state.value
     val hiddenForIme = uiState.imeBehavior == "hide" && nativeImeVisible
@@ -189,9 +188,6 @@ class ExpoMaterialToolbarView(
       composeView.visibility = targetVisibility
     }
 
-    // INVISIBLE intentionally keeps this WRAP_CONTENT ComposeView measured. The scroll consumer
-    // therefore retains a real geometry while IME/visible hides the pixels, and showing it again
-    // cannot get stuck behind a 0x0 root measurement.
     composeView.requestLayout()
     requestLayout()
 
@@ -365,20 +361,20 @@ class ExpoMaterialToolbarView(
   fun setCollapsedShadowElevation(value: Float?) = updateState {
     it.copy(collapsedShadowElevationDp = value?.coerceAtLeast(0f))
   }
-  fun setToolbarContainerColor(color: Color?) =
-    updateState { it.copy(toolbarContainerArgb = color?.toArgb()) }
-  fun setToolbarContentColor(color: Color?) =
-    updateState { it.copy(toolbarContentArgb = color?.toArgb()) }
-  fun setFabContainerColor(color: Color?) =
-    updateState { it.copy(fabContainerArgb = color?.toArgb()) }
-  fun setFabContentColor(color: Color?) =
-    updateState { it.copy(fabContentArgb = color?.toArgb()) }
-  fun setSelectedContainerColor(color: Color?) =
-    updateState { it.copy(selectedContainerArgb = color?.toArgb()) }
-  fun setSelectedContentColor(color: Color?) =
-    updateState { it.copy(selectedContentArgb = color?.toArgb()) }
-  fun setUnselectedContentColor(color: Color?) =
-    updateState { it.copy(unselectedContentArgb = color?.toArgb()) }
+  fun setToolbarContainerColor(color: Int?) =
+    updateState { it.copy(toolbarContainerArgb = color) }
+  fun setToolbarContentColor(color: Int?) =
+    updateState { it.copy(toolbarContentArgb = color) }
+  fun setFabContainerColor(color: Int?) =
+    updateState { it.copy(fabContainerArgb = color) }
+  fun setFabContentColor(color: Int?) =
+    updateState { it.copy(fabContentArgb = color) }
+  fun setSelectedContainerColor(color: Int?) =
+    updateState { it.copy(selectedContainerArgb = color) }
+  fun setSelectedContentColor(color: Int?) =
+    updateState { it.copy(selectedContentArgb = color) }
+  fun setUnselectedContentColor(color: Int?) =
+    updateState { it.copy(unselectedContentArgb = color) }
 
   @Composable
   private fun MaterialToolbarContent(uiState: ToolbarState) {
@@ -458,9 +454,6 @@ class ExpoMaterialToolbarView(
         onDispose { unbindComposeScrollBehavior(materialScrollBehavior) }
       }
 
-      // Keep a real layout node alive even when Android hides the ComposeView. A root
-      // AnimatedVisibility in a WRAP_CONTENT ComposeView can legitimately measure 0x0 while hidden,
-      // which strands the native host with no geometry to recover on IME close.
       Box(modifier = Modifier.padding(hostPadding)) {
         FloatingToolbar(
           uiState = uiState,
@@ -614,7 +607,7 @@ class ExpoMaterialToolbarView(
 
     if (action.presentation == "text") {
       TextButton(
-        onClick = { onActionPress(mapOf("id" to action.id)) },
+        onClick = { emitToolbarActionPress(action.id) },
         enabled = action.enabled,
         modifier = accessibilityModifier,
         colors = ButtonDefaults.textButtonColors(
@@ -643,7 +636,7 @@ class ExpoMaterialToolbarView(
       }
     } else {
       IconButton(
-        onClick = { onActionPress(mapOf("id" to action.id)) },
+        onClick = { emitToolbarActionPress(action.id) },
         enabled = action.enabled,
         modifier = accessibilityModifier.background(indicatorColor, CircleShape),
       ) {
@@ -683,7 +676,7 @@ class ExpoMaterialToolbarView(
 
     if (uiState.variant == "vibrant") {
       FloatingToolbarDefaults.VibrantFloatingActionButton(
-        onClick = { onFabPress(emptyMap<String, Any>()) },
+        onClick = { emitDirectEvent("toolbarFabPress") },
         modifier = modifier,
         shape = if (uiState.fabShape == "circle") CircleShape else FloatingActionButtonDefaults.shape,
         containerColor = toolbarColors.fabContainerColor,
@@ -692,7 +685,7 @@ class ExpoMaterialToolbarView(
       )
     } else {
       FloatingToolbarDefaults.StandardFloatingActionButton(
-        onClick = { onFabPress(emptyMap<String, Any>()) },
+        onClick = { emitDirectEvent("toolbarFabPress") },
         modifier = modifier,
         shape = if (uiState.fabShape == "circle") CircleShape else FloatingActionButtonDefaults.shape,
         containerColor = toolbarColors.fabContainerColor,

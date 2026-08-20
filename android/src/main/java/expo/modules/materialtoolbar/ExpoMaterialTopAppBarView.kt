@@ -30,8 +30,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.viewevent.EventDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlin.math.roundToInt
 
@@ -48,16 +46,11 @@ private data class TopAppBarHostState(
 
 class ExpoMaterialTopAppBarView(
   context: Context,
-  appContext: AppContext,
-) : ComposeChromeHostView(context, appContext) {
-
-  internal val onNavigationPress by EventDispatcher()
+) : ComposeChromeHostView(context) {
 
   private val state = mutableStateOf(TopAppBarHostState())
   private var lastTopInsetPx = -1
   private var expandedChromeHeightPx = 0
-  private var intrinsicHostMeasurePending = false
-  private var intrinsicHostResolveAttempts = 0
 
   private val topAppBarScrollConsumer = TopAppBarScrollConsumer()
 
@@ -87,7 +80,6 @@ class ExpoMaterialTopAppBarView(
     resetExpandedChromeGeometry()
     seedExpandedChromeGeometry()
     scheduleHostMeasureAndLayout()
-    scheduleIntrinsicHostSizeResolution()
     composeView.requestLayout()
 
     if (BuildConfig.DEBUG) {
@@ -101,7 +93,6 @@ class ExpoMaterialTopAppBarView(
     ViewCompat.requestApplyInsets(this)
     NativeNestedScrollRegistry.registerTopBar(this, topAppBarScrollConsumer)
     seedExpandedChromeGeometry()
-    scheduleIntrinsicHostSizeResolution()
   }
 
   override fun onDetachedFromWindow() {
@@ -130,7 +121,6 @@ class ExpoMaterialTopAppBarView(
   private fun updateState(transform: (TopAppBarHostState) -> TopAppBarHostState) {
     state.value = transform(state.value)
     requestLayout()
-    scheduleIntrinsicHostSizeResolution()
     composeView.requestLayout()
   }
 
@@ -159,57 +149,6 @@ class ExpoMaterialTopAppBarView(
         "topappbar seedExpanded variant=${state.value.variant} topInset=$lastTopInsetPx " +
           "height=$targetHeightPx density=$density",
       )
-    }
-  }
-
-  private fun scheduleIntrinsicHostSizeResolution() {
-    if (intrinsicHostMeasurePending || !isAttachedToWindow || height > 0) return
-    intrinsicHostMeasurePending = true
-    post {
-      intrinsicHostMeasurePending = false
-      if (!isAttachedToWindow || width <= 0 || height > 0) return@post
-
-      val availableHeight = rootView.height
-      if (availableHeight <= 0) {
-        scheduleIntrinsicHostSizeRetry()
-        return@post
-      }
-
-      onMeasureComposeChild(width, availableHeight)
-      val targetHeightPx = expandedChromeHeightPx
-      if (targetHeightPx <= 0) {
-        scheduleIntrinsicHostSizeRetry()
-        return@post
-      }
-
-      val density = resources.displayMetrics.density
-      if (density > 0f) {
-        shadowNodeProxy.setViewSize(
-          Double.NaN,
-          targetHeightPx.toDouble() / density.toDouble(),
-        )
-        if (BuildConfig.DEBUG) {
-          android.util.Log.d(
-            NATIVE_SCROLL_LOG_TAG,
-            "topappbar publishFabricHeight px=$targetHeightPx " +
-              "dp=${targetHeightPx.toDouble() / density.toDouble()} " +
-              "host=${width}x$height root=${rootView.width}x${rootView.height} " +
-              "attempt=$intrinsicHostResolveAttempts",
-          )
-        }
-      }
-
-      if (height <= 0) {
-        scheduleIntrinsicHostSizeRetry()
-      }
-    }
-  }
-
-  private fun scheduleIntrinsicHostSizeRetry() {
-    if (intrinsicHostResolveAttempts >= 8 || !isAttachedToWindow || height > 0) return
-    intrinsicHostResolveAttempts += 1
-    ViewCompat.postOnAnimation(this) {
-      scheduleIntrinsicHostSizeResolution()
     }
   }
 
@@ -256,7 +195,6 @@ class ExpoMaterialTopAppBarView(
 
   private fun resetExpandedChromeGeometry() {
     expandedChromeHeightPx = 0
-    intrinsicHostResolveAttempts = 0
     topAppBarScrollConsumer.resetExpandedChromeHeight()
     NativeNestedScrollRegistry.topBarStateChanged(this)
   }
@@ -367,7 +305,7 @@ class ExpoMaterialTopAppBarView(
                 if (BuildConfig.DEBUG) {
                   android.util.Log.d(NATIVE_SCROLL_LOG_TAG, "TOPAPPBAR_NAV_PRESS")
                 }
-                onNavigationPress(emptyMap<String, Any>())
+                emitDirectEvent("topNavigationPress")
               },
             ) {
               Icon(

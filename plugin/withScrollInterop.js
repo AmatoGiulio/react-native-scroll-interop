@@ -5,10 +5,13 @@ const path = require('node:path');
 const { withDangerousMod, withSettingsGradle } = require('expo/config-plugins');
 const {
   assertSupportedReactNativeVersion,
+  ensureReactNativeSourceBuildPlaceholder,
   ensureReactNativeSourceBuildSettings,
   patchMainReactPackage,
+  patchReactAndroidHermesCompileOnly,
   patchReactNestedScrollView086,
   patchReactNestedScrollView087,
+  resolveReactNativePrebuiltHermesCoordinate,
 } = require('./reactNativeScrollCompatPatch');
 const {
   assertSupportedReactNativeScreensVersion,
@@ -40,6 +43,7 @@ function readPackage(projectRoot, packageName) {
 function patchReactNativeScrollSource(projectRoot) {
   const reactNative = readPackage(projectRoot, 'react-native');
   const line = assertSupportedReactNativeVersion(reactNative.json.version);
+  ensureReactNativeSourceBuildPlaceholder(reactNative.root);
 
   const scrollPath = path.join(
     reactNative.root,
@@ -66,8 +70,11 @@ function patchReactNativeScrollSource(projectRoot) {
     'shell',
     'MainReactPackage.kt'
   );
+  const reactAndroidBuildPath = path.join(reactNative.root, 'ReactAndroid', 'build.gradle.kts');
+  const requiredPaths = [scrollPath, mainPackagePath];
+  if (process.platform === 'win32') requiredPaths.push(reactAndroidBuildPath);
 
-  for (const filePath of [scrollPath, mainPackagePath]) {
+  for (const filePath of requiredPaths) {
     if (!fs.existsSync(filePath)) {
       throw new Error(
         `[react-native-scroll-interop] Missing expected React Native ${line}.x source file: ${filePath}. ` +
@@ -87,6 +94,21 @@ function patchReactNativeScrollSource(projectRoot) {
   const patchedMainPackage = patchMainReactPackage(originalMainPackage);
   if (patchedMainPackage !== originalMainPackage) {
     fs.writeFileSync(mainPackagePath, patchedMainPackage);
+  }
+
+  if (process.platform === 'win32') {
+    const hermesCoordinate = resolveReactNativePrebuiltHermesCoordinate(
+      reactNative.root,
+      projectRoot
+    );
+    const originalReactAndroidBuild = fs.readFileSync(reactAndroidBuildPath, 'utf8');
+    const patchedReactAndroidBuild = patchReactAndroidHermesCompileOnly(
+      originalReactAndroidBuild,
+      hermesCoordinate
+    );
+    if (patchedReactAndroidBuild !== originalReactAndroidBuild) {
+      fs.writeFileSync(reactAndroidBuildPath, patchedReactAndroidBuild);
+    }
   }
 
   console.log(
