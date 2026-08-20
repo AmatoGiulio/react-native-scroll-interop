@@ -9,6 +9,7 @@
   "files": [
     "android/build.gradle",
     "android/src/main",
+    "android/src/reactNativeScreensInterop",
     "plugin",
     "src",
     "index.ts",
