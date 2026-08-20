@@ -1,10 +1,8 @@
 'use strict';
 
 const SUPPORTED_SCREENS_VERSION = /^4\.26\.\d+$/;
-const INTEROP_IMPORT =
-  'import com.reactnativescroll.interop.reactnative.ReactNativeNestedScrollParentController';
-const LOCATOR_IMPORT =
-  'import com.reactnativescroll.interop.reactnative.ReactNativeVerticalScrollSourceLocator';
+const BRIDGE_IMPORT =
+  'import com.reactnativescroll.interop.reactnative.ReactNativeScreenNestedScrollBridge';
 const INTEROP_DEPENDENCY = "    implementation project(':react-native-scroll-interop')";
 
 function assertSupportedReactNativeScreensVersion(version) {
@@ -40,13 +38,12 @@ function patchReactNativeScreensGradle(source) {
 }
 
 function patchScreen(source) {
-  if (source.includes(INTEROP_IMPORT)) {
+  if (source.includes(BRIDGE_IMPORT)) {
     const required = [
-      LOCATOR_IMPORT,
       'NestedScrollingParent3',
-      'ReactNativeNestedScrollParentController(this)',
-      'ReactNativeVerticalScrollSourceLocator.findUniqueDescendant(root)',
+      'ReactNativeScreenNestedScrollBridge(',
       'nestedScrollInterop.onOwnerAttached()',
+      'nestedScrollInterop.onOwnerLayout()',
       'nestedScrollInterop.onOwnerDetached()',
       'nestedScrollInterop.onStartNestedScroll(',
       'nestedScrollInterop.onNestedPreScroll(',
@@ -64,13 +61,6 @@ function patchScreen(source) {
 
   source = replaceExactlyOnce(
     source,
-    'import android.view.ViewGroup\n',
-    'import android.view.ViewGroup\nimport android.view.ViewTreeObserver\n',
-    'Screen ViewGroup import'
-  );
-
-  source = replaceExactlyOnce(
-    source,
     'import androidx.core.view.children\n',
     'import androidx.core.view.NestedScrollingParent3\nimport androidx.core.view.children\n',
     'Screen AndroidX view imports'
@@ -79,7 +69,7 @@ function patchScreen(source) {
   source = replaceExactlyOnce(
     source,
     'import com.facebook.react.uimanager.events.EventDispatcher\n',
-    `import com.facebook.react.uimanager.events.EventDispatcher\n${INTEROP_IMPORT}\n${LOCATOR_IMPORT}\n`,
+    `import com.facebook.react.uimanager.events.EventDispatcher\n${BRIDGE_IMPORT}\n`,
     'Screen EventDispatcher import'
   );
 
@@ -90,30 +80,30 @@ function patchScreen(source) {
     'Screen interface list'
   );
 
-  const ownerFields = `    private val nestedScrollInterop = ReactNativeNestedScrollParentController(this)\n    private var nestedScrollInteropOwnerAttached = false\n    private var nestedScrollInteropWaitingForLayout = false\n    private val nestedScrollInteropLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {\n        if (!isAttachedToWindow || !isNativeStackScreen) {\n            stopWaitingForNestedScrollInteropLayout()\n            return@OnGlobalLayoutListener\n        }\n        if (prepareNestedScrollInterop()) {\n            stopWaitingForNestedScrollInteropLayout()\n        }\n    }\n\n    private fun ensureNestedScrollInteropOwnerAttached() {\n        if (!isAttachedToWindow || !isNativeStackScreen || nestedScrollInteropOwnerAttached) return\n        nestedScrollInterop.onOwnerAttached()\n        nestedScrollInteropOwnerAttached = true\n    }\n\n    private fun prepareNestedScrollInterop(): Boolean {\n        if (!isAttachedToWindow || !isNativeStackScreen) return false\n        val root = contentWrapper ?: this\n        val source = ReactNativeVerticalScrollSourceLocator.findUniqueDescendant(root) ?: return false\n        return nestedScrollInterop.prepareNestedSource(source)\n    }\n\n    private fun requestNestedScrollInteropBinding() {\n        if (!isAttachedToWindow || !isNativeStackScreen) return\n        ensureNestedScrollInteropOwnerAttached()\n        if (prepareNestedScrollInterop()) {\n            stopWaitingForNestedScrollInteropLayout()\n        } else {\n            startWaitingForNestedScrollInteropLayout()\n        }\n    }\n\n    private fun startWaitingForNestedScrollInteropLayout() {\n        if (nestedScrollInteropWaitingForLayout) return\n        val observer = viewTreeObserver\n        if (!observer.isAlive) return\n        observer.addOnGlobalLayoutListener(nestedScrollInteropLayoutListener)\n        nestedScrollInteropWaitingForLayout = true\n    }\n\n    private fun stopWaitingForNestedScrollInteropLayout() {\n        if (!nestedScrollInteropWaitingForLayout) return\n        val observer = viewTreeObserver\n        if (observer.isAlive) observer.removeOnGlobalLayoutListener(nestedScrollInteropLayoutListener)\n        nestedScrollInteropWaitingForLayout = false\n    }\n\n`;
+  const bridgeField = `    private val nestedScrollInterop = ReactNativeScreenNestedScrollBridge(\n        owner = this,\n        isEnabled = { isNativeStackScreen },\n        sourceRoot = { contentWrapper ?: this },\n    )\n\n`;
 
   source = replaceExactlyOnce(
     source,
     '    private val isNativeStackScreen: Boolean\n        get() = container is ScreenStack\n\n    init {\n',
-    `    private val isNativeStackScreen: Boolean\n        get() = container is ScreenStack\n\n${ownerFields}    init {\n`,
+    `    private val isNativeStackScreen: Boolean\n        get() = container is ScreenStack\n\n${bridgeField}    init {\n`,
     'Screen native-stack ownership field'
   );
 
   source = replaceExactlyOnce(
     source,
     '            updateShadowNodeScreenSize(width, height, t)\n        }\n    }\n\n    internal fun onBottomSheetBehaviorDidLayout',
-    '            updateShadowNodeScreenSize(width, height, t)\n        }\n        if (isNativeStackScreen) {\n            requestNestedScrollInteropBinding()\n        }\n    }\n\n    internal fun onBottomSheetBehaviorDidLayout',
+    '            updateShadowNodeScreenSize(width, height, t)\n        }\n        nestedScrollInterop.onOwnerLayout()\n    }\n\n    internal fun onBottomSheetBehaviorDidLayout',
     'Screen native-stack onLayout body'
   );
 
   source = replaceExactlyOnce(
     source,
     '    override fun onAttachedToWindow() {\n        super.onAttachedToWindow()\n\n        // Insets handler for formSheet',
-    '    override fun onAttachedToWindow() {\n        super.onAttachedToWindow()\n        requestNestedScrollInteropBinding()\n\n        // Insets handler for formSheet',
+    '    override fun onAttachedToWindow() {\n        super.onAttachedToWindow()\n        nestedScrollInterop.onOwnerAttached()\n\n        // Insets handler for formSheet',
     'Screen onAttachedToWindow body'
   );
 
-  const nestedParentBlock = `    override fun onDetachedFromWindow() {\n        stopWaitingForNestedScrollInteropLayout()\n        if (nestedScrollInteropOwnerAttached) {\n            nestedScrollInterop.onOwnerDetached()\n            nestedScrollInteropOwnerAttached = false\n        }\n        super.onDetachedFromWindow()\n    }\n\n    // region React Native nested-scroll interop\n\n    override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean =\n        nestedScrollInterop.onStartNestedScroll(child, target, axes)\n\n    override fun onNestedScrollAccepted(child: View, target: View, axes: Int) =\n        nestedScrollInterop.onNestedScrollAccepted(child, target, axes)\n\n    override fun onStopNestedScroll(target: View) = nestedScrollInterop.onStopNestedScroll(target)\n\n    override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) =\n        nestedScrollInterop.onNestedPreScroll(target, dx, dy, consumed)\n\n    override fun onNestedScroll(\n        target: View,\n        dxConsumed: Int,\n        dyConsumed: Int,\n        dxUnconsumed: Int,\n        dyUnconsumed: Int,\n    ) = nestedScrollInterop.onNestedScroll(\n        target,\n        dxConsumed,\n        dyConsumed,\n        dxUnconsumed,\n        dyUnconsumed,\n    )\n\n    override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean =\n        nestedScrollInterop.onNestedPreFling(target, velocityX, velocityY)\n\n    override fun onNestedFling(\n        target: View,\n        velocityX: Float,\n        velocityY: Float,\n        consumed: Boolean,\n    ): Boolean = nestedScrollInterop.onNestedFling(target, velocityX, velocityY, consumed)\n\n    override fun getNestedScrollAxes(): Int = nestedScrollInterop.getNestedScrollAxes()\n\n    override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean =\n        nestedScrollInterop.onStartNestedScroll(child, target, axes, type)\n\n    override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) =\n        nestedScrollInterop.onNestedScrollAccepted(child, target, axes, type)\n\n    override fun onStopNestedScroll(target: View, type: Int) =\n        nestedScrollInterop.onStopNestedScroll(target, type)\n\n    override fun onNestedPreScroll(\n        target: View,\n        dx: Int,\n        dy: Int,\n        consumed: IntArray,\n        type: Int,\n    ) = nestedScrollInterop.onNestedPreScroll(target, dx, dy, consumed, type)\n\n    override fun onNestedScroll(\n        target: View,\n        dxConsumed: Int,\n        dyConsumed: Int,\n        dxUnconsumed: Int,\n        dyUnconsumed: Int,\n        type: Int,\n    ) = nestedScrollInterop.onNestedScroll(\n        target,\n        dxConsumed,\n        dyConsumed,\n        dxUnconsumed,\n        dyUnconsumed,\n        type,\n    )\n\n    override fun onNestedScroll(\n        target: View,\n        dxConsumed: Int,\n        dyConsumed: Int,\n        dxUnconsumed: Int,\n        dyUnconsumed: Int,\n        type: Int,\n        consumed: IntArray,\n    ) = nestedScrollInterop.onNestedScroll(\n        target,\n        dxConsumed,\n        dyConsumed,\n        dxUnconsumed,\n        dyUnconsumed,\n        type,\n        consumed,\n    )\n\n    // endregion\n\n`;
+  const nestedParentBlock = `    override fun onDetachedFromWindow() {\n        nestedScrollInterop.onOwnerDetached()\n        super.onDetachedFromWindow()\n    }\n\n    // region React Native nested-scroll interop\n\n    override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean =\n        nestedScrollInterop.onStartNestedScroll(child, target, axes)\n\n    override fun onNestedScrollAccepted(child: View, target: View, axes: Int) =\n        nestedScrollInterop.onNestedScrollAccepted(child, target, axes)\n\n    override fun onStopNestedScroll(target: View) = nestedScrollInterop.onStopNestedScroll(target)\n\n    override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) =\n        nestedScrollInterop.onNestedPreScroll(target, dx, dy, consumed)\n\n    override fun onNestedScroll(\n        target: View,\n        dxConsumed: Int,\n        dyConsumed: Int,\n        dxUnconsumed: Int,\n        dyUnconsumed: Int,\n    ) = nestedScrollInterop.onNestedScroll(\n        target,\n        dxConsumed,\n        dyConsumed,\n        dxUnconsumed,\n        dyUnconsumed,\n    )\n\n    override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean =\n        nestedScrollInterop.onNestedPreFling(target, velocityX, velocityY)\n\n    override fun onNestedFling(\n        target: View,\n        velocityX: Float,\n        velocityY: Float,\n        consumed: Boolean,\n    ): Boolean = nestedScrollInterop.onNestedFling(target, velocityX, velocityY, consumed)\n\n    override fun getNestedScrollAxes(): Int = nestedScrollInterop.getNestedScrollAxes()\n\n    override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean =\n        nestedScrollInterop.onStartNestedScroll(child, target, axes, type)\n\n    override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) =\n        nestedScrollInterop.onNestedScrollAccepted(child, target, axes, type)\n\n    override fun onStopNestedScroll(target: View, type: Int) =\n        nestedScrollInterop.onStopNestedScroll(target, type)\n\n    override fun onNestedPreScroll(\n        target: View,\n        dx: Int,\n        dy: Int,\n        consumed: IntArray,\n        type: Int,\n    ) = nestedScrollInterop.onNestedPreScroll(target, dx, dy, consumed, type)\n\n    override fun onNestedScroll(\n        target: View,\n        dxConsumed: Int,\n        dyConsumed: Int,\n        dxUnconsumed: Int,\n        dyUnconsumed: Int,\n        type: Int,\n    ) = nestedScrollInterop.onNestedScroll(\n        target,\n        dxConsumed,\n        dyConsumed,\n        dxUnconsumed,\n        dyUnconsumed,\n        type,\n    )\n\n    override fun onNestedScroll(\n        target: View,\n        dxConsumed: Int,\n        dyConsumed: Int,\n        dxUnconsumed: Int,\n        dyUnconsumed: Int,\n        type: Int,\n        consumed: IntArray,\n    ) = nestedScrollInterop.onNestedScroll(\n        target,\n        dxConsumed,\n        dyConsumed,\n        dxUnconsumed,\n        dyUnconsumed,\n        type,\n        consumed,\n    )\n\n    // endregion\n\n`;
 
   source = replaceExactlyOnce(
     source,
