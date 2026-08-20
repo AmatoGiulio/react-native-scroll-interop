@@ -23,6 +23,9 @@ export type Material3ReactNavigationOptions = Material3NavigationOptionBag & {
   header?: ((props: Material3ReactNavigationHeaderProps) => ReactNode) | undefined;
 };
 
+/** Compatibility/public name for the native-stack option shape consumed by this adapter. */
+export type Material3NativeStackNavigationOptions = Material3ReactNavigationOptions;
+
 function createMaterial3Header(config: Material3TopAppBarNavigationOptions | undefined) {
   return (headerProps: Material3ReactNavigationHeaderProps) => (
     <Material3NavigationHeader
