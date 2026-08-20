@@ -6,6 +6,7 @@ import process from 'node:process';
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const androidGradle = readFileSync(new URL('../android/build.gradle', import.meta.url), 'utf8');
+const reactNativeConfig = readFileSync(new URL('../react-native.config.js', import.meta.url), 'utf8');
 
 const expectedName = 'react-native-scroll-interop';
 const expectedVersion = '0.1.0-alpha.1';
@@ -17,7 +18,7 @@ const expectedFiles = [
   'index.ts',
   'router.tsx',
   'app.plugin.js',
-  'expo-module.config.json',
+  'react-native.config.js',
 ];
 const expectedCheck =
   'npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:rnscreens-interop-plugin && npm run check:package-surface';
@@ -40,7 +41,7 @@ expect(
     'node scripts/check-react-native-compat-plugin.mjs',
   'React Native compatibility gate is missing',
 );
-expect(packageJson.peerDependencies?.expo === '*', 'Expo module peer should not pin the router SDK line');
+expect(packageJson.peerDependencies?.expo === undefined, 'core native runtime must not require Expo');
 expect(
   packageJson.peerDependencies?.['expo-router'] === '>=57.0.0 <58.0.0',
   'Expo Router peer must match the certified router adapter line',
@@ -66,10 +67,16 @@ expect(
   'package files allowlist must stay runtime-only',
 );
 expect(androidGradle.includes(`version = '${expectedVersion}'`), 'Android library version must match package version');
-expect(androidGradle.includes(`versionName '${expectedVersion}'`), 'Android versionName must match package version');
+expect(androidGradle.includes("apply plugin: 'org.jetbrains.kotlin.android'"), 'Android runtime must use the standard Kotlin Android plugin');
+expect(!androidGradle.includes('expo-module-gradle-plugin'), 'Android runtime must not apply the Expo Modules Gradle plugin');
 expect(!androidGradle.includes('android-shared'), 'Android build must not use an external shared source tree');
+expect(
+  reactNativeConfig.includes('ReactNativeScrollInteropPackage'),
+  'React Native autolinking must register ReactNativeScrollInteropPackage',
+);
 
 for (const obsoletePath of [
+  'expo-module.config.json',
   'android-shared',
   'rn087-bare-probe',
   'docs',
@@ -117,7 +124,7 @@ const required = [
   'index.ts',
   'router.tsx',
   'app.plugin.js',
-  'expo-module.config.json',
+  'react-native.config.js',
   'plugin/withScrollInterop.js',
   'plugin/reactNativeScrollCompatPatch.js',
   'plugin/reactNativeScreensInteropPatch.js',
@@ -138,10 +145,22 @@ const required = [
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeVerticalScrollSourceLocator.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParentController.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScrollInteropPackage.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostManager.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/MaterialTopAppBarManager.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/MaterialToolbarManager.kt',
 ];
 
 for (const file of required) {
   if (!files.has(file)) violations.push(`missing required package file: ${file}`);
+}
+
+for (const removed of [
+  'expo-module.config.json',
+  'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialToolbarModule.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt',
+]) {
+  if (files.has(removed)) violations.push(`Expo Modules artifact leaked into package: ${removed}`);
 }
 
 const forbiddenPrefixes = [
@@ -166,7 +185,7 @@ for (const file of files) {
 }
 
 const unpackedSize = pack?.unpackedSize ?? Number.POSITIVE_INFINITY;
-if (files.size > 80) violations.push(`package file count unexpectedly high: ${files.size} > 80`);
+if (files.size > 90) violations.push(`package file count unexpectedly high: ${files.size} > 90`);
 if (unpackedSize > 1_000_000) {
   violations.push(`package unpacked size unexpectedly high: ${unpackedSize} > 1000000 bytes`);
 }
@@ -179,9 +198,8 @@ if (violations.length > 0) {
 
 console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
+console.log('  native runtime: standard React Native package (no Expo Modules dependency)');
 console.log('  React Native peer: 0.86.x / 0.87.x');
 console.log('  Expo Router adapter: 57.x');
-console.log('  historical/debug repository trees remain removed');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
-console.log('  tarball contains one Android runtime tree plus plugin/JS entry sources');
