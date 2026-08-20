@@ -14,24 +14,17 @@ import {
 } from 'expo-router';
 
 import { MaterialTopAppBar } from './src/MaterialTopAppBar';
-import type {
-  MaterialTopAppBarScrollBehavior,
-  MaterialTopAppBarVariant,
-} from './src/MaterialTopAppBar.types';
-import type { MaterialToolbarThemeMode } from './src/MaterialToolbar.types';
+import {
+  resolveMaterial3HeaderDecision,
+  type Material3NavigationOptions,
+  type Material3StackNavigationOptions,
+  type Material3TopAppBarNavigationOptions,
+} from './src/navigation/material3NavigationMapper';
 
-export type Material3TopAppBarNavigationOptions = {
-  variant?: MaterialTopAppBarVariant;
-  scrollBehavior?: MaterialTopAppBarScrollBehavior;
-  themeMode?: MaterialToolbarThemeMode;
-  dynamicColor?: boolean;
-  navigationAccessibilityLabel?: string;
-};
-
-export type Material3StackNavigationOptions = {
-  /** Keep the platform-native Expo Router header on Android. */
-  topAppBar?: false | Material3TopAppBarNavigationOptions;
-};
+export type {
+  Material3StackNavigationOptions,
+  Material3TopAppBarNavigationOptions,
+} from './src/navigation/material3NavigationMapper';
 
 type WithMaterial3<T> = T extends (...args: infer TArgs) => infer TResult
   ? (...args: TArgs) => TResult & { material3?: Material3StackNavigationOptions }
@@ -65,128 +58,87 @@ export type MaterialStackProps = Omit<ExpoStackProps, 'screenOptions' | 'childre
 
 type RuntimeNavigationOptions = MaterialStackNavigationOptions;
 
-type SplitMaterial3Options = {
-  material3: Material3StackNavigationOptions | undefined;
-  navigationOptions: ExpoStackScreenOptionsObject;
-};
-
-const SUPPORTED_HEADER_KEYS = new Set([
-  'header',
-  'headerShown',
-  'headerTransparent',
-  'headerTitle',
-  'headerLargeTitle',
-  'headerLargeTitleEnabled',
-  'headerBackVisible',
-]);
-
-function splitMaterial3(options: RuntimeNavigationOptions): SplitMaterial3Options {
-  const { material3, ...navigationOptions } = options;
-  return { material3, navigationOptions };
-}
-
-function hasUnsupportedHeaderOptions(options: ExpoStackScreenOptionsObject): boolean {
-  if (typeof options.headerTitle === 'function') return true;
-  if (options.unstable_nativeProps !== undefined) return true;
-
-  return Object.keys(options).some(
-    (key) =>
-      (key.startsWith('header') || key.startsWith('unstable_header')) &&
-      !SUPPORTED_HEADER_KEYS.has(key)
-  );
-}
-
-function resolveTitle(headerProps: NativeStackHeaderProps): string {
-  const headerTitle = headerProps.options.headerTitle;
-  if (typeof headerTitle === 'string') return headerTitle;
-
-  const title = headerProps.options.title;
-  if (typeof title === 'string') return title;
-
-  return headerProps.route.name;
+function nativeHeaderFallback(
+  navigationOptions: Material3NavigationOptions
+): ExpoStackScreenOptionsObject {
+  return {
+    ...(navigationOptions as ExpoStackScreenOptionsObject),
+    // Cancel a Material header inherited from root screenOptions.
+    header: undefined,
+    headerTransparent:
+      typeof navigationOptions.headerTransparent === 'boolean'
+        ? navigationOptions.headerTransparent
+        : false,
+  };
 }
 
 function createMaterial3Header(
-  config: Material3TopAppBarNavigationOptions | undefined
+  options: RuntimeNavigationOptions,
+  scope: 'root' | 'screen'
 ): NonNullable<ExpoStackScreenOptionsObject['header']> {
   return (headerProps: NativeStackHeaderProps) => {
-    const options = headerProps.options;
-    const largeTitleEnabled =
-      options.headerLargeTitleEnabled === true || options.headerLargeTitle === true;
-    const variant: MaterialTopAppBarVariant =
-      config?.variant ?? (largeTitleEnabled ? 'large' : 'small');
-    const scrollBehavior: MaterialTopAppBarScrollBehavior =
-      config?.scrollBehavior ?? (variant === 'large' ? 'exitUntilCollapsed' : 'none');
-    const canGoBack = headerProps.back != null && options.headerBackVisible !== false;
+    const decision = resolveMaterial3HeaderDecision({
+      options: options as Material3NavigationOptions,
+      routeName: headerProps.route.name,
+      canGoBack: headerProps.back != null,
+      platform: Platform.OS,
+      scope,
+    });
+
+    if (decision.kind !== 'material3') return null;
+
+    const topAppBar = decision.topAppBar;
+    const canGoBack = topAppBar.navigationIcon === 'back';
 
     return (
       <MaterialTopAppBar
         placement="header"
-        title={resolveTitle(headerProps)}
-        variant={variant}
-        scrollBehavior={scrollBehavior}
-        navigationIcon={canGoBack ? 'back' : 'none'}
-        navigationAccessibilityLabel={config?.navigationAccessibilityLabel}
+        title={topAppBar.title}
+        variant={topAppBar.variant}
+        scrollBehavior={topAppBar.scrollBehavior}
+        navigationIcon={topAppBar.navigationIcon}
+        navigationAccessibilityLabel={topAppBar.navigationAccessibilityLabel}
         onNavigationPress={canGoBack ? () => headerProps.navigation.goBack() : undefined}
-        themeMode={config?.themeMode}
-        dynamicColor={config?.dynamicColor}
+        themeMode={topAppBar.themeMode}
+        dynamicColor={topAppBar.dynamicColor}
       />
     );
   };
 }
 
-function nativeHeaderFallback(
-  navigationOptions: ExpoStackScreenOptionsObject
-): ExpoStackScreenOptionsObject {
+function mapMaterial3Options(
+  options: RuntimeNavigationOptions,
+  scope: 'root' | 'screen'
+): RuntimeNavigationOptions {
+  const decision = resolveMaterial3HeaderDecision({
+    options: options as Material3NavigationOptions,
+    routeName: '',
+    canGoBack: false,
+    platform: Platform.OS,
+    scope,
+  });
+
+  if (decision.kind === 'native') {
+    return nativeHeaderFallback(decision.navigationOptions) as RuntimeNavigationOptions;
+  }
+
+  if (decision.kind === 'passthrough') {
+    return decision.navigationOptions as RuntimeNavigationOptions;
+  }
+
   return {
-    ...navigationOptions,
-    // Cancel a Material header inherited from root screenOptions.
-    header: undefined,
-    headerTransparent: navigationOptions.headerTransparent ?? false,
+    ...(decision.navigationOptions as RuntimeNavigationOptions),
+    headerTransparent: true,
+    header: createMaterial3Header(options, scope),
   };
 }
 
 function applyRootMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
-  const { material3, navigationOptions } = splitMaterial3(options);
-
-  if (Platform.OS !== 'android') return navigationOptions;
-  if (navigationOptions.header !== undefined) return navigationOptions;
-  if (navigationOptions.headerShown === false) return navigationOptions;
-  if (navigationOptions.headerTransparent === false) return navigationOptions;
-  if (material3?.topAppBar === false) return navigationOptions;
-  if (hasUnsupportedHeaderOptions(navigationOptions)) return navigationOptions;
-
-  return {
-    ...navigationOptions,
-    headerTransparent: true,
-    header: createMaterial3Header(material3?.topAppBar),
-  };
+  return mapMaterial3Options(options, 'root');
 }
 
 function applyScreenMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
-  const { material3, navigationOptions } = splitMaterial3(options);
-
-  if (Platform.OS !== 'android') return navigationOptions;
-  if (navigationOptions.header !== undefined) return navigationOptions;
-
-  const needsNativeHeader =
-    navigationOptions.headerShown === false ||
-    navigationOptions.headerTransparent === false ||
-    hasUnsupportedHeaderOptions(navigationOptions);
-
-  if (material3 === undefined) {
-    return needsNativeHeader ? nativeHeaderFallback(navigationOptions) : navigationOptions;
-  }
-
-  if (material3.topAppBar === false || needsNativeHeader) {
-    return nativeHeaderFallback(navigationOptions);
-  }
-
-  return {
-    ...navigationOptions,
-    headerTransparent: true,
-    header: createMaterial3Header(material3.topAppBar),
-  };
+  return mapMaterial3Options(options, 'screen');
 }
 
 function transformOptions<T>(
@@ -252,5 +204,5 @@ type MaterialStackComponent = typeof ExpoStack & {
   Screen: typeof ExpoStack.Screen & ((props: MaterialStackScreenProps) => ReactNode);
 };
 
-/** Expo Router Stack with Android Material3 TopAppBar translation. */
+/** Expo Router adapter over the shared Material3/navigation mapper. */
 export const Stack = Object.assign(MaterialStack, ExpoStack) as MaterialStackComponent;
