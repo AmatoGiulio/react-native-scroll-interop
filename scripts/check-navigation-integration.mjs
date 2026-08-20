@@ -82,7 +82,7 @@ const sources = {
 
 for (const [needle, label] of [
   ['"expo-router": ">=57.0.0 <58.0.0"', 'Expo Router 57 peer'],
-  ['"react-native": ">=0.86.0 <0.88.0"', 'RN 0.86/0.87 peer'],
+  ['"react-native": ">=0.86.0 <0.87.0 || >=0.87.0-rc.3 <0.88.0"', 'RN 0.86/0.87 peer'],
   ['"react-native-screens": ">=4.26.0 <4.27.0"', 'react-native-screens 4.26 peer'],
 ]) {
   requireText('package.json', sources.package, needle, label);
