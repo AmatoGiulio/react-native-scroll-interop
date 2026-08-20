@@ -1,13 +1,14 @@
-import { requireNativeViewManager } from 'expo-modules-core';
 import * as React from 'react';
 import type { PropsWithChildren } from 'react';
-import type { ViewProps } from 'react-native';
+import {
+  requireNativeComponent,
+  type ViewProps,
+} from 'react-native';
 
 export type NativeScrollHostProps = PropsWithChildren<ViewProps>;
 
-const NativeScrollHostView = requireNativeViewManager<NativeScrollHostProps>(
-  'ExpoMaterialTopAppBar',
-  'ExpoNestedScrollHostView',
+const NativeScrollHostView = requireNativeComponent<NativeScrollHostProps>(
+  'RNSINestedScrollHost'
 );
 
 /**
