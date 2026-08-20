@@ -126,6 +126,8 @@ The mapper decides title, large-title, Back, Material3 options and platform-nati
 
 `Material3NavigationHeader` is the shared Material3 renderer. It is the only navigation layer that turns the normalized descriptor into `MaterialTopAppBar` props.
 
+The mapper/header pair is an internal implementation detail shared by exactly the two public adapters; the package intentionally does not add a third `/navigation` entry point in this alpha.
+
 ### Expo Router adapter
 
 `react-native-scroll-interop/router` wraps Expo Router's existing `Stack`, preserves navigation state/statics and delegates semantics/rendering to the shared navigation layer.
