@@ -50,13 +50,16 @@ const sources = {
   index: read('index.ts'),
   router: read('router.tsx'),
   package: read('package.json'),
+  rnConfig: read('react-native.config.js'),
   appJson: read('example/app.json'),
   topTypes: read('src/MaterialTopAppBar.types.ts'),
   toolbarTypes: read('src/MaterialToolbar.types.ts'),
   topAndroid: read('src/MaterialTopAppBar.android.tsx'),
   topNative: read('src/ExpoMaterialTopAppBarNativeView.tsx'),
-  topModule: read('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt'),
+  toolbarNative: read('src/ExpoMaterialToolbarNativeView.tsx'),
+  hostNative: read('src/NativeScrollHost.android.tsx'),
   topView: read('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt'),
+  packageView: read('android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScrollInteropPackage.kt'),
   layout: read('example/app/navigation-first/_layout.tsx'),
   home: read('example/app/navigation-first/index.tsx'),
   details: read('example/app/navigation-first/details.tsx'),
@@ -65,13 +68,14 @@ const sources = {
 };
 
 for (const [needle, label] of [
-  ['"expo": "*"', 'unversioned Expo module peer'],
   ['"expo-router": ">=57.0.0 <58.0.0"', 'Expo Router 57 peer'],
   ['"react-native": ">=0.86.0 <0.88.0"', 'RN 0.86/0.87 peer'],
   ['"react-native-screens": ">=4.26.0 <4.27.0"', 'react-native-screens 4.26 peer'],
 ]) {
   requireText('package.json', sources.package, needle, label);
 }
+forbidText('package.json', sources.package, '"expo": "*"', 'required Expo runtime peer');
+requireText('react-native.config.js', sources.rnConfig, 'ReactNativeScrollInteropPackage', 'React Native package autolinking');
 
 for (const needle of [
   "MaterialTopAppBarNavigationIcon = 'none' | 'back'",
@@ -83,8 +87,7 @@ for (const needle of [
 
 for (const [needle, label] of [
   ["props.placement ?? 'overlay'", 'overlay placement default'],
-  ["=== 'header'", 'header placement branch'],
-  ['useSafeAreaInsets()', 'header safe-area ownership'],
+  ['useSafeAreaInsets()', 'safe-area ownership'],
   ['small: 64', 'JS small height'],
   ['medium: 112', 'JS medium height'],
   ['large: 152', 'JS large height'],
@@ -98,12 +101,23 @@ for (const [needle, label] of [
   ['else -> 112f', 'native medium height'],
   ['"large" -> 152f', 'native large height'],
   ['IconButton(', 'native navigation button'],
-  ['onNavigationPress(emptyMap<String, Any>())', 'native navigation event'],
+  ['emitDirectEvent("topNavigationPress")', 'React Native navigation event'],
 ]) {
   requireText('ExpoMaterialTopAppBarView.kt', sources.topView, needle, label);
 }
-requireText('ExpoMaterialTopAppBarNativeView.tsx', sources.topNative, 'onNavigationPress?:');
-requireText('ExpoMaterialTopAppBarModule.kt', sources.topModule, 'Events("onNavigationPress")');
+
+requireText('src/ExpoMaterialTopAppBarNativeView.tsx', sources.topNative, 'requireNativeComponent');
+requireText('src/ExpoMaterialTopAppBarNativeView.tsx', sources.topNative, 'RNSIMaterialTopAppBar');
+requireText('src/ExpoMaterialToolbarNativeView.tsx', sources.toolbarNative, 'RNSIMaterialToolbar');
+requireText('src/NativeScrollHost.android.tsx', sources.hostNative, 'RNSINestedScrollHost');
+for (const forbidden of ['requireNativeViewManager', 'expo-modules-core']) {
+  forbidText('src/ExpoMaterialTopAppBarNativeView.tsx', sources.topNative, forbidden);
+  forbidText('src/ExpoMaterialToolbarNativeView.tsx', sources.toolbarNative, forbidden);
+  forbidText('src/NativeScrollHost.android.tsx', sources.hostNative, forbidden);
+}
+for (const manager of ['ReactNativeNestedScrollHostManager()', 'MaterialTopAppBarManager()', 'MaterialToolbarManager()']) {
+  requireText('ReactNativeScrollInteropPackage.kt', sources.packageView, manager);
+}
 
 for (const [needle, label] of [
   ['Stack as ExpoStack', 'Expo Router Stack delegation'],
@@ -199,9 +213,9 @@ if (violations.length) {
 }
 
 console.log('Navigation integration invariant: PASS');
+console.log('  standard React Native native-view bridge (no Expo Modules runtime)');
 console.log('  one canonical named Stack export');
 console.log('  Android navigation semantics map to MaterialTopAppBar without owning navigation state');
 console.log('  unsupported header behavior falls back to the platform-native header');
 console.log('  mirrored JS/native TopAppBar geometry is guarded');
 console.log('  navigation pages are plain RN ScrollView content');
-console.log('  README covers every exported type and every declared public component prop/member');
