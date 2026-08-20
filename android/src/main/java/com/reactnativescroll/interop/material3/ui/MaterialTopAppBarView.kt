@@ -1,6 +1,6 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.material3.ui
 
 import android.content.Context
 import android.os.Build
@@ -30,6 +30,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.reactnativescroll.interop.BuildConfig
+import com.reactnativescroll.interop.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.R
+import com.reactnativescroll.interop.material3.TopAppBarInteropMode
+import com.reactnativescroll.interop.material3.TopAppBarScrollConsumer
+import com.reactnativescroll.interop.reactnative.emitDirectEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlin.math.roundToInt
 
@@ -44,7 +50,7 @@ private data class TopAppBarHostState(
   val dynamicColor: Boolean = false,
 )
 
-class ExpoMaterialTopAppBarView(
+class MaterialTopAppBarView(
   context: Context,
 ) : ComposeChromeHostView(context) {
 
@@ -209,13 +215,9 @@ class ExpoMaterialTopAppBarView(
       else -> "medium"
     }
     val changed = state.value.variant != normalized
-    if (changed) {
-      resetExpandedChromeGeometry()
-    }
+    if (changed) resetExpandedChromeGeometry()
     updateState { it.copy(variant = normalized) }
-    if (changed) {
-      seedExpandedChromeGeometry()
-    }
+    if (changed) seedExpandedChromeGeometry()
   }
 
   fun setScrollBehavior(behavior: String) = updateState {

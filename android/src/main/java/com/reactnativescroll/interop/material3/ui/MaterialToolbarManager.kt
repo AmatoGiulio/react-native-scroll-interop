@@ -1,4 +1,4 @@
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.material3.ui
 
 import com.facebook.react.bridge.Dynamic
 import com.facebook.react.bridge.ReadableArray
@@ -7,172 +7,168 @@ import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.annotations.ReactProp
 
-internal class MaterialToolbarManager : SimpleViewManager<ExpoMaterialToolbarView>() {
+internal class MaterialToolbarManager : SimpleViewManager<MaterialToolbarView>() {
   override fun getName(): String = "RNSIMaterialToolbar"
 
   override fun createViewInstance(
     reactContext: ThemedReactContext,
-  ): ExpoMaterialToolbarView = ExpoMaterialToolbarView(reactContext)
+  ): MaterialToolbarView = MaterialToolbarView(reactContext)
 
   @ReactProp(name = "content")
-  fun setContent(view: ExpoMaterialToolbarView, value: ReadableArray?) =
+  fun setContent(view: MaterialToolbarView, value: ReadableArray?) =
     view.setContent(value.toToolbarActionRecords())
 
   @ReactProp(name = "leadingContent")
-  fun setLeadingContent(view: ExpoMaterialToolbarView, value: ReadableArray?) =
+  fun setLeadingContent(view: MaterialToolbarView, value: ReadableArray?) =
     view.setLeadingContent(value.toToolbarActionRecords())
 
   @ReactProp(name = "trailingContent")
-  fun setTrailingContent(view: ExpoMaterialToolbarView, value: ReadableArray?) =
+  fun setTrailingContent(view: MaterialToolbarView, value: ReadableArray?) =
     view.setTrailingContent(value.toToolbarActionRecords())
 
   @ReactProp(name = "visible", defaultBoolean = true)
-  fun setVisible(view: ExpoMaterialToolbarView, value: Boolean) = view.setVisibleState(value)
+  fun setVisible(view: MaterialToolbarView, value: Boolean) = view.setVisibleState(value)
 
   @ReactProp(name = "expanded", defaultBoolean = true)
-  fun setExpanded(view: ExpoMaterialToolbarView, value: Boolean) = view.setExpanded(value)
+  fun setExpanded(view: MaterialToolbarView, value: Boolean) = view.setExpanded(value)
 
   @ReactProp(name = "scrollBehavior")
-  fun setScrollBehavior(view: ExpoMaterialToolbarView, value: String?) =
+  fun setScrollBehavior(view: MaterialToolbarView, value: String?) =
     view.setScrollBehavior(value ?: "none")
 
   @ReactProp(name = "scrollExitDirection")
-  fun setScrollExitDirection(view: ExpoMaterialToolbarView, value: String?) =
+  fun setScrollExitDirection(view: MaterialToolbarView, value: String?) =
     view.setScrollExitDirection(value ?: "auto")
 
   @ReactProp(name = "orientation")
-  fun setOrientation(view: ExpoMaterialToolbarView, value: String?) =
+  fun setOrientation(view: MaterialToolbarView, value: String?) =
     view.setOrientation(value ?: "horizontal")
 
   @ReactProp(name = "variant")
-  fun setVariant(view: ExpoMaterialToolbarView, value: String?) =
+  fun setVariant(view: MaterialToolbarView, value: String?) =
     view.setVariant(value ?: "standard")
 
   @ReactProp(name = "fabPresent", defaultBoolean = false)
-  fun setFabPresent(view: ExpoMaterialToolbarView, value: Boolean) = view.setFabPresent(value)
+  fun setFabPresent(view: MaterialToolbarView, value: Boolean) = view.setFabPresent(value)
 
   @ReactProp(name = "fabPosition")
-  fun setFabPosition(view: ExpoMaterialToolbarView, value: String?) =
+  fun setFabPosition(view: MaterialToolbarView, value: String?) =
     view.setFabPosition(value ?: "end")
 
   @ReactProp(name = "fabIconUri")
-  fun setFabIconUri(view: ExpoMaterialToolbarView, value: String?) = view.setFabIconUri(value)
+  fun setFabIconUri(view: MaterialToolbarView, value: String?) = view.setFabIconUri(value)
 
   @ReactProp(name = "fabIconTintable", defaultBoolean = true)
-  fun setFabIconTintable(view: ExpoMaterialToolbarView, value: Boolean) =
+  fun setFabIconTintable(view: MaterialToolbarView, value: Boolean) =
     view.setFabIconTintable(value)
 
   @ReactProp(name = "fabIconSize", defaultDouble = 24.0)
-  fun setFabIconSize(view: ExpoMaterialToolbarView, value: Double) =
+  fun setFabIconSize(view: MaterialToolbarView, value: Double) =
     view.setFabIconSize(value.toFloat())
 
   @ReactProp(name = "fabIconFallback")
-  fun setFabIconFallback(view: ExpoMaterialToolbarView, value: String?) =
+  fun setFabIconFallback(view: MaterialToolbarView, value: String?) =
     view.setFabIconFallback(value ?: "none")
 
   @ReactProp(name = "fabAccessibilityLabel")
-  fun setFabAccessibilityLabel(view: ExpoMaterialToolbarView, value: String?) =
+  fun setFabAccessibilityLabel(view: MaterialToolbarView, value: String?) =
     view.setFabAccessibilityLabel(value)
 
   @ReactProp(name = "fabShape")
-  fun setFabShape(view: ExpoMaterialToolbarView, value: String?) =
+  fun setFabShape(view: MaterialToolbarView, value: String?) =
     view.setFabShape(value ?: "default")
 
   @ReactProp(name = "themeMode")
-  fun setThemeMode(view: ExpoMaterialToolbarView, value: String?) =
+  fun setThemeMode(view: MaterialToolbarView, value: String?) =
     view.setThemeMode(value ?: "system")
 
   @ReactProp(name = "dynamicColor", defaultBoolean = false)
-  fun setDynamicColor(view: ExpoMaterialToolbarView, value: Boolean) = view.setDynamicColor(value)
+  fun setDynamicColor(view: MaterialToolbarView, value: Boolean) = view.setDynamicColor(value)
 
   @ReactProp(name = "imeBehavior")
-  fun setImeBehavior(view: ExpoMaterialToolbarView, value: String?) {
+  fun setImeBehavior(view: MaterialToolbarView, value: String?) {
     val normalized = value ?: "none"
     view.setImeBehavior(normalized)
     NativeFloatingToolbarPlacement.ime(view, normalized)
   }
 
   @ReactProp(name = "alignment")
-  fun setAlignment(view: ExpoMaterialToolbarView, value: String?) {
+  fun setAlignment(view: MaterialToolbarView, value: String?) {
     val normalized = value ?: "bottomCenter"
     view.setAlignment(normalized)
     NativeFloatingToolbarPlacement.alignment(view, normalized)
   }
 
   @ReactProp(name = "insets")
-  fun setInsets(view: ExpoMaterialToolbarView, value: String?) {
+  fun setInsets(view: MaterialToolbarView, value: String?) {
     NativeFloatingToolbarPlacement.insets(view, value ?: "safe")
     view.setInsets("none")
     view.setEdgeOffset(0f)
   }
 
   @ReactProp(name = "edgeOffset")
-  fun setEdgeOffset(view: ExpoMaterialToolbarView, value: Dynamic) {
+  fun setEdgeOffset(view: MaterialToolbarView, value: Dynamic) {
     val edge = value.floatOrNull()
     NativeFloatingToolbarPlacement.edge(view, edge)
     view.setEdgeOffset(0f)
   }
 
   @ReactProp(name = "contentPaddingStart")
-  fun setContentPaddingStart(view: ExpoMaterialToolbarView, value: Dynamic) =
+  fun setContentPaddingStart(view: MaterialToolbarView, value: Dynamic) =
     view.setContentPaddingStart(value.floatOrNull())
 
   @ReactProp(name = "contentPaddingTop")
-  fun setContentPaddingTop(view: ExpoMaterialToolbarView, value: Dynamic) =
+  fun setContentPaddingTop(view: MaterialToolbarView, value: Dynamic) =
     view.setContentPaddingTop(value.floatOrNull())
 
   @ReactProp(name = "contentPaddingEnd")
-  fun setContentPaddingEnd(view: ExpoMaterialToolbarView, value: Dynamic) =
+  fun setContentPaddingEnd(view: MaterialToolbarView, value: Dynamic) =
     view.setContentPaddingEnd(value.floatOrNull())
 
   @ReactProp(name = "contentPaddingBottom")
-  fun setContentPaddingBottom(view: ExpoMaterialToolbarView, value: Dynamic) =
+  fun setContentPaddingBottom(view: MaterialToolbarView, value: Dynamic) =
     view.setContentPaddingBottom(value.floatOrNull())
 
   @ReactProp(name = "expandedShadowElevation")
-  fun setExpandedShadowElevation(view: ExpoMaterialToolbarView, value: Dynamic) =
+  fun setExpandedShadowElevation(view: MaterialToolbarView, value: Dynamic) =
     view.setExpandedShadowElevation(value.floatOrNull())
 
   @ReactProp(name = "collapsedShadowElevation")
-  fun setCollapsedShadowElevation(view: ExpoMaterialToolbarView, value: Dynamic) =
+  fun setCollapsedShadowElevation(view: MaterialToolbarView, value: Dynamic) =
     view.setCollapsedShadowElevation(value.floatOrNull())
 
   @ReactProp(name = "toolbarContainerColor", customType = "Color")
-  fun setToolbarContainerColor(view: ExpoMaterialToolbarView, value: Int?) =
+  fun setToolbarContainerColor(view: MaterialToolbarView, value: Int?) =
     view.setToolbarContainerColor(value)
 
   @ReactProp(name = "toolbarContentColor", customType = "Color")
-  fun setToolbarContentColor(view: ExpoMaterialToolbarView, value: Int?) =
+  fun setToolbarContentColor(view: MaterialToolbarView, value: Int?) =
     view.setToolbarContentColor(value)
 
   @ReactProp(name = "fabContainerColor", customType = "Color")
-  fun setFabContainerColor(view: ExpoMaterialToolbarView, value: Int?) =
+  fun setFabContainerColor(view: MaterialToolbarView, value: Int?) =
     view.setFabContainerColor(value)
 
   @ReactProp(name = "fabContentColor", customType = "Color")
-  fun setFabContentColor(view: ExpoMaterialToolbarView, value: Int?) =
+  fun setFabContentColor(view: MaterialToolbarView, value: Int?) =
     view.setFabContentColor(value)
 
   @ReactProp(name = "selectedContainerColor", customType = "Color")
-  fun setSelectedContainerColor(view: ExpoMaterialToolbarView, value: Int?) =
+  fun setSelectedContainerColor(view: MaterialToolbarView, value: Int?) =
     view.setSelectedContainerColor(value)
 
   @ReactProp(name = "selectedContentColor", customType = "Color")
-  fun setSelectedContentColor(view: ExpoMaterialToolbarView, value: Int?) =
+  fun setSelectedContentColor(view: MaterialToolbarView, value: Int?) =
     view.setSelectedContentColor(value)
 
   @ReactProp(name = "unselectedContentColor", customType = "Color")
-  fun setUnselectedContentColor(view: ExpoMaterialToolbarView, value: Int?) =
+  fun setUnselectedContentColor(view: MaterialToolbarView, value: Int?) =
     view.setUnselectedContentColor(value)
 
   override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any>? =
     mapOf(
-      "toolbarActionPress" to mapOf(
-        "registrationName" to "onActionPress",
-      ),
-      "toolbarFabPress" to mapOf(
-        "registrationName" to "onFabPress",
-      ),
+      "toolbarActionPress" to mapOf("registrationName" to "onActionPress"),
+      "toolbarFabPress" to mapOf("registrationName" to "onFabPress"),
     )
 }
 

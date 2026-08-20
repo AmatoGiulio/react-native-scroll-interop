@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import ExpoMaterialTopAppBarNativeView from './ExpoMaterialTopAppBarNativeView';
+import MaterialTopAppBarNativeView from './MaterialTopAppBarNativeView';
 import type {
   MaterialTopAppBarProps,
   MaterialTopAppBarVariant,
@@ -58,7 +58,7 @@ function MaterialTopAppBarNative({
   }, [onNavigationPress]);
 
   return (
-    <ExpoMaterialTopAppBarNativeView
+    <MaterialTopAppBarNativeView
       style={[layoutStyle, style]}
       pointerEvents="box-none"
       title={title}

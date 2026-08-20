@@ -13,6 +13,7 @@
     "src",
     "index.ts",
     "router.tsx",
+    "react-navigation.tsx",
     "app.plugin.js",
     "react-native.config.js"
   ],
@@ -22,6 +23,7 @@
     "nested-scroll",
     "scroll-interop",
     "material3",
+    "react-navigation",
     "top-app-bar",
     "floating-toolbar"
   ],
@@ -38,16 +40,18 @@
     "tag": "next"
   },
   "scripts": {
+    "check:architecture-boundaries": "node scripts/check-architecture-boundaries.mjs",
     "check:scroll-invariants": "node scripts/check-scroll-invariants.mjs && node scripts/check-material3-adapter-invariants.mjs",
     "check:navigation-integration": "node scripts/check-navigation-integration.mjs",
     "check:react-native-compat-plugin": "node scripts/check-react-native-compat-plugin.mjs",
     "check:bare-react-native-compat": "node scripts/check-bare-react-native-compat.mjs",
     "check:rnscreens-interop-plugin": "node scripts/check-rnscreens-interop-plugin.mjs",
     "check:package-surface": "node scripts/check-package-surface.mjs",
-    "check": "npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:bare-react-native-compat && npm run check:rnscreens-interop-plugin && npm run check:package-surface",
+    "check": "npm run check:architecture-boundaries && npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:bare-react-native-compat && npm run check:rnscreens-interop-plugin && npm run check:package-surface",
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
+    "@react-navigation/native-stack": ">=7.0.0 <8.0.0",
     "expo-router": ">=57.0.0 <58.0.0",
     "react": ">=19.2.0 <20.0.0",
     "react-native": ">=0.86.0 <0.87.0 || >=0.87.0-rc.3 <0.88.0",
@@ -55,6 +59,9 @@
     "react-native-screens": ">=4.26.0 <4.27.0"
   },
   "peerDependenciesMeta": {
+    "@react-navigation/native-stack": {
+      "optional": true
+    },
     "expo-router": {
       "optional": true
     },

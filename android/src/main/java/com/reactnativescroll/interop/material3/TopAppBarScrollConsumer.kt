@@ -9,9 +9,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
+import com.reactnativescroll.interop.BuildConfig
+import com.reactnativescroll.interop.NATIVE_SCROLL_LOG_TAG
 import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
-import expo.modules.materialtoolbar.BuildConfig
-import expo.modules.materialtoolbar.NATIVE_SCROLL_LOG_TAG
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -61,12 +61,6 @@ internal class TopAppBarScrollConsumer {
   private val isBound: Boolean
     get() = behavior != null && scope != null && mode != null
 
-  /**
-   * Material initializes TopAppBarState.heightOffsetLimit to -Float.MAX_VALUE and replaces it only
-   * after the app bar has participated in a real layout. Feeding nested-scroll deltas to that
-   * sentinel state makes the bar consume effectively unbounded distance. Fail closed until Compose
-   * has resolved a finite Material range.
-   */
   private val hasResolvedHeightOffsetLimit: Boolean
     get() {
       val limit = behavior?.state?.heightOffsetLimit ?: return false
@@ -188,8 +182,6 @@ internal class TopAppBarScrollConsumer {
       }
 
       try {
-        // Every fling frame already arrived as nested-scroll distance. Velocity here would decay a
-        // second time; zero asks Material only for its terminal snap from the observed offset.
         currentBehavior.nestedScrollConnection.onPostFling(
           consumed = Velocity.Zero,
           available = Velocity.Zero,
@@ -225,24 +217,16 @@ internal class TopAppBarScrollConsumer {
     scope = newScope
     mode = newMode
 
-    if (newMode == null) {
-      clearScrollAwaySource()
-    } else {
-      applyScrollAwayPadding()
-    }
+    if (newMode == null) clearScrollAwaySource() else applyScrollAwayPadding()
   }
 
-  fun unbind(
-    expectedBehavior: TopAppBarScrollBehavior?,
-    expectedMode: TopAppBarInteropMode?,
-  ) {
+  fun unbind(expectedBehavior: TopAppBarScrollBehavior?, expectedMode: TopAppBarInteropMode?) {
     if (behavior !== expectedBehavior || mode != expectedMode) return
     bind(null, null, null)
   }
 
   fun updateExpandedChromeHeight(heightPx: Int): Boolean {
-    if (heightPx <= 0) return false
-    if (heightPx <= expandedChromeHeightPx) return false
+    if (heightPx <= 0 || heightPx <= expandedChromeHeightPx) return false
     expandedChromeHeightPx = heightPx
     applyScrollAwayPadding()
     return true
@@ -284,15 +268,13 @@ internal class TopAppBarScrollConsumer {
   private fun clampSignedConsumption(availableY: Int, consumedAndroidY: Float): Int {
     if (availableY == 0) return 0
     val rounded = consumedAndroidY.roundToInt()
-    return if (availableY > 0) rounded.coerceIn(0, availableY)
-    else rounded.coerceIn(availableY, 0)
+    return if (availableY > 0) rounded.coerceIn(0, availableY) else rounded.coerceIn(availableY, 0)
   }
 
   private fun clampSignedMovement(availableY: Int, movementAndroidY: Float): Int {
     if (availableY == 0) return 0
     val rounded = movementAndroidY.roundToInt()
-    return if (availableY > 0) rounded.coerceIn(0, availableY)
-    else rounded.coerceIn(availableY, 0)
+    return if (availableY > 0) rounded.coerceIn(0, availableY) else rounded.coerceIn(availableY, 0)
   }
 
   private fun captureScrollViewVisualState(source: ViewGroup) {
@@ -308,9 +290,6 @@ internal class TopAppBarScrollConsumer {
     val target = if (hasChrome) expandedChromeHeightPx.coerceAtLeast(0) else 0
     if (target == appliedScrollAwayPaddingPx) return
 
-    // RN 0.87 exposes setScrollAwayPaddingEnabledUnstable(top, bottom); older ReactScrollView uses
-    // setScrollAwayTopPaddingEnabledUnstable(top). The interop helper selects the available geometry
-    // primitive without importing the internal RN 0.87 class.
     val applied = ReactVerticalScrollSourceInterop.setScrollAwayPadding(source, target, 0)
     if (!applied) {
       if (BuildConfig.DEBUG) {
@@ -322,7 +301,6 @@ internal class TopAppBarScrollConsumer {
       return
     }
 
-    // Keep RN's extra scroll range while preserving the screen's original padding values.
     source.setPadding(
       originalPaddingLeft,
       originalPaddingTop,

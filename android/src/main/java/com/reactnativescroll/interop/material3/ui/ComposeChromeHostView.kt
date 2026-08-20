@@ -1,4 +1,4 @@
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.material3.ui
 
 import android.content.Context
 import android.util.Log
@@ -10,6 +10,8 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
+import com.reactnativescroll.interop.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.NativeScrollTracing
 
 abstract class ComposeChromeHostView(
   context: Context,

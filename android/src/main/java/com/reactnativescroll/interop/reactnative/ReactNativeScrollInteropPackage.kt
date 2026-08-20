@@ -4,11 +4,16 @@ import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ViewManager
-import expo.modules.materialtoolbar.MaterialToolbarManager
-import expo.modules.materialtoolbar.MaterialTopAppBarManager
-import expo.modules.materialtoolbar.ReactNativeNestedScrollHostManager
+import com.reactnativescroll.interop.material3.ui.Material3NestedScrollParticipantProvider
+import com.reactnativescroll.interop.material3.ui.MaterialToolbarManager
+import com.reactnativescroll.interop.material3.ui.MaterialTopAppBarManager
 
-/** Standard React Native package surface. No Expo Modules runtime is required. */
+/**
+ * Standard React Native package composition root.
+ *
+ * The RN transport/controller layer is consumer-agnostic; this root installs Material3 as the
+ * shipped reference participant provider and registers its native view managers.
+ */
 class ReactNativeScrollInteropPackage : ReactPackage {
   override fun createNativeModules(
     reactContext: ReactApplicationContext,
@@ -16,9 +21,12 @@ class ReactNativeScrollInteropPackage : ReactPackage {
 
   override fun createViewManagers(
     reactContext: ReactApplicationContext,
-  ): List<ViewManager<*, *>> = listOf(
-    ReactNativeNestedScrollHostManager(),
-    MaterialTopAppBarManager(),
-    MaterialToolbarManager(),
-  )
+  ): List<ViewManager<*, *>> {
+    ReactNativeNestedScrollParticipants.install(Material3NestedScrollParticipantProvider)
+    return listOf(
+      ReactNativeNestedScrollHostManager(),
+      MaterialTopAppBarManager(),
+      MaterialToolbarManager(),
+    )
+  }
 }

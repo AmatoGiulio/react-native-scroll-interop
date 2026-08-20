@@ -1,4 +1,4 @@
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.reactnative
 
 import android.content.Context
 import android.view.MotionEvent
@@ -7,8 +7,6 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import androidx.core.view.NestedScrollingParent3
 import com.facebook.react.views.view.ReactViewGroup
-import com.reactnativescroll.interop.reactnative.ReactNativeNestedScrollParentController
-import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
 
 /**
  * Standalone React Native adapter that makes a React Native vertical scroll source a descendant of
@@ -25,15 +23,13 @@ class ReactNativeNestedScrollHostView(
 
   private val nestedScrollController = ReactNativeNestedScrollParentController(this)
 
-  // Fabric mount order is asynchronous. Discovery waits on the real native tree instead of using
-  // timer guesses, and never gains transaction authority from this preparation pass.
   private var waitingForSourceLayout = false
   private val sourceLayoutListener = ViewTreeObserver.OnGlobalLayoutListener {
     if (!isAttachedToWindow) {
       stopWaitingForSourceLayout()
       return@OnGlobalLayoutListener
     }
-    if (refreshNestedChromeBinding()) stopWaitingForSourceLayout()
+    if (refreshNestedParticipantBinding()) stopWaitingForSourceLayout()
   }
 
   init {
@@ -48,21 +44,22 @@ class ReactNativeNestedScrollHostView(
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
-    NativeNestedScrollRegistry.registerHost(this)
+    ReactNativeNestedScrollParticipants.registerStandaloneHost(this)
+    requestNestedParticipantBindingRefresh()
   }
 
   override fun onDetachedFromWindow() {
-    NativeNestedScrollRegistry.unregisterHost(this)
+    ReactNativeNestedScrollParticipants.unregisterStandaloneHost(this)
     stopWaitingForSourceLayout()
     nestedScrollController.onOwnerDetached()
     super.onDetachedFromWindow()
   }
 
-  fun requestNestedChromeBindingRefresh() {
+  internal fun requestNestedParticipantBindingRefresh() {
     if (!isAttachedToWindow) return
     post {
       if (!isAttachedToWindow) return@post
-      if (refreshNestedChromeBinding()) {
+      if (refreshNestedParticipantBinding()) {
         stopWaitingForSourceLayout()
       } else {
         startWaitingForSourceLayout()
@@ -72,16 +69,15 @@ class ReactNativeNestedScrollHostView(
 
   override fun onViewAdded(child: View) {
     super.onViewAdded(child)
-    requestNestedChromeBindingRefresh()
+    requestNestedParticipantBindingRefresh()
   }
 
   override fun onViewRemoved(child: View) {
     super.onViewRemoved(child)
-    requestNestedChromeBindingRefresh()
+    requestNestedParticipantBindingRefresh()
   }
 
-  /** Prepare the unique supported RN vertical source before the first gesture. */
-  fun refreshNestedChromeBinding(): Boolean {
+  private fun refreshNestedParticipantBinding(): Boolean {
     if (!isAttachedToWindow) return false
 
     val reactSources = mutableListOf<ViewGroup>()
@@ -122,8 +118,7 @@ class ReactNativeNestedScrollHostView(
   override fun onNestedScrollAccepted(child: View, target: View, axes: Int) =
     nestedScrollController.onNestedScrollAccepted(child, target, axes)
 
-  override fun onStopNestedScroll(target: View) =
-    nestedScrollController.onStopNestedScroll(target)
+  override fun onStopNestedScroll(target: View) = nestedScrollController.onStopNestedScroll(target)
 
   override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray) =
     nestedScrollController.onNestedPreScroll(target, dx, dy, consumed)

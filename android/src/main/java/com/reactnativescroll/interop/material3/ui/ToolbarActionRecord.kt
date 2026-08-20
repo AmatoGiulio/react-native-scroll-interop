@@ -1,4 +1,4 @@
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.material3.ui
 
 data class ToolbarActionRecord(
   val id: String = "",

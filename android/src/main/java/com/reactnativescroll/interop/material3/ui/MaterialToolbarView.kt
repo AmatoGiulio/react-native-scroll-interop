@@ -3,7 +3,7 @@
   androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class,
 )
 
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.material3.ui
 
 import android.content.Context
 import android.os.Build
@@ -61,6 +61,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.facebook.react.bridge.Arguments
+import com.reactnativescroll.interop.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.NativeScrollTracing
+import com.reactnativescroll.interop.reactnative.emitDirectEvent
 import kotlinx.coroutines.CoroutineScope
 
 private data class ToolbarAction(
@@ -116,14 +119,14 @@ private data class ToolbarState(
   val unselectedContentArgb: Int? = null,
 )
 
-class ExpoMaterialToolbarView(
+class MaterialToolbarView(
   context: Context,
 ) : ComposeChromeHostView(context) {
 
   private val state = mutableStateOf(ToolbarState())
   private var nativeImeVisible = false
 
-  private val floatingToolbarScrollConsumer = FloatingToolbarScrollConsumer(this, composeView)
+  private val floatingToolbarScrollConsumer = MaterialFloatingToolbarScrollConsumer(this, composeView)
 
   init {
     composeView.layoutParams = ViewGroup.LayoutParams(
@@ -184,9 +187,7 @@ class ExpoMaterialToolbarView(
     val targetVisibility = if (shouldBeVisible) View.VISIBLE else View.INVISIBLE
     val changed = composeView.visibility != targetVisibility
 
-    if (changed) {
-      composeView.visibility = targetVisibility
-    }
+    if (changed) composeView.visibility = targetVisibility
 
     composeView.requestLayout()
     requestLayout()
@@ -228,12 +229,7 @@ class ExpoMaterialToolbarView(
       else -> (parentHeight - childHeight) / 2
     }.coerceAtLeast(0)
 
-    composeView.layout(
-      childLeft,
-      childTop,
-      childLeft + childWidth,
-      childTop + childHeight,
-    )
+    composeView.layout(childLeft, childTop, childLeft + childWidth, childTop + childHeight)
     floatingToolbarScrollConsumer.syncGeometry()
     floatingToolbarScrollConsumer.applyCurrentOffset()
   }
@@ -361,20 +357,13 @@ class ExpoMaterialToolbarView(
   fun setCollapsedShadowElevation(value: Float?) = updateState {
     it.copy(collapsedShadowElevationDp = value?.coerceAtLeast(0f))
   }
-  fun setToolbarContainerColor(color: Int?) =
-    updateState { it.copy(toolbarContainerArgb = color) }
-  fun setToolbarContentColor(color: Int?) =
-    updateState { it.copy(toolbarContentArgb = color) }
-  fun setFabContainerColor(color: Int?) =
-    updateState { it.copy(fabContainerArgb = color) }
-  fun setFabContentColor(color: Int?) =
-    updateState { it.copy(fabContentArgb = color) }
-  fun setSelectedContainerColor(color: Int?) =
-    updateState { it.copy(selectedContainerArgb = color) }
-  fun setSelectedContentColor(color: Int?) =
-    updateState { it.copy(selectedContentArgb = color) }
-  fun setUnselectedContentColor(color: Int?) =
-    updateState { it.copy(unselectedContentArgb = color) }
+  fun setToolbarContainerColor(color: Int?) = updateState { it.copy(toolbarContainerArgb = color) }
+  fun setToolbarContentColor(color: Int?) = updateState { it.copy(toolbarContentArgb = color) }
+  fun setFabContainerColor(color: Int?) = updateState { it.copy(fabContainerArgb = color) }
+  fun setFabContentColor(color: Int?) = updateState { it.copy(fabContentArgb = color) }
+  fun setSelectedContainerColor(color: Int?) = updateState { it.copy(selectedContainerArgb = color) }
+  fun setSelectedContentColor(color: Int?) = updateState { it.copy(selectedContentArgb = color) }
+  fun setUnselectedContentColor(color: Int?) = updateState { it.copy(unselectedContentArgb = color) }
 
   @Composable
   private fun MaterialToolbarContent(uiState: ToolbarState) {
@@ -420,12 +409,10 @@ class ExpoMaterialToolbarView(
       val contentPadding = PaddingValues(
         start = uiState.contentPaddingStartDp?.dp
           ?: defaultContentPadding.calculateStartPadding(layoutDirection),
-        top = uiState.contentPaddingTopDp?.dp
-          ?: defaultContentPadding.calculateTopPadding(),
+        top = uiState.contentPaddingTopDp?.dp ?: defaultContentPadding.calculateTopPadding(),
         end = uiState.contentPaddingEndDp?.dp
           ?: defaultContentPadding.calculateEndPadding(layoutDirection),
-        bottom = uiState.contentPaddingBottomDp?.dp
-          ?: defaultContentPadding.calculateBottomPadding(),
+        bottom = uiState.contentPaddingBottomDp?.dp ?: defaultContentPadding.calculateBottomPadding(),
       )
 
       val safePadding = if (uiState.insets == "safe") {
@@ -494,9 +481,7 @@ class ExpoMaterialToolbarView(
       if (withFab) {
         VerticalFloatingToolbar(
           expanded = uiState.expanded,
-          floatingActionButton = {
-            ToolbarFab(uiState, toolbarColors)
-          },
+          floatingActionButton = { ToolbarFab(uiState, toolbarColors) },
           colors = toolbarColors,
           contentPadding = contentPadding,
           scrollBehavior = scrollBehavior,
@@ -532,9 +517,7 @@ class ExpoMaterialToolbarView(
       if (withFab) {
         HorizontalFloatingToolbar(
           expanded = uiState.expanded,
-          floatingActionButton = {
-            ToolbarFab(uiState, toolbarColors)
-          },
+          floatingActionButton = { ToolbarFab(uiState, toolbarColors) },
           colors = toolbarColors,
           contentPadding = contentPadding,
           scrollBehavior = scrollBehavior,
@@ -630,9 +613,7 @@ class ExpoMaterialToolbarView(
             Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
           }
         }
-        if (action.label.isNotBlank()) {
-          Text(action.label)
-        }
+        if (action.label.isNotBlank()) Text(action.label)
       }
     } else {
       IconButton(
@@ -715,16 +696,8 @@ class ExpoMaterialToolbarView(
     val resourceId = remember(uri, context.packageName) {
       if (!uri.contains("://") && !uri.startsWith("/") && !uri.startsWith("asset:/")) {
         val resourceName = uri.substringBeforeLast('.')
-        val drawableId = context.resources.getIdentifier(
-          resourceName,
-          "drawable",
-          context.packageName,
-        )
-        if (drawableId != 0) {
-          drawableId
-        } else {
-          context.resources.getIdentifier(resourceName, "mipmap", context.packageName)
-        }
+        val drawableId = context.resources.getIdentifier(resourceName, "drawable", context.packageName)
+        if (drawableId != 0) drawableId else context.resources.getIdentifier(resourceName, "mipmap", context.packageName)
       } else {
         0
       }

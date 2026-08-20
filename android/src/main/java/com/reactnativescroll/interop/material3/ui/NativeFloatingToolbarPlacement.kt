@@ -1,6 +1,6 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop.material3.ui
 
 import android.util.Log
 import android.view.View
@@ -11,6 +11,8 @@ import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
+import com.reactnativescroll.interop.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.NativeScrollTracing
 import java.util.WeakHashMap
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -26,24 +28,24 @@ internal object NativeFloatingToolbarPlacement {
     var callback: Boolean = false,
   )
 
-  private val states = WeakHashMap<ExpoMaterialToolbarView, State>()
+  private val states = WeakHashMap<MaterialToolbarView, State>()
 
-  fun alignment(v: ExpoMaterialToolbarView, x: String) { state(v).alignment = x; apply(v) }
-  fun insets(v: ExpoMaterialToolbarView, x: String) { state(v).insets = if (x == "none") "none" else "safe"; apply(v) }
-  fun edge(v: ExpoMaterialToolbarView, x: Float?) { state(v).edgeDp = x?.coerceAtLeast(0f); apply(v) }
-  fun ime(v: ExpoMaterialToolbarView, x: String) { state(v).ime = if (x == "hide") "hide" else "none"; apply(v) }
+  fun alignment(v: MaterialToolbarView, x: String) { state(v).alignment = x; apply(v) }
+  fun insets(v: MaterialToolbarView, x: String) { state(v).insets = if (x == "none") "none" else "safe"; apply(v) }
+  fun edge(v: MaterialToolbarView, x: Float?) { state(v).edgeDp = x?.coerceAtLeast(0f); apply(v) }
+  fun ime(v: MaterialToolbarView, x: String) { state(v).ime = if (x == "hide") "hide" else "none"; apply(v) }
 
   fun windowInsets(host: ViewGroup, x: WindowInsetsCompat) {
-    val v = host as? ExpoMaterialToolbarView ?: return
+    val v = host as? MaterialToolbarView ?: return
     update(v, state(v), x)
   }
 
   fun afterLayout(host: ViewGroup, child: ComposeView) {
-    if (host is ExpoMaterialToolbarView) apply(host, child)
+    if (host is MaterialToolbarView) apply(host, child)
   }
 
   fun apply(host: ViewGroup, childOverride: ComposeView? = null): Insets? {
-    val v = host as? ExpoMaterialToolbarView ?: return null
+    val v = host as? MaterialToolbarView ?: return null
     val s = state(v)
     val i = resolved(s)
     val child = childOverride ?: (v.getChildAt(0) as? ComposeView) ?: return i
@@ -72,7 +74,7 @@ internal object NativeFloatingToolbarPlacement {
     return i
   }
 
-  private fun state(v: ExpoMaterialToolbarView): State {
+  private fun state(v: MaterialToolbarView): State {
     val s = states.getOrPut(v) { State() }
     if (!s.callback) {
       s.callback = true
@@ -93,7 +95,7 @@ internal object NativeFloatingToolbarPlacement {
     return s
   }
 
-  private fun update(v: ExpoMaterialToolbarView, s: State, x: WindowInsetsCompat) {
+  private fun update(v: MaterialToolbarView, s: State, x: WindowInsetsCompat) {
     val system = x.getInsets(
       WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
     )

@@ -1,6 +1,6 @@
-package expo.modules.materialtoolbar
+package com.reactnativescroll.interop
 
-internal const val NATIVE_SCROLL_LOG_TAG = "ExpoMaterialToolbar"
+internal const val NATIVE_SCROLL_LOG_TAG = "ReactNativeScrollInterop"
 
 /**
  * Switch for the transport's per-frame tracing.

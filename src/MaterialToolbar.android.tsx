@@ -8,9 +8,9 @@ import React, {
 } from 'react';
 import { Image, StyleSheet } from 'react-native';
 
-import ExpoMaterialToolbarNativeView, {
+import MaterialToolbarNativeView, {
   type NativeToolbarAction,
-} from './ExpoMaterialToolbarNativeView';
+} from './MaterialToolbarNativeView';
 import {
   flattenElements,
   getMarker,
@@ -279,7 +279,7 @@ const MaterialToolbarRoot = forwardRef<MaterialToolbarRef, MaterialToolbarRootPr
     }, [model.fab]);
 
     return (
-      <ExpoMaterialToolbarNativeView
+      <MaterialToolbarNativeView
         style={style ?? StyleSheet.absoluteFill}
         pointerEvents="box-none"
         content={model.content}
