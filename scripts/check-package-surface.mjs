@@ -16,12 +16,14 @@ const expectedFiles = [
   'plugin',
   'src',
   'index.ts',
+  'navigation.ts',
+  'react-navigation.tsx',
   'router.tsx',
   'app.plugin.js',
   'react-native.config.js',
 ];
 const expectedCheck =
-  'npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:bare-react-native-compat && npm run check:rnscreens-interop-plugin && npm run check:package-surface';
+  'npm run check:architecture && npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:bare-react-native-compat && npm run check:rnscreens-interop-plugin && npm run check:package-surface';
 const violations = [];
 
 function expect(condition, message) {
@@ -36,6 +38,10 @@ expect(packageJson.publishConfig?.access === 'public', 'publishConfig.access mus
 expect(packageJson.publishConfig?.tag === 'next', 'alpha publishConfig.tag must be next');
 expect(packageJson.scripts?.prepublishOnly === 'npm run check', 'prepublishOnly must run the complete package gate');
 expect(packageJson.scripts?.check === expectedCheck, 'npm run check does not match the release gate');
+expect(
+  packageJson.scripts?.['check:architecture'] === 'node scripts/check-architecture-boundaries.mjs',
+  'architecture boundary gate is missing',
+);
 expect(
   packageJson.scripts?.['check:react-native-compat-plugin'] ===
     'node scripts/check-react-native-compat-plugin.mjs',
@@ -54,6 +60,10 @@ expect(
 expect(
   packageJson.peerDependenciesMeta?.['expo-router']?.optional === true,
   'Expo Router must remain optional for root-only consumers',
+);
+expect(
+  Object.keys(packageJson.peerDependencies ?? {}).every((name) => !name.startsWith('@react-navigation/')),
+  'React Navigation adapter must not add a React Navigation runtime peer',
 );
 expect(
   packageJson.peerDependencies?.['react-native'] ===
@@ -94,6 +104,10 @@ for (const obsoletePath of [
   'plugin/withRn086AndroidXScroll.js',
   'plugin/rn086AndroidXPatch.js',
   'scripts/check-rn086-androidx-plugin.mjs',
+  'src/ExpoMaterialTopAppBarNativeView.tsx',
+  'src/ExpoMaterialToolbarNativeView.tsx',
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostView.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostManager.kt',
 ]) {
   if (existsSync(new URL(`../${obsoletePath}`, import.meta.url))) {
     violations.push(`obsolete repository path must stay removed: ${obsoletePath}`);
@@ -146,6 +160,8 @@ const required = [
   'README.md',
   'LICENSE',
   'index.ts',
+  'navigation.ts',
+  'react-navigation.tsx',
   'router.tsx',
   'app.plugin.js',
   'react-native.config.js',
@@ -158,9 +174,13 @@ const required = [
   'src/MaterialTopAppBar.types.ts',
   'src/MaterialTopAppBar.tsx',
   'src/MaterialTopAppBar.android.tsx',
+  'src/MaterialTopAppBarNativeView.tsx',
   'src/MaterialToolbar.types.ts',
   'src/MaterialToolbar.tsx',
   'src/MaterialToolbar.android.tsx',
+  'src/MaterialToolbarNativeView.tsx',
+  'src/navigation/material3NavigationMapper.ts',
+  'src/navigation/Material3NavigationHeader.tsx',
   'android/build.gradle',
   'android/src/main/AndroidManifest.xml',
   'android/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt',
@@ -170,8 +190,14 @@ const required = [
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeVerticalScrollSourceLocator.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParentController.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParticipants.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScreenNestedScrollBridge.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollHostView.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollHostManager.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScrollInteropPackage.kt',
-  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostManager.kt',
+  'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollParticipantProvider.kt',
+  'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollRegistry.kt',
+  'android/src/main/java/com/reactnativescroll/interop/material3/Material3NativeViewManagers.kt',
   'android/src/main/java/expo/modules/materialtoolbar/MaterialTopAppBarManager.kt',
   'android/src/main/java/expo/modules/materialtoolbar/MaterialToolbarManager.kt',
 ];
@@ -182,10 +208,14 @@ for (const file of required) {
 
 for (const removed of [
   'expo-module.config.json',
+  'src/ExpoMaterialTopAppBarNativeView.tsx',
+  'src/ExpoMaterialToolbarNativeView.tsx',
   'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialToolbarModule.kt',
   'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostView.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostManager.kt',
 ]) {
-  if (files.has(removed)) violations.push(`Expo Modules artifact leaked into package: ${removed}`);
+  if (files.has(removed)) violations.push(`obsolete Expo/native artifact leaked into package: ${removed}`);
 }
 
 const forbiddenPrefixes = [
@@ -200,7 +230,7 @@ const forbiddenPrefixes = [
   'android/src/debug/',
   'android-shared/',
 ];
-const forbiddenExact = new Set(['ARCHITECTURE.md', 'RELEASE.md']);
+const forbiddenExact = new Set(['ARCHITECTURE.md', 'RELEASE.md', 'UPSTREAM_REACT_NATIVE_SCREENS.md']);
 
 for (const file of files) {
   if (forbiddenExact.has(file)) violations.push(`repository-only documentation leaked into package: ${file}`);
@@ -210,9 +240,9 @@ for (const file of files) {
 }
 
 const unpackedSize = pack?.unpackedSize ?? Number.POSITIVE_INFINITY;
-if (files.size > 90) violations.push(`package file count unexpectedly high: ${files.size} > 90`);
-if (unpackedSize > 1_000_000) {
-  violations.push(`package unpacked size unexpectedly high: ${unpackedSize} > 1000000 bytes`);
+if (files.size > 100) violations.push(`package file count unexpectedly high: ${files.size} > 100`);
+if (unpackedSize > 1_100_000) {
+  violations.push(`package unpacked size unexpectedly high: ${unpackedSize} > 1100000 bytes`);
 }
 
 if (violations.length > 0) {
@@ -225,6 +255,6 @@ console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
 console.log('  native runtime: standard React Native package (no Expo Modules dependency)');
 console.log('  React Native peer: 0.86.x / certified 0.87 RC+stable');
-console.log('  Expo Router adapter: 57.x');
+console.log('  navigator-neutral + React Navigation + Expo Router adapter surfaces packaged');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
