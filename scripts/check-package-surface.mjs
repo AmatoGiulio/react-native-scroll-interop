@@ -9,6 +9,8 @@ const gradle = readFileSync(new URL('../android/build.gradle', import.meta.url),
 const rnConfig = readFileSync(new URL('../react-native.config.js', import.meta.url), 'utf8');
 const expectedName = 'react-native-scroll-interop';
 const expectedVersion = '0.1.0-alpha.1';
+const expectedCheck =
+  'npm run check:architecture-boundaries && npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:bare-react-native-compat && npm run check:rnscreens-interop-plugin && npm run check:package-surface';
 const violations = [];
 const expect = (condition, message) => { if (!condition) violations.push(message); };
 
@@ -19,6 +21,11 @@ expect(pkg.license === 'MIT', 'license must be MIT');
 expect(pkg.publishConfig?.access === 'public', 'publishConfig.access must be public');
 expect(pkg.publishConfig?.tag === 'next', 'alpha tag must be next');
 expect(pkg.scripts?.prepublishOnly === 'npm run check', 'prepublishOnly must run full check');
+expect(pkg.scripts?.check === expectedCheck, 'npm run check must include the architecture boundary gate');
+expect(
+  pkg.scripts?.['check:architecture-boundaries'] === 'node scripts/check-architecture-boundaries.mjs',
+  'architecture boundary gate is missing'
+);
 expect(pkg.peerDependencies?.expo === undefined, 'native runtime must not require Expo');
 expect(pkg.peerDependencies?.['expo-router'] === '>=57.0.0 <58.0.0', 'Expo Router peer mismatch');
 expect(pkg.peerDependenciesMeta?.['expo-router']?.optional === true, 'Expo Router must be optional');
@@ -73,15 +80,19 @@ for (const required of [
   'app.plugin.js', 'react-native.config.js',
   'plugin/withScrollInterop.js', 'plugin/bareReactNativeScrollCompat.js',
   'plugin/reactNativeScrollCompatPatch.js', 'plugin/reactNativeScreensInteropPatch.js',
-  'src/navigation/material3NavigationMapper.ts',
+  'src/navigation/material3NavigationMapper.ts', 'src/navigation/Material3NavigationHeader.tsx',
   'src/NativeScrollHost.android.tsx', 'src/MaterialTopAppBarNativeView.tsx', 'src/MaterialToolbarNativeView.tsx',
   'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParentController.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollControllerCore.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParticipants.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScreenNestedScrollBridge.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollHostView.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollHostManager.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScrollInteropPackage.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt',
+  'android/src/main/java/com/reactnativescroll/interop/material3/ui/Material3NestedScrollParticipantProvider.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/ui/MaterialTopAppBarView.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/ui/MaterialTopAppBarManager.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/ui/MaterialToolbarView.kt',
@@ -102,8 +113,8 @@ for (const file of files) {
 }
 
 const unpackedSize = pack?.unpackedSize ?? Infinity;
-if (files.size > 100) violations.push(`package file count unexpectedly high: ${files.size}`);
-if (unpackedSize > 1_100_000) violations.push(`package unpacked size unexpectedly high: ${unpackedSize}`);
+if (files.size > 110) violations.push(`package file count unexpectedly high: ${files.size}`);
+if (unpackedSize > 1_150_000) violations.push(`package unpacked size unexpectedly high: ${unpackedSize}`);
 
 if (violations.length) {
   console.error('Package surface invariant: FAIL');
@@ -112,7 +123,7 @@ if (violations.length) {
 }
 console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
-console.log('  architecture: neutral core + RN boundary + Material3 reference consumer');
-console.log('  navigation: shared mapper + optional Expo Router / React Navigation adapters');
+console.log('  architecture: neutral core + generic RN boundary + Material3 reference provider');
+console.log('  navigation: shared mapper/header + optional Expo Router / React Navigation adapters');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
