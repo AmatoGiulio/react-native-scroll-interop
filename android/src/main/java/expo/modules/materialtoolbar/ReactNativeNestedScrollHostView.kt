@@ -6,14 +6,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import androidx.core.view.NestedScrollingParent3
+import com.facebook.react.views.view.ReactViewGroup
 import com.reactnativescroll.interop.reactnative.ReactNativeNestedScrollParentController
 import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
-import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.views.ExpoView
 
 /**
- * Standalone Expo adapter that makes a React Native vertical scroll source a descendant of a real
- * Android nested-scrolling parent.
+ * Standalone React Native adapter that makes a React Native vertical scroll source a descendant of
+ * a real Android nested-scrolling parent.
  *
  * Source discovery remains here because this wrapper can contain an arbitrary React tree. The
  * actual transaction lifecycle and PRE/POST dispatch live in [ReactNativeNestedScrollParentController]
@@ -22,8 +21,7 @@ import expo.modules.kotlin.views.ExpoView
  */
 class ReactNativeNestedScrollHostView(
   context: Context,
-  appContext: AppContext,
-) : ExpoView(context, appContext), NestedScrollingParent3 {
+) : ReactViewGroup(context), NestedScrollingParent3 {
 
   private val nestedScrollController = ReactNativeNestedScrollParentController(this)
 
@@ -60,21 +58,6 @@ class ReactNativeNestedScrollHostView(
     super.onDetachedFromWindow()
   }
 
-  fun addHostChild(child: View, index: Int) {
-    addView(child, index)
-    requestNestedChromeBindingRefresh()
-  }
-
-  fun removeHostChild(child: View) {
-    removeView(child)
-    requestNestedChromeBindingRefresh()
-  }
-
-  fun removeHostChildAt(index: Int) {
-    removeViewAt(index)
-    requestNestedChromeBindingRefresh()
-  }
-
   fun requestNestedChromeBindingRefresh() {
     if (!isAttachedToWindow) return
     post {
@@ -87,12 +70,17 @@ class ReactNativeNestedScrollHostView(
     }
   }
 
-  /**
-   * Prepare the unique supported RN vertical source before the first gesture.
-   *
-   * Discovery is wrapper-specific. Once a source is known, all preparation and subsequent Android
-   * nested-scroll transaction handling is delegated to [ReactNativeNestedScrollParentController].
-   */
+  override fun onViewAdded(child: View) {
+    super.onViewAdded(child)
+    requestNestedChromeBindingRefresh()
+  }
+
+  override fun onViewRemoved(child: View) {
+    super.onViewRemoved(child)
+    requestNestedChromeBindingRefresh()
+  }
+
+  /** Prepare the unique supported RN vertical source before the first gesture. */
   fun refreshNestedChromeBinding(): Boolean {
     if (!isAttachedToWindow) return false
 
@@ -127,10 +115,6 @@ class ReactNativeNestedScrollHostView(
     if (observer.isAlive) observer.removeOnGlobalLayoutListener(sourceLayoutListener)
     waitingForSourceLayout = false
   }
-
-  // ---------------------------------------------------------------------------
-  // NestedScrollingParent3 adapter surface.
-  // ---------------------------------------------------------------------------
 
   override fun onStartNestedScroll(child: View, target: View, axes: Int): Boolean =
     nestedScrollController.onStartNestedScroll(child, target, axes)
