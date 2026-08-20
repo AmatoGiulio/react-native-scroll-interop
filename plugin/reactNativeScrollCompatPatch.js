@@ -7,13 +7,31 @@ const SOURCE_BUILD_MARKER = 'REACT_NATIVE_SCROLL_INTEROP_SOURCE_BUILD';
 const MANAGER_MARKER = 'REACT_NATIVE_SCROLL_INTEROP_NESTED_MANAGER';
 const RN086_FLING_MARKER = 'REACT_NATIVE_SCROLL_INTEROP_RN086_ANDROIDX_FLING';
 const RN087_FLING_MARKER = 'REACT_NATIVE_SCROLL_INTEROP_RN087_ANDROIDX_FLING';
+const PREBUILT_HERMES_COMPILE_ONLY_MARKER =
+  'REACT_NATIVE_SCROLL_INTEROP_PREBUILT_HERMES_COMPILE_ONLY';
 const RN_SOURCE_BUILD_PLACEHOLDER_ASSIGNMENTS = [
   'project(":packages").projectDir = file("/tmp")',
   'project(":packages:react-native").projectDir = file("/tmp")',
 ];
+const REACT_ANDROID_HERMES_PROJECT_DEPENDENCY =
+  'compileOnly(project(":packages:react-native:ReactAndroid:hermes-engine"))';
 
 function count(contents, token) {
   return contents.split(token).length - 1;
+}
+
+function parseProperties(contents) {
+  const properties = {};
+  for (const rawLine of contents.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || line.startsWith('!')) continue;
+    const separator = line.search(/[=:]/);
+    if (separator < 0) continue;
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    if (key) properties[key] = value;
+  }
+  return properties;
 }
 
 function assertSupportedReactNativeVersion(version) {
@@ -65,6 +83,107 @@ function ensureReactNativeSourceBuildPlaceholder(reactNativeRoot, platform = pro
     );
   }
   return true;
+}
+
+function resolveReactNativePrebuiltHermesCoordinate(reactNativeRoot, projectRoot) {
+  if (typeof reactNativeRoot !== 'string' || reactNativeRoot.length === 0) {
+    throw new TypeError('[react-native-scroll-interop] Expected a React Native package root.');
+  }
+  if (typeof projectRoot !== 'string' || projectRoot.length === 0) {
+    throw new TypeError('[react-native-scroll-interop] Expected a consumer project root.');
+  }
+
+  const reactAndroidPropertiesPath = path.join(reactNativeRoot, 'ReactAndroid', 'gradle.properties');
+  const hermesPropertiesPath = path.join(
+    reactNativeRoot,
+    'sdks',
+    'hermes-engine',
+    'version.properties'
+  );
+  for (const filePath of [reactAndroidPropertiesPath, hermesPropertiesPath]) {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(
+        `[react-native-scroll-interop] Missing React Native Hermes metadata: ${filePath}. ` +
+          'Refusing to guess a prebuilt Hermes coordinate.'
+      );
+    }
+  }
+
+  const reactAndroidProperties = parseProperties(fs.readFileSync(reactAndroidPropertiesPath, 'utf8'));
+  const hermesProperties = parseProperties(fs.readFileSync(hermesPropertiesPath, 'utf8'));
+  const consumerPropertiesPath = path.join(projectRoot, 'android', 'gradle.properties');
+  const consumerProperties = fs.existsSync(consumerPropertiesPath)
+    ? parseProperties(fs.readFileSync(consumerPropertiesPath, 'utf8'))
+    : {};
+
+  const hasLegacyHermesV1 = Object.prototype.hasOwnProperty.call(
+    consumerProperties,
+    'hermesV1Enabled'
+  );
+  const hasScopedHermesV1 = Object.prototype.hasOwnProperty.call(
+    consumerProperties,
+    'react.hermesV1Enabled'
+  );
+  const hermesV1Enabled =
+    hasLegacyHermesV1 || hasScopedHermesV1
+      ? (hasLegacyHermesV1 && consumerProperties.hermesV1Enabled.toLowerCase() === 'true') ||
+        (hasScopedHermesV1 &&
+          consumerProperties['react.hermesV1Enabled'].toLowerCase() === 'true')
+      : true;
+
+  const publishingGroup =
+    reactAndroidProperties['react.internal.hermesPublishingGroup'] || 'com.facebook.hermes';
+  const versionKey = hermesV1Enabled ? 'HERMES_V1_VERSION_NAME' : 'HERMES_VERSION_NAME';
+  const version = hermesProperties[versionKey];
+
+  if (!/^[A-Za-z0-9_.-]+$/.test(publishingGroup) || !version || !/^[A-Za-z0-9_.+-]+$/.test(version)) {
+    throw new Error(
+      `[react-native-scroll-interop] Invalid React Native Hermes metadata for ${versionKey}. ` +
+        'Refusing to guess a prebuilt Hermes coordinate.'
+    );
+  }
+
+  return `${publishingGroup}:hermes-android:${version}`;
+}
+
+function patchReactAndroidHermesCompileOnly(contents, hermesCoordinate) {
+  if (typeof contents !== 'string') {
+    throw new TypeError('[react-native-scroll-interop] Expected ReactAndroid build.gradle.kts contents.');
+  }
+  if (
+    typeof hermesCoordinate !== 'string' ||
+    !/^[A-Za-z0-9_.-]+:hermes-android:[A-Za-z0-9_.+-]+$/.test(hermesCoordinate)
+  ) {
+    throw new TypeError('[react-native-scroll-interop] Expected a validated Hermes Android coordinate.');
+  }
+
+  const replacement =
+    `compileOnly("${hermesCoordinate}") // ${PREBUILT_HERMES_COMPILE_ONLY_MARKER}`;
+  const markerCount = count(contents, PREBUILT_HERMES_COMPILE_ONLY_MARKER);
+  const projectDependencyCount = count(contents, REACT_ANDROID_HERMES_PROJECT_DEPENDENCY);
+  const patchedPattern = new RegExp(
+    `compileOnly\\("[A-Za-z0-9_.-]+:hermes-android:[A-Za-z0-9_.+-]+"\\) // ${PREBUILT_HERMES_COMPILE_ONLY_MARKER}`,
+    'g'
+  );
+  const patchedMatches = [...contents.matchAll(patchedPattern)];
+
+  if (markerCount > 0) {
+    if (markerCount !== 1 || patchedMatches.length !== 1 || projectDependencyCount !== 0) {
+      throw new Error(
+        '[react-native-scroll-interop] ReactAndroid contains a partial or duplicate prebuilt-Hermes compileOnly patch.'
+      );
+    }
+    return contents.replace(patchedPattern, replacement);
+  }
+
+  if (projectDependencyCount !== 1) {
+    throw new Error(
+      `[react-native-scroll-interop] Expected exactly one ReactAndroid Hermes project compileOnly dependency; found ${projectDependencyCount}. ` +
+        'Refusing to patch an unvalidated React Native source.'
+    );
+  }
+
+  return contents.replace(REACT_ANDROID_HERMES_PROJECT_DEPENDENCY, replacement);
 }
 
 function ensureReactNativeSourceBuildSettings(contents) {
@@ -273,6 +392,7 @@ function patchReactNestedScrollView087(contents) {
 
 module.exports = {
   MANAGER_MARKER,
+  PREBUILT_HERMES_COMPILE_ONLY_MARKER,
   RN086_FLING_MARKER,
   RN087_FLING_MARKER,
   SOURCE_BUILD_MARKER,
@@ -280,6 +400,8 @@ module.exports = {
   ensureReactNativeSourceBuildPlaceholder,
   ensureReactNativeSourceBuildSettings,
   patchMainReactPackage,
+  patchReactAndroidHermesCompileOnly,
   patchReactNestedScrollView086,
   patchReactNestedScrollView087,
+  resolveReactNativePrebuiltHermesCoordinate,
 };
