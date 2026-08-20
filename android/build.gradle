@@ -22,6 +22,12 @@ group = 'com.reactnativescroll.interop'
 version = '0.1.0-alpha.1'
 
 def reactNativeScreensProject = rootProject.findProject(':react-native-screens')
+def reactNativeScreensNestedScrollInteropAvailable =
+  reactNativeScreensProject != null &&
+  new File(
+    reactNativeScreensProject.projectDir,
+    'src/main/java/com/swmansion/rnscreens/common/nestedscroll/ScreenNestedScrollInterop.kt'
+  ).exists()
 
 android {
   namespace 'com.reactnativescroll.interop'
@@ -56,7 +62,7 @@ android {
     abortOnError false
   }
 
-  if (reactNativeScreensProject != null) {
+  if (reactNativeScreensNestedScrollInteropAvailable) {
     sourceSets.main.java.srcDir('src/reactNativeScreensInterop/java')
   }
 }
@@ -64,7 +70,7 @@ android {
 dependencies {
   implementation("com.facebook.react:react-android")
 
-  if (reactNativeScreensProject != null) {
+  if (reactNativeScreensNestedScrollInteropAvailable) {
     compileOnly reactNativeScreensProject
   }
 
