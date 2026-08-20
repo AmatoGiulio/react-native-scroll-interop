@@ -47,7 +47,7 @@ internal object NativeNestedScrollRegistry {
 
   fun registerHost(host: ReactNativeNestedScrollHostView) {
     hosts += host
-    host.requestNestedChromeBindingRefresh()
+    host.requestNestedParticipantBindingRefresh()
   }
 
   fun unregisterHost(host: ReactNativeNestedScrollHostView) {
@@ -62,7 +62,7 @@ internal object NativeNestedScrollRegistry {
   fun unregisterScreenParent(parent: ReactNativeNestedScrollParentController) {
     val departingOwner = parent.ownerView
     screenParents -= parent
-    frontmostScreenParentFor(departingOwner)?.requestNestedChromeBindingRefresh()
+    frontmostScreenParentFor(departingOwner)?.requestNestedParticipantBindingRefresh()
   }
 
   fun registerTopBar(owner: MaterialTopAppBarView, consumer: TopAppBarScrollConsumer) {
@@ -187,7 +187,7 @@ internal object NativeNestedScrollRegistry {
         true
       }
       if (sameTopBarScope) {
-        host.requestNestedChromeBindingRefresh()
+        host.requestNestedParticipantBindingRefresh()
       }
     }
 
@@ -201,7 +201,7 @@ internal object NativeNestedScrollRegistry {
         true
       }
       if (sameTopBarScope) {
-        parent.requestNestedChromeBindingRefresh()
+        parent.requestNestedParticipantBindingRefresh()
       }
     }
   }
@@ -209,12 +209,12 @@ internal object NativeNestedScrollRegistry {
   private fun refreshParentsForSurface(owner: View) {
     hosts.forEach { host ->
       if (sameNativeScope(owner, host)) {
-        host.requestNestedChromeBindingRefresh()
+        host.requestNestedParticipantBindingRefresh()
       }
     }
     screenParents.forEach { parent ->
       if (sameNativeScope(owner, parent.ownerView)) {
-        parent.requestNestedChromeBindingRefresh()
+        parent.requestNestedParticipantBindingRefresh()
       }
     }
   }
