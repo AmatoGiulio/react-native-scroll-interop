@@ -74,12 +74,21 @@ function ensureReactNativeSourceBuildSettings(contents) {
 
   const includeBuild = 'includeBuild(expoAutolinking.reactNative)';
   const reactAndroid = 'substitute(module("com.facebook.react:react-android"))';
+  const legacyReactNative = 'substitute(module("com.facebook.react:react-native"))';
   const hermesAndroid = 'substitute(module("com.facebook.react:hermes-android"))';
+  const hermesEngine = 'substitute(module("com.facebook.react:hermes-engine"))';
   const includeBuildCount = count(contents, includeBuild);
   const hasReactAndroid = contents.includes(reactAndroid);
-  const hasHermesAndroid = contents.includes(hermesAndroid);
+  const hasLegacyReactNative = contents.includes(legacyReactNative);
+  const hasHermesSourceSubstitution =
+    contents.includes(hermesAndroid) || contents.includes(hermesEngine);
 
-  if (includeBuildCount === 1 && hasReactAndroid && hasHermesAndroid) {
+  if (
+    includeBuildCount === 1 &&
+    hasReactAndroid &&
+    hasLegacyReactNative &&
+    !hasHermesSourceSubstitution
+  ) {
     if (count(contents, SOURCE_BUILD_MARKER) > 1) {
       throw new Error(
         '[react-native-scroll-interop] Found duplicate source-build markers in settings.gradle.'
@@ -91,12 +100,16 @@ function ensureReactNativeSourceBuildSettings(contents) {
   if (
     includeBuildCount !== 0 ||
     hasReactAndroid ||
-    hasHermesAndroid ||
+    hasLegacyReactNative ||
+    hasHermesSourceSubstitution ||
     contents.includes(SOURCE_BUILD_MARKER)
   ) {
+    const hermesDetail = hasHermesSourceSubstitution
+      ? ' Hermes must remain on the prebuilt Android artifact; source substitution is not part of this compatibility gate.'
+      : '';
     throw new Error(
       '[react-native-scroll-interop] Found a partial or duplicate React Native source-build configuration in settings.gradle. ' +
-        'Refusing to add another includeBuild block.'
+        `Refusing to add another includeBuild block.${hermesDetail}`
     );
   }
 
@@ -115,8 +128,6 @@ function ensureReactNativeSourceBuildSettings(contents) {
       '  dependencySubstitution {',
       '    substitute(module("com.facebook.react:react-android")).using(project(":packages:react-native:ReactAndroid"))',
       '    substitute(module("com.facebook.react:react-native")).using(project(":packages:react-native:ReactAndroid"))',
-      '    substitute(module("com.facebook.react:hermes-android")).using(project(":packages:react-native:ReactAndroid:hermes-engine"))',
-      '    substitute(module("com.facebook.react:hermes-engine")).using(project(":packages:react-native:ReactAndroid:hermes-engine"))',
       '  }',
       '}',
       '',
