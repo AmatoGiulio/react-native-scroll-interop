@@ -94,13 +94,31 @@ for (const obsoletePath of [
   }
 }
 
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const result = spawnSync(npmCommand, ['pack', '--dry-run', '--json', '--ignore-scripts'], {
+const npmArgs = ['pack', '--dry-run', '--json', '--ignore-scripts'];
+const npmExecPath = process.env.npm_execpath;
+const npmCommand = npmExecPath
+  ? process.execPath
+  : process.platform === 'win32'
+    ? 'npm.cmd'
+    : 'npm';
+const npmCommandArgs = npmExecPath ? [npmExecPath, ...npmArgs] : npmArgs;
+const result = spawnSync(npmCommand, npmCommandArgs, {
   encoding: 'utf8',
+  shell: npmExecPath == null && process.platform === 'win32',
 });
 
+if (result.error) {
+  console.error('Package surface invariant: FAIL');
+  console.error(`  unable to execute npm pack --dry-run: ${result.error.message}`);
+  process.exit(1);
+}
+
 if (result.status !== 0) {
-  process.stderr.write(result.stderr || result.stdout || 'npm pack --dry-run failed\n');
+  process.stderr.write(
+    result.stderr ||
+      result.stdout ||
+      `npm pack --dry-run failed with exit code ${result.status ?? '<unknown>'}\n`,
+  );
   process.exit(result.status ?? 1);
 }
 
