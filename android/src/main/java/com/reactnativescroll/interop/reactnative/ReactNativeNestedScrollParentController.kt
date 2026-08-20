@@ -7,6 +7,8 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
+import com.reactnativescroll.interop.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.NativeScrollTracing
 import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle
 import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle.StopDecision
 import com.reactnativescroll.interop.core.VerticalNestedScrollTransactionDispatcher
@@ -14,9 +16,7 @@ import com.reactnativescroll.interop.material3.FloatingToolbarScrollConsumer
 import com.reactnativescroll.interop.material3.Material3FloatingToolbarNestedScrollAdapter
 import com.reactnativescroll.interop.material3.Material3TopAppBarNestedScrollAdapter
 import com.reactnativescroll.interop.material3.TopAppBarScrollConsumer
-import expo.modules.materialtoolbar.NATIVE_SCROLL_LOG_TAG
-import expo.modules.materialtoolbar.NativeNestedScrollRegistry
-import expo.modules.materialtoolbar.NativeScrollTracing
+import com.reactnativescroll.interop.material3.ui.NativeNestedScrollRegistry
 
 /**
  * Reusable Android nested-scroll parent controller for a React Native vertical scroll source.
@@ -25,10 +25,9 @@ import expo.modules.materialtoolbar.NativeScrollTracing
  * lifecycle, participant binding and PRE/POST dispatch. It never owns source motion, starts a
  * scroller, samples scrollY as transport, or calls scrollBy/scrollTo on the source.
  *
- * A standalone [expo.modules.materialtoolbar.ReactNativeNestedScrollHostView] can discover its
- * descendant source and delegate here. A navigation screen that already knows its content
- * ScrollView can instead pass that source directly through [prepareNestedSource] and forward the
- * same NestedScrollingParent callbacks.
+ * A standalone [ReactNativeNestedScrollHostView] can discover its descendant source and delegate
+ * here. A navigation screen that already knows its content ScrollView can instead pass that source
+ * directly through [prepareNestedSource] and forward the same NestedScrollingParent callbacks.
  */
 class ReactNativeNestedScrollParentController(
   private val owner: ViewGroup,
