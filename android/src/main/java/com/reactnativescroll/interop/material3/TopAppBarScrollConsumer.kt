@@ -9,9 +9,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
+import com.reactnativescroll.interop.reactnative.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.reactnative.NativeScrollTracing
 import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
-import expo.modules.materialtoolbar.BuildConfig
-import expo.modules.materialtoolbar.NATIVE_SCROLL_LOG_TAG
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -86,7 +86,7 @@ internal class TopAppBarScrollConsumer {
   fun beginNestedTransaction(source: ViewGroup): Boolean {
     transactionActive = false
     if (!isNestedDirectCapable) {
-      if (BuildConfig.DEBUG && isBound) {
+      if (NativeScrollTracing.enabled && isBound) {
         val state = behavior?.state
         Log.d(
           NATIVE_SCROLL_LOG_TAG,
@@ -101,7 +101,7 @@ internal class TopAppBarScrollConsumer {
     cancelSettle()
     ensureScrollAwaySource(supported)
     transactionActive = true
-    if (BuildConfig.DEBUG) {
+    if (NativeScrollTracing.enabled) {
       val state = behavior?.state
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
@@ -169,7 +169,7 @@ internal class TopAppBarScrollConsumer {
     cancelSettle()
 
     val generation = ++settleGeneration
-    if (BuildConfig.DEBUG) {
+    if (NativeScrollTracing.enabled) {
       val state = currentBehavior.state
       val fraction = if (state.heightOffsetLimit != 0f) state.heightOffset / state.heightOffsetLimit else 0f
       Log.d(
@@ -198,7 +198,7 @@ internal class TopAppBarScrollConsumer {
       } finally {
         syncJob.cancel()
         if (generation == settleGeneration) applyChromeTranslation()
-        if (BuildConfig.DEBUG) {
+        if (NativeScrollTracing.enabled) {
           val state = currentBehavior.state
           val fraction = if (state.heightOffsetLimit != 0f) state.heightOffset / state.heightOffsetLimit else 0f
           Log.d(
@@ -313,7 +313,7 @@ internal class TopAppBarScrollConsumer {
     // primitive without importing the internal RN 0.87 class.
     val applied = ReactVerticalScrollSourceInterop.setScrollAwayPadding(source, target, 0)
     if (!applied) {
-      if (BuildConfig.DEBUG) {
+      if (NativeScrollTracing.enabled) {
         Log.d(
           NATIVE_SCROLL_LOG_TAG,
           "scrollAway unsupported class=${source.javaClass.name} view=${source.id} target=$target",
@@ -332,7 +332,7 @@ internal class TopAppBarScrollConsumer {
     source.clipToPadding = false
     appliedScrollAwayPaddingPx = target
 
-    if (BuildConfig.DEBUG) {
+    if (NativeScrollTracing.enabled) {
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
         "scrollAway view=${source.id} class=${source.javaClass.name} padding=$target " +
@@ -358,7 +358,7 @@ internal class TopAppBarScrollConsumer {
         ReactVerticalScrollSourceInterop.setScrollAwayPadding(source, 0, 0)
       }
       restoreScrollViewVisualState(source)
-      if (BuildConfig.DEBUG && appliedScrollAwayPaddingPx != 0) {
+      if (NativeScrollTracing.enabled && appliedScrollAwayPaddingPx != 0) {
         Log.d(
           NATIVE_SCROLL_LOG_TAG,
           "scrollAway view=${source.id} class=${source.javaClass.name} padding=0 detach",
