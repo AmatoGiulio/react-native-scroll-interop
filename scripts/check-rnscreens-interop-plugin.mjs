@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const {
@@ -10,10 +10,11 @@ const {
   patchScreen,
 } = require('../plugin/reactNativeScreensInteropPatch');
 
-const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
-const pluginSource = read('plugin/reactNativeScreensInteropPatch.js');
-const upstreamPlan = read('UPSTREAM_REACT_NATIVE_SCREENS.md');
 const violations = [];
+const bridgeSource = readFileSync(
+  new URL('../android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScreenNestedScrollBridge.kt', import.meta.url),
+  'utf8'
+);
 
 function expect(condition, message) {
   if (!condition) violations.push(message);
@@ -53,10 +54,9 @@ const screenFixture = `package com.swmansion.rnscreens\n\nimport android.view.Mo
 const patchedScreen = patchScreen(screenFixture);
 for (const needle of [
   'NestedScrollingParent3',
-  'ReactNativeNestedScrollParentController(this)',
-  'ReactNativeVerticalScrollSourceLocator.findUniqueDescendant(root)',
-  'requestNestedScrollInteropBinding()',
+  'ReactNativeScreenNestedScrollBridge(',
   'nestedScrollInterop.onOwnerAttached()',
+  'nestedScrollInterop.onOwnerLayout()',
   'nestedScrollInterop.onOwnerDetached()',
   'nestedScrollInterop.onStartNestedScroll(',
   'nestedScrollInterop.onNestedPreScroll(',
@@ -64,32 +64,32 @@ for (const needle of [
 ]) {
   expect(patchedScreen.includes(needle), `Screen patch missing ${needle}`);
 }
-expect(
-  patchScreen(patchedScreen) === patchedScreen,
-  'Screen patch must be idempotent'
-);
+for (const forbidden of [
+  'ReactNativeNestedScrollParentController',
+  'ReactNativeVerticalScrollSourceLocator',
+  'com.reactnativescroll.interop.material3',
+  'expo.modules.materialtoolbar',
+]) {
+  expect(!patchedScreen.includes(forbidden), `Screen patch must not know ${forbidden}`);
+}
+expect(patchScreen(patchedScreen) === patchedScreen, 'Screen patch must be idempotent');
 
 for (const forbidden of [
-  'material3',
-  'MaterialTopAppBar',
-  'MaterialToolbar',
-  'expo-router',
-  'expo.modules',
+  'com.reactnativescroll.interop.material3',
+  'expo.modules.materialtoolbar',
+  'com.swmansion.rnscreens',
 ]) {
-  expect(
-    !pluginSource.includes(forbidden),
-    `react-native-screens adapter must stay navigation/Material/Expo neutral: ${forbidden}`
-  );
+  expect(!bridgeSource.includes(forbidden), `neutral screen bridge must not know ${forbidden}`);
 }
-
-for (const required of [
-  'ScreenNestedScrollDelegate',
+for (const needle of [
+  'ReactNativeNestedScrollParentController(owner)',
+  'ReactNativeVerticalScrollSourceLocator.findUniqueDescendant',
   'NestedScrollingParent3',
-  'With no delegate installed',
-  'Keep the current fail-closed 4.26.x patcher',
-  'Remove source patching for supported upstream versions',
+  'fun onOwnerAttached()',
+  'fun onOwnerLayout()',
+  'fun onOwnerDetached()',
 ]) {
-  expect(upstreamPlan.includes(required), `upstream react-native-screens plan missing ${required}`);
+  expect(bridgeSource.includes(needle), `neutral screen bridge missing ${needle}`);
 }
 
 if (violations.length > 0) {
@@ -99,10 +99,8 @@ if (violations.length > 0) {
 }
 
 console.log('react-native-screens interop plugin invariant: PASS');
-console.log('  supported line is version-scoped to react-native-screens 4.26.x');
-console.log('  legacy Screen.kt becomes the real NestedScrollingParent3 ancestor');
-console.log('  Screen forwards to ReactNativeNestedScrollParentController');
-console.log('  screen-owned content subtree resolves exactly one RN vertical source');
-console.log('  adapter contains no Material3, navigation-library or Expo concepts');
-console.log('  upstream-neutral AndroidX delegate seam is documented');
+console.log('  supported patch line remains react-native-screens 4.26.x');
+console.log('  Screen.kt only integrates the neutral ReactNativeScreenNestedScrollBridge');
+console.log('  controller/source discovery stay inside the reusable React Native boundary');
+console.log('  screens patch contains no Material3 or Expo Modules knowledge');
 console.log('  Gradle dependency on react-native-scroll-interop is injected idempotently');
