@@ -17,7 +17,7 @@ PR #26 finishes the separation planned for this alpha:
 - Material3 behavior lives under `com.reactnativescroll.interop.material3`;
 - Material3 native UI/managers/registry/provider live under `com.reactnativescroll.interop.material3.ui`;
 - `ReactNativeScrollInteropPackage` composes Material3 as the shipped reference provider without leaking it into the RN controller;
-- Expo Router and React Navigation share the navigator-neutral mapper plus `Material3NavigationHeader` renderer;
+- Expo Router and React Navigation share an internal navigator-neutral mapper plus `Material3NavigationHeader` renderer; only `/router` and `/react-navigation` are public adapter entry points;
 - `react-native-screens 4.26.x` patches only to `ReactNativeScreenNestedScrollBridge` while `UPSTREAM_REACT_NATIVE_SCREENS.md` defines the neutral upstream seam;
 - an explicit architecture-boundary checker is part of `npm run check`.
 
