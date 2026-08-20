@@ -21,7 +21,7 @@ const expectedFiles = [
   'react-native.config.js',
 ];
 const expectedCheck =
-  'npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:rnscreens-interop-plugin && npm run check:package-surface';
+  'npm run check:scroll-invariants && npm run check:navigation-integration && npm run check:react-native-compat-plugin && npm run check:bare-react-native-compat && npm run check:rnscreens-interop-plugin && npm run check:package-surface';
 const violations = [];
 
 function expect(condition, message) {
@@ -40,6 +40,11 @@ expect(
   packageJson.scripts?.['check:react-native-compat-plugin'] ===
     'node scripts/check-react-native-compat-plugin.mjs',
   'React Native compatibility gate is missing',
+);
+expect(
+  packageJson.scripts?.['check:bare-react-native-compat'] ===
+    'node scripts/check-bare-react-native-compat.mjs',
+  'bare React Native compatibility gate is missing',
 );
 expect(packageJson.peerDependencies?.expo === undefined, 'core native runtime must not require Expo');
 expect(
@@ -144,6 +149,7 @@ const required = [
   'app.plugin.js',
   'react-native.config.js',
   'plugin/withScrollInterop.js',
+  'plugin/bareReactNativeScrollCompat.js',
   'plugin/reactNativeScrollCompatPatch.js',
   'plugin/reactNativeScreensInteropPatch.js',
   'src/NativeScrollHost.tsx',
