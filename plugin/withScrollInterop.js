@@ -5,6 +5,7 @@ const path = require('node:path');
 const { withDangerousMod, withSettingsGradle } = require('expo/config-plugins');
 const {
   assertSupportedReactNativeVersion,
+  ensureReactNativeSourceBuildPlaceholder,
   ensureReactNativeSourceBuildSettings,
   patchMainReactPackage,
   patchReactNestedScrollView086,
@@ -40,6 +41,7 @@ function readPackage(projectRoot, packageName) {
 function patchReactNativeScrollSource(projectRoot) {
   const reactNative = readPackage(projectRoot, 'react-native');
   const line = assertSupportedReactNativeVersion(reactNative.json.version);
+  ensureReactNativeSourceBuildPlaceholder(reactNative.root);
 
   const scrollPath = path.join(
     reactNative.root,
