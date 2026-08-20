@@ -10,13 +10,6 @@ import androidx.core.view.ViewCompat
 import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle
 import com.reactnativescroll.interop.core.SourceScopedNestedScrollLifecycle.StopDecision
 import com.reactnativescroll.interop.core.VerticalNestedScrollTransactionDispatcher
-import com.reactnativescroll.interop.material3.FloatingToolbarScrollConsumer
-import com.reactnativescroll.interop.material3.Material3FloatingToolbarNestedScrollAdapter
-import com.reactnativescroll.interop.material3.Material3TopAppBarNestedScrollAdapter
-import com.reactnativescroll.interop.material3.TopAppBarScrollConsumer
-import expo.modules.materialtoolbar.NATIVE_SCROLL_LOG_TAG
-import expo.modules.materialtoolbar.NativeNestedScrollRegistry
-import expo.modules.materialtoolbar.NativeScrollTracing
 
 /**
  * Reusable Android nested-scroll parent controller for a React Native vertical scroll source.
@@ -25,10 +18,8 @@ import expo.modules.materialtoolbar.NativeScrollTracing
  * lifecycle, participant binding and PRE/POST dispatch. It never owns source motion, starts a
  * scroller, samples scrollY as transport, or calls scrollBy/scrollTo on the source.
  *
- * A standalone [expo.modules.materialtoolbar.ReactNativeNestedScrollHostView] can discover its
- * descendant source and delegate here. A navigation screen that already knows its content
- * ScrollView can instead pass that source directly through [prepareNestedSource] and forward the
- * same NestedScrollingParent callbacks.
+ * Native UI consumers are supplied only through [ReactNativeNestedScrollParticipantProvider], so
+ * this React Native boundary has no Material3, navigation-library or react-native-screens knowledge.
  */
 class ReactNativeNestedScrollParentController(
   private val owner: ViewGroup,
@@ -42,8 +33,7 @@ class ReactNativeNestedScrollParentController(
   private var postCount = 0L
 
   private var preparedSource: ViewGroup? = null
-  private var activeTopBar: TopAppBarScrollConsumer? = null
-  private var activeToolbar: FloatingToolbarScrollConsumer? = null
+  private var activeParticipantSession: ReactNativeNestedScrollParticipantSession? = null
   private var activeSourceCapabilities: ReactVerticalScrollSourceCapabilities? = null
   private var nestedTransactionActive = false
 
@@ -83,7 +73,7 @@ class ReactNativeNestedScrollParentController(
   }
 
   /**
-   * Prepare geometry for a source already identified by the owning screen/host.
+   * Prepare native participant geometry for a source already identified by the owning screen/host.
    *
    * This does not grant transaction authority. Android's real nested-scroll `target` is still
    * resolved again when [onStartNestedScroll] begins the actual synchronous transaction.
@@ -91,33 +81,31 @@ class ReactNativeNestedScrollParentController(
   fun prepareNestedSource(source: ViewGroup): Boolean {
     preparedSource = source
     ensureNestedScrollingEnabled(source)
-    val topBar = NativeNestedScrollRegistry.resolveTopBar(source)
-    val toolbar = NativeNestedScrollRegistry.resolveToolbar(source)
-    val prepared = topBar?.prepareNestedSource(source) == true
+    val participantState = ReactNativeNestedScrollParticipants.prepare(source)
 
     log(
       "SOURCE_TREE ${targetLabel(source)} " +
         "canUp=${source.canScrollVertically(-1)} canDown=${source.canScrollVertically(1)} " +
-        "topBar=${topBar != null} toolbar=${toolbar != null} chromePrepared=$prepared",
+        "participants=$participantState",
     )
     return true
   }
 
-  /** Register a navigation-screen owner for chrome refreshes after it becomes a native ancestor. */
+  /** Register a screen/container owner for optional participant refreshes. */
   fun onOwnerAttached() {
-    NativeNestedScrollRegistry.registerScreenParent(this)
-    requestNestedChromeBindingRefresh()
+    ReactNativeNestedScrollParticipants.onOwnerAttached(this)
+    requestNestedParticipantBindingRefresh()
   }
 
   fun onOwnerDetached() {
-    NativeNestedScrollRegistry.unregisterScreenParent(this)
+    ReactNativeNestedScrollParticipants.onOwnerDetached(this)
     preparedSource = null
     flushPendingLedger("detach")
     clearActiveSession()
   }
 
-  /** Re-prepare the source already owned by a navigation screen when native chrome changes. */
-  internal fun requestNestedChromeBindingRefresh() {
+  /** Re-prepare the source already owned by a screen/container when native participants change. */
+  internal fun requestNestedParticipantBindingRefresh() {
     if (!owner.isAttachedToWindow) return
     val source = preparedSource ?: return
     if (!source.isAttachedToWindow) return
@@ -290,8 +278,8 @@ class ReactNativeNestedScrollParentController(
     }
 
     log(
-      "TX_PRE type=${typeLabel(type)} n=$preCount dy=$dy chrome=${dispatch.consumedY} " +
-        "collapse=${activeTopBar?.currentCollapseAmountPx()} sourceY=${target.scrollY}",
+      "TX_PRE type=${typeLabel(type)} n=$preCount dy=$dy participants=${dispatch.consumedY} " +
+        "sourceY=${target.scrollY}",
     )
   }
 
@@ -346,8 +334,7 @@ class ReactNativeNestedScrollParentController(
 
     log(
       "TX_POST type=${typeLabel(type)} n=$postCount child=$dyConsumed unconsumed=$dyUnconsumed " +
-        "chrome=${dispatch.consumedY} collapse=${activeTopBar?.currentCollapseAmountPx()} " +
-        "sourceY=${target.scrollY}",
+        "participants=${dispatch.consumedY} sourceY=${target.scrollY}",
     )
   }
 
@@ -370,30 +357,21 @@ class ReactNativeNestedScrollParentController(
     preCount = 0
     postCount = 0
 
-    val topBar = NativeNestedScrollRegistry.resolveTopBar(target)
-    val toolbar = NativeNestedScrollRegistry.resolveToolbar(target)
+    val participantSession = ReactNativeNestedScrollParticipants.bind(source)
     activeSourceCapabilities = capabilities
-    activeTopBar = topBar
-    activeToolbar = toolbar
-
-    val topBarReady = topBar?.beginNestedTransaction(source) == true
-    val toolbarReady = toolbar?.beginNestedTransaction(source) == true
-    val topBarAdapter =
-      if (topBarReady && topBar != null) Material3TopAppBarNestedScrollAdapter(topBar) else null
-    val toolbarAdapter =
-      if (toolbarReady && toolbar != null) Material3FloatingToolbarNestedScrollAdapter(toolbar) else null
+    activeParticipantSession = participantSession
     transactionDispatcher.bindParticipants(
-      preConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList(),
-      postConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList(),
-      postObservers = if (toolbarAdapter != null) listOf(toolbarAdapter) else emptyList(),
+      preConsumers = participantSession.preConsumers,
+      postConsumers = participantSession.postConsumers,
+      postObservers = participantSession.postObservers,
     )
     nestedTransactionActive = transactionDispatcher.hasParticipants
 
     log(
       "TX_BIND source=${source.id} sourceIdentity=${sourceIdentity(source)} " +
         "sourceClass=${source.javaClass.name} kind=${capabilities.kind} " +
-        "typed=${capabilities.supportsTypedNestedScrolling} topBar=$topBarReady " +
-        "toolbar=$toolbarReady active=$nestedTransactionActive " +
+        "typed=${capabilities.supportsTypedNestedScrolling} " +
+        "participants=${participantSession.debugLabel} active=$nestedTransactionActive " +
         "surfaceSource=${surfaceId(target)} surfaceHost=${surfaceId(owner)}",
     )
   }
@@ -407,8 +385,7 @@ class ReactNativeNestedScrollParentController(
         "active=$nestedTransactionActive",
     )
     transactionDispatcher.clearParticipants()
-    activeTopBar = null
-    activeToolbar = null
+    activeParticipantSession = null
     activeSourceCapabilities = null
     nestedTransactionActive = false
   }
@@ -435,8 +412,7 @@ class ReactNativeNestedScrollParentController(
     flushPendingLedger(reason)
     val source = activeSource ?: return
     if (nestedTransactionActive) {
-      activeTopBar?.endNestedTransaction(source, reason)
-      activeToolbar?.endNestedTransaction()
+      activeParticipantSession?.end(source, reason)
     }
     val ledger = transactionDispatcher.snapshot()
     log(
@@ -449,8 +425,7 @@ class ReactNativeNestedScrollParentController(
   private fun clearActiveSession() {
     transactionDispatcher.clearParticipants()
     sourceLifecycle.clear()
-    activeTopBar = null
-    activeToolbar = null
+    activeParticipantSession = null
     activeSourceCapabilities = null
     nestedTransactionActive = false
   }
@@ -468,12 +443,12 @@ class ReactNativeNestedScrollParentController(
     begin.orphanBeforePre?.let { orphan ->
       log(
         "TX_LEDGER orphanPre n=${orphan.index} reason=next-pre requested=${orphan.requestedY} " +
-          "chromePre=${orphan.chromePreY}",
+          "participantPre=${orphan.chromePreY}",
       )
     }
     log(
       "TX_LEDGER_PRE type=${typeLabel(type)} requested=${begin.pre.requestedY} " +
-        "chromePre=${begin.pre.chromePreY}",
+        "participantPre=${begin.pre.chromePreY}",
     )
   }
 
@@ -486,9 +461,9 @@ class ReactNativeNestedScrollParentController(
 
     log(
       "TX_LEDGER type=${typeLabel(type)} n=${frame.index} requested=${frame.requestedY} " +
-        "chromePre=${frame.chromePreY} child=${frame.childConsumedY} chromePost=${frame.chromePostY} " +
-        "remaining=${frame.remainingY} sum=${frame.sumY} balanced=${frame.balanced} " +
-        "broken=${frame.brokenFrames} orphanPre=${frame.orphanPres}",
+        "participantPre=${frame.chromePreY} child=${frame.childConsumedY} " +
+        "participantPost=${frame.chromePostY} remaining=${frame.remainingY} sum=${frame.sumY} " +
+        "balanced=${frame.balanced} broken=${frame.brokenFrames} orphanPre=${frame.orphanPres}",
     )
   }
 
@@ -501,7 +476,7 @@ class ReactNativeNestedScrollParentController(
     val orphan = transactionDispatcher.flushPending() ?: return
     log(
       "TX_LEDGER orphanPre n=${orphan.index} reason=$reason requested=${orphan.requestedY} " +
-        "chromePre=${orphan.chromePreY}",
+        "participantPre=${orphan.chromePreY}",
     )
   }
 
