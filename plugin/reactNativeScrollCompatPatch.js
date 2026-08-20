@@ -1,9 +1,16 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 const SOURCE_BUILD_MARKER = 'REACT_NATIVE_SCROLL_INTEROP_SOURCE_BUILD';
 const MANAGER_MARKER = 'REACT_NATIVE_SCROLL_INTEROP_NESTED_MANAGER';
 const RN086_FLING_MARKER = 'REACT_NATIVE_SCROLL_INTEROP_RN086_ANDROIDX_FLING';
 const RN087_FLING_MARKER = 'REACT_NATIVE_SCROLL_INTEROP_RN087_ANDROIDX_FLING';
+const RN_SOURCE_BUILD_PLACEHOLDER_ASSIGNMENTS = [
+  'project(":packages").projectDir = file("/tmp")',
+  'project(":packages:react-native").projectDir = file("/tmp")',
+];
 
 function count(contents, token) {
   return contents.split(token).length - 1;
@@ -17,6 +24,47 @@ function assertSupportedReactNativeVersion(version) {
     `[react-native-scroll-interop] reactNativeScrollCompat supports react-native 0.86.x and 0.87.x; found ${version}. ` +
       'Refusing to patch an unvalidated React Native source.'
   );
+}
+
+function ensureReactNativeSourceBuildPlaceholder(reactNativeRoot, platform = process.platform) {
+  if (platform !== 'win32') return false;
+  if (typeof reactNativeRoot !== 'string' || reactNativeRoot.length === 0) {
+    throw new TypeError('[react-native-scroll-interop] Expected a React Native package root.');
+  }
+
+  const settingsPath = path.join(reactNativeRoot, 'settings.gradle.kts');
+  if (!fs.existsSync(settingsPath)) {
+    throw new Error(
+      `[react-native-scroll-interop] Missing React Native source-build settings: ${settingsPath}. ` +
+        'Refusing to enable reactNativeScrollCompat on Windows.'
+    );
+  }
+
+  const settings = fs.readFileSync(settingsPath, 'utf8');
+  const assignmentsPresent = RN_SOURCE_BUILD_PLACEHOLDER_ASSIGNMENTS.filter((assignment) =>
+    settings.includes(assignment)
+  );
+
+  if (assignmentsPresent.length === 0) return false;
+  if (assignmentsPresent.length !== RN_SOURCE_BUILD_PLACEHOLDER_ASSIGNMENTS.length) {
+    throw new Error(
+      '[react-native-scroll-interop] React Native source-build settings contain a partial Gradle 9 placeholder shape. ' +
+        'Refusing to guess the missing project-directory mapping.'
+    );
+  }
+
+  // RN 0.86/0.87 maps the intermediate composite-build projects to file("/tmp").
+  // Gradle resolves that to <react-native package>/tmp on Windows, while the npm package does not
+  // ship the directory. Gradle 9 rejects the included build before ReactAndroid is configured unless
+  // the placeholder exists. Creating the empty directory preserves RN's own settings and ownership.
+  const placeholderPath = path.join(reactNativeRoot, 'tmp');
+  fs.mkdirSync(placeholderPath, { recursive: true });
+  if (!fs.statSync(placeholderPath).isDirectory()) {
+    throw new Error(
+      `[react-native-scroll-interop] React Native source-build placeholder is not a directory: ${placeholderPath}`
+    );
+  }
+  return true;
 }
 
 function ensureReactNativeSourceBuildSettings(contents) {
@@ -218,6 +266,7 @@ module.exports = {
   RN087_FLING_MARKER,
   SOURCE_BUILD_MARKER,
   assertSupportedReactNativeVersion,
+  ensureReactNativeSourceBuildPlaceholder,
   ensureReactNativeSourceBuildSettings,
   patchMainReactPackage,
   patchReactNestedScrollView086,
