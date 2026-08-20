@@ -110,6 +110,10 @@ try {
   mkdirSync(path.join(consumerRoot, 'android'), { recursive: true });
 
   writeFileSync(
+    path.join(reactNativeRoot, 'package.json'),
+    `${JSON.stringify({ name: 'react-native', version: '0.86.0' }, null, 2)}\n`
+  );
+  writeFileSync(
     path.join(reactNativeRoot, 'ReactAndroid', 'gradle.properties'),
     [
       'VERSION_NAME=0.86.0',
@@ -117,8 +121,14 @@ try {
       '',
     ].join('\n')
   );
+  const hermesVersionProperties = path.join(
+    reactNativeRoot,
+    'sdks',
+    'hermes-engine',
+    'version.properties'
+  );
   writeFileSync(
-    path.join(reactNativeRoot, 'sdks', 'hermes-engine', 'version.properties'),
+    hermesVersionProperties,
     ['HERMES_VERSION_NAME=0.17.0', 'HERMES_V1_VERSION_NAME=250829098.0.14', ''].join('\n')
   );
 
@@ -147,7 +157,22 @@ try {
   assert.equal(
     resolveReactNativePrebuiltHermesCoordinate(reactNativeRoot, consumerRoot),
     hermesV1Coordinate,
-    'scoped Hermes V1 opt-in must match React Native property precedence'
+    'scoped Hermes V1 opt-in must match React Native 0.86 property precedence'
+  );
+
+  writeFileSync(
+    path.join(reactNativeRoot, 'package.json'),
+    `${JSON.stringify({ name: 'react-native', version: '0.87.0-rc.3' }, null, 2)}\n`
+  );
+  writeFileSync(hermesVersionProperties, 'HERMES_VERSION_NAME=250900001.0.0\n');
+  writeFileSync(
+    consumerGradleProperties,
+    'hermesV1Enabled=false\nreact.hermesV1Enabled=false\n'
+  );
+  assert.equal(
+    resolveReactNativePrebuiltHermesCoordinate(reactNativeRoot, consumerRoot),
+    'com.facebook.hermes:hermes-android:250900001.0.0',
+    'RN 0.87 must use its unified HERMES_VERSION_NAME metadata and ignore removed Hermes V1 toggles'
   );
 
   const reactAndroidFixture = `dependencies {\n  compileOnly(project(":packages:react-native:ReactAndroid:hermes-engine"))\n}\n`;
