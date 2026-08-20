@@ -62,14 +62,16 @@ function collectSourceFiles(directory) {
 const sources = {
   index: read('index.ts'),
   router: read('router.tsx'),
+  reactNavigation: read('react-navigation.tsx'),
+  mapper: read('src/navigation/material3NavigationMapper.ts'),
   package: read('package.json'),
   rnConfig: read('react-native.config.js'),
   appJson: read('example/app.json'),
   topTypes: read('src/MaterialTopAppBar.types.ts'),
   toolbarTypes: read('src/MaterialToolbar.types.ts'),
   topAndroid: read('src/MaterialTopAppBar.android.tsx'),
-  topNative: read('src/ExpoMaterialTopAppBarNativeView.tsx'),
-  toolbarNative: read('src/ExpoMaterialToolbarNativeView.tsx'),
+  topNative: read('src/MaterialTopAppBarNativeView.tsx'),
+  toolbarNative: read('src/MaterialToolbarNativeView.tsx'),
   hostNative: read('src/NativeScrollHost.android.tsx'),
   topView: read('android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarView.kt'),
   packageView: read('android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScrollInteropPackage.kt'),
@@ -82,6 +84,7 @@ const sources = {
 
 for (const [needle, label] of [
   ['"expo-router": ">=57.0.0 <58.0.0"', 'Expo Router 57 peer'],
+  ['"@react-navigation/native-stack": ">=7.0.0 <8.0.0"', 'React Navigation native-stack 7 peer'],
   ['"react-native": ">=0.86.0 <0.87.0 || >=0.87.0-rc.3 <0.88.0"', 'RN 0.86/0.87 peer'],
   ['"react-native-screens": ">=4.26.0 <4.27.0"', 'react-native-screens 4.26 peer'],
 ]) {
@@ -119,13 +122,13 @@ for (const [needle, label] of [
   requireText('ExpoMaterialTopAppBarView.kt', sources.topView, needle, label);
 }
 
-requireText('src/ExpoMaterialTopAppBarNativeView.tsx', sources.topNative, 'requireNativeComponent');
-requireText('src/ExpoMaterialTopAppBarNativeView.tsx', sources.topNative, 'RNSIMaterialTopAppBar');
-requireText('src/ExpoMaterialToolbarNativeView.tsx', sources.toolbarNative, 'RNSIMaterialToolbar');
+requireText('src/MaterialTopAppBarNativeView.tsx', sources.topNative, 'requireNativeComponent');
+requireText('src/MaterialTopAppBarNativeView.tsx', sources.topNative, 'RNSIMaterialTopAppBar');
+requireText('src/MaterialToolbarNativeView.tsx', sources.toolbarNative, 'RNSIMaterialToolbar');
 requireText('src/NativeScrollHost.android.tsx', sources.hostNative, 'RNSINestedScrollHost');
 for (const forbidden of ['requireNativeViewManager', 'expo-modules-core']) {
-  forbidText('src/ExpoMaterialTopAppBarNativeView.tsx', sources.topNative, forbidden);
-  forbidText('src/ExpoMaterialToolbarNativeView.tsx', sources.toolbarNative, forbidden);
+  forbidText('src/MaterialTopAppBarNativeView.tsx', sources.topNative, forbidden);
+  forbidText('src/MaterialToolbarNativeView.tsx', sources.toolbarNative, forbidden);
   forbidText('src/NativeScrollHost.android.tsx', sources.hostNative, forbidden);
 }
 for (const manager of ['ReactNativeNestedScrollHostManager()', 'MaterialTopAppBarManager()', 'MaterialToolbarManager()']) {
@@ -133,22 +136,51 @@ for (const manager of ['ReactNativeNestedScrollHostManager()', 'MaterialTopAppBa
 }
 
 for (const [needle, label] of [
-  ['Stack as ExpoStack', 'Expo Router Stack delegation'],
-  ["Platform.OS !== 'android'", 'non-Android pass-through'],
-  ['Material3StackNavigationOptions', 'Material3 namespace'],
   ['SUPPORTED_HEADER_KEYS', 'explicit supported header surface'],
-  ['hasUnsupportedHeaderOptions', 'native-header fallback guard'],
+  ['hasUnsupportedMaterial3HeaderOptions', 'native-header fallback guard'],
   ['options.unstable_nativeProps !== undefined', 'unstable native props fallback'],
   ['headerLargeTitleEnabled === true || options.headerLargeTitle === true', 'large-title mapping'],
   ["variant === 'large' ? 'exitUntilCollapsed' : 'none'", 'large-title behavior mapping'],
-  ["navigationIcon={canGoBack ? 'back' : 'none'}", 'automatic back affordance'],
+  ['material3?.topAppBar === false', 'native-header opt-out'],
+  ['resolveMaterial3HeaderDecision', 'shared navigation decision'],
+]) {
+  requireText('src/navigation/material3NavigationMapper.ts', sources.mapper, needle, label);
+}
+for (const forbidden of ['expo-router', '@react-navigation', 'NativeScrollHost', 'onScroll', 'scrollBy(', 'scrollTo(']) {
+  forbidText('src/navigation/material3NavigationMapper.ts', sources.mapper, forbidden, `adapter-specific/transport dependency ${forbidden}`);
+}
+
+for (const [needle, label] of [
+  ['Stack as ExpoStack', 'Expo Router Stack delegation'],
+  ['resolveMaterial3HeaderDecision', 'shared mapper consumption'],
+  ['MaterialTopAppBar', 'Material3 header rendering'],
   ['headerProps.navigation.goBack()', 'navigation-owned Back action'],
-  ['material3.topAppBar === false', 'native-header opt-out'],
   ['Object.assign(MaterialStack, ExpoStack)', 'Expo Stack statics preservation'],
 ]) {
   requireText('router.tsx', sources.router, needle, label);
 }
+forbidText('router.tsx', sources.router, 'SUPPORTED_HEADER_KEYS', 'duplicated header mapping table');
 forbidText('router.tsx', sources.router, 'export default', 'second Stack export path');
+
+for (const [needle, label] of [
+  ["from '@react-navigation/native-stack'", 'React Navigation native-stack type boundary'],
+  ['resolveMaterial3HeaderDecision', 'shared mapper consumption'],
+  ['material3NativeStackNavigatorOptions', 'navigator-level adapter'],
+  ['material3NativeStackScreenOptions', 'screen-level adapter'],
+  ['withMaterial3NativeStackOptions', 'factory adapter'],
+  ['headerProps.navigation.goBack()', 'navigation-owned Back action'],
+]) {
+  requireText('react-navigation.tsx', sources.reactNavigation, needle, label);
+}
+forbidText('react-navigation.tsx', sources.reactNavigation, 'SUPPORTED_HEADER_KEYS', 'duplicated header mapping table');
+for (const [filePath, content] of [
+  ['router.tsx', sources.router],
+  ['react-navigation.tsx', sources.reactNavigation],
+]) {
+  for (const forbidden of ['NativeScrollHost', 'onScroll=', 'scrollBy(', 'scrollTo(', 'ReactNativeNestedScrollParentController']) {
+    forbidText(filePath, content, forbidden, `scroll transport logic ${forbidden}`);
+  }
+}
 
 for (const [needle, label] of [
   ['"reactNativeScrollCompat": true', 'RN 0.86/0.87 compatibility option'],
@@ -196,7 +228,11 @@ for (const absolutePath of collectSourceFiles(path.join(root, 'example', 'app'))
   }
 }
 
-for (const typeName of [...exportedTypeNames(sources.index), ...exportedTypeNames(sources.router)]) {
+for (const typeName of [
+  ...exportedTypeNames(sources.index),
+  ...exportedTypeNames(sources.router),
+  ...exportedTypeNames(sources.reactNavigation),
+]) {
   requireText('README.md', sources.readme, typeName, `public type ${typeName}`);
 }
 for (const memberName of new Set([
@@ -205,7 +241,15 @@ for (const memberName of new Set([
 ])) {
   requireText('README.md', sources.readme, memberName, `public component prop/member ${memberName}`);
 }
-for (const valueName of ['MaterialTopAppBar', 'MaterialToolbar', 'NativeScrollHost', 'Stack']) {
+for (const valueName of [
+  'MaterialTopAppBar',
+  'MaterialToolbar',
+  'NativeScrollHost',
+  'Stack',
+  'material3NativeStackNavigatorOptions',
+  'material3NativeStackScreenOptions',
+  'withMaterial3NativeStackOptions',
+]) {
   requireText('README.md', sources.readme, valueName, `public value ${valueName}`);
 }
 for (const needle of [
@@ -213,6 +257,8 @@ for (const needle of [
   'reactNativeScrollCompat',
   'React Native 0.86.x',
   'React Native 0.87.x',
+  'React Navigation',
+  'shared Material3/navigation mapper',
 ]) {
   requireText('README.md', sources.readme, needle);
 }
@@ -227,8 +273,8 @@ if (violations.length) {
 
 console.log('Navigation integration invariant: PASS');
 console.log('  standard React Native native-view bridge (no Expo Modules runtime)');
-console.log('  one canonical named Stack export');
-console.log('  Android navigation semantics map to MaterialTopAppBar without owning navigation state');
-console.log('  unsupported header behavior falls back to the platform-native header');
+console.log('  one shared Material3/navigation mapper owns header semantics');
+console.log('  Expo Router and React Navigation adapters contain no scroll transport logic');
+console.log('  unsupported header behavior falls back to the navigation library native header');
 console.log('  mirrored JS/native TopAppBar geometry is guarded');
 console.log('  navigation pages are plain RN ScrollView content');
