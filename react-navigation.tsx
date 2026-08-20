@@ -14,7 +14,7 @@ import {
  * Structural native-stack header props used by the adapter.
  *
  * The shape matches the React Navigation native-stack fields consumed here without creating a
- * runtime or peer dependency on @react-navigation/native-stack.
+ * runtime or peer dependency on React Navigation packages.
  */
 export type Material3ReactNavigationHeaderProps = {
   options: Material3ReactNavigationOptions;
