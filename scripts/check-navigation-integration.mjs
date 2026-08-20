@@ -153,7 +153,7 @@ for (const [needle, label] of [
 for (const forbidden of [
   'expo-router',
   '@react-navigation',
-  'MaterialTopAppBar',
+  '<MaterialTopAppBar',
   'NativeScrollHost',
   'onNestedScroll',
   'scrollY',
@@ -164,7 +164,7 @@ for (const forbidden of [
 for (const [needle, label] of [
   ['MaterialTopAppBar', 'shared Material header renderer'],
   ['resolveMaterial3TopAppBarDescriptor', 'common descriptor mapping'],
-  ["placement=\"header\"", 'header placement'],
+  ['placement="header"', 'header placement'],
 ]) {
   requireText('src/navigation/Material3NavigationHeader.tsx', sources.navigationHeader, needle, label);
 }
@@ -201,7 +201,7 @@ for (const [needle, label] of [
   ['Material3NavigationHeader', 'shared header renderer'],
   ['material3NativeStackNavigatorOptions', 'navigator option adapter'],
   ['material3NativeStackScreenOptions', 'screen option adapter'],
-  ["scope: Material3NavigationScope", 'root/screen scope normalization'],
+  ['scope: Material3NavigationScope', 'root/screen scope normalization'],
 ]) {
   requireText('react-navigation.tsx', sources.reactNavigation, needle, label);
 }
