@@ -13,10 +13,11 @@ import {
   type NativeStackHeaderProps,
 } from 'expo-router';
 
-import { MaterialTopAppBar } from './src/MaterialTopAppBar';
+import { Material3NavigationHeader } from './src/navigation/Material3NavigationHeader';
 import {
-  resolveMaterial3HeaderDecision,
-  type Material3NavigationOptions,
+  resolveMaterial3Navigation,
+  type Material3NavigationOptionBag,
+  type Material3NavigationScope,
   type Material3StackNavigationOptions,
   type Material3TopAppBarNavigationOptions,
 } from './src/navigation/material3NavigationMapper';
@@ -58,99 +59,47 @@ export type MaterialStackProps = Omit<ExpoStackProps, 'screenOptions' | 'childre
 
 type RuntimeNavigationOptions = MaterialStackNavigationOptions;
 
-function nativeHeaderFallback(
-  navigationOptions: Material3NavigationOptions
-): ExpoStackScreenOptionsObject {
-  return {
-    ...(navigationOptions as ExpoStackScreenOptionsObject),
-    // Cancel a Material header inherited from root screenOptions.
-    header: undefined,
-    headerTransparent:
-      typeof navigationOptions.headerTransparent === 'boolean'
-        ? navigationOptions.headerTransparent
-        : false,
-  };
-}
-
 function createMaterial3Header(
-  options: RuntimeNavigationOptions,
-  scope: 'root' | 'screen'
+  config: Material3TopAppBarNavigationOptions | undefined
 ): NonNullable<ExpoStackScreenOptionsObject['header']> {
-  return (headerProps: NativeStackHeaderProps) => {
-    const decision = resolveMaterial3HeaderDecision({
-      options: options as Material3NavigationOptions,
-      routeName: headerProps.route.name,
-      canGoBack: headerProps.back != null,
-      platform: Platform.OS,
-      scope,
-    });
-
-    if (decision.kind !== 'material3') return null;
-
-    const topAppBar = decision.topAppBar;
-    const canGoBack = topAppBar.navigationIcon === 'back';
-
-    return (
-      <MaterialTopAppBar
-        placement="header"
-        title={topAppBar.title}
-        variant={topAppBar.variant}
-        scrollBehavior={topAppBar.scrollBehavior}
-        navigationIcon={topAppBar.navigationIcon}
-        navigationAccessibilityLabel={topAppBar.navigationAccessibilityLabel}
-        onNavigationPress={canGoBack ? () => headerProps.navigation.goBack() : undefined}
-        themeMode={topAppBar.themeMode}
-        dynamicColor={topAppBar.dynamicColor}
-      />
-    );
-  };
+  return (headerProps: NativeStackHeaderProps) => (
+    <Material3NavigationHeader
+      routeName={headerProps.route.name}
+      options={headerProps.options as Material3NavigationOptionBag}
+      canGoBack={headerProps.back != null}
+      goBack={() => headerProps.navigation.goBack()}
+      config={config}
+    />
+  );
 }
 
-function mapMaterial3Options(
+function applyMaterial3Navigation(
   options: RuntimeNavigationOptions,
-  scope: 'root' | 'screen'
+  scope: Material3NavigationScope
 ): RuntimeNavigationOptions {
-  const decision = resolveMaterial3HeaderDecision({
-    options: options as Material3NavigationOptions,
-    routeName: '',
-    canGoBack: false,
+  const decision = resolveMaterial3Navigation(options as Material3NavigationOptionBag, {
     platform: Platform.OS,
     scope,
   });
 
-  if (decision.kind === 'native') {
-    return nativeHeaderFallback(decision.navigationOptions) as RuntimeNavigationOptions;
-  }
-
-  if (decision.kind === 'passthrough') {
+  if (decision.kind !== 'material3') {
     return decision.navigationOptions as RuntimeNavigationOptions;
   }
 
   return {
-    ...(decision.navigationOptions as RuntimeNavigationOptions),
-    headerTransparent: true,
-    header: createMaterial3Header(options, scope),
-  };
+    ...decision.navigationOptions,
+    header: createMaterial3Header(decision.topAppBar),
+  } as RuntimeNavigationOptions;
 }
 
-function applyRootMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
-  return mapMaterial3Options(options, 'root');
-}
-
-function applyScreenMaterial3(options: RuntimeNavigationOptions): RuntimeNavigationOptions {
-  return mapMaterial3Options(options, 'screen');
-}
-
-function transformOptions<T>(
-  options: T | undefined,
-  transform: (value: RuntimeNavigationOptions) => RuntimeNavigationOptions
-): T {
+function transformOptions<T>(options: T | undefined, scope: Material3NavigationScope): T {
   if (typeof options === 'function') {
     const factory = options as (...args: unknown[]) => RuntimeNavigationOptions;
-    return ((...args: unknown[]) => transform(factory(...args) ?? {})) as T;
+    return ((...args: unknown[]) =>
+      applyMaterial3Navigation(factory(...args) ?? {}, scope)) as T;
   }
 
-  return transform((options ?? {}) as RuntimeNavigationOptions) as T;
+  return applyMaterial3Navigation((options ?? {}) as RuntimeNavigationOptions, scope) as T;
 }
 
 function transformScreenChild(child: ReactNode): ReactNode {
@@ -161,7 +110,7 @@ function transformScreenChild(child: ReactNode): ReactNode {
     if (screen.props.options === undefined) return child;
 
     return cloneElement(screen, {
-      options: transformOptions(screen.props.options, applyScreenMaterial3),
+      options: transformOptions(screen.props.options, 'screen'),
     });
   }
 
@@ -180,7 +129,7 @@ function MaterialStack({ children, screenOptions, ...props }: MaterialStackProps
     () =>
       screenOptions === undefined && Platform.OS !== 'android'
         ? undefined
-        : (transformOptions(screenOptions, applyRootMaterial3) as ExpoStackProps['screenOptions']),
+        : (transformOptions(screenOptions, 'root') as ExpoStackProps['screenOptions']),
     [screenOptions]
   );
 
@@ -190,10 +139,7 @@ function MaterialStack({ children, screenOptions, ...props }: MaterialStackProps
   );
 
   return (
-    <ExpoStack
-      {...(props as ExpoStackProps)}
-      screenOptions={resolvedScreenOptions}
-    >
+    <ExpoStack {...(props as ExpoStackProps)} screenOptions={resolvedScreenOptions}>
       {resolvedChildren}
     </ExpoStack>
   );
@@ -204,5 +150,5 @@ type MaterialStackComponent = typeof ExpoStack & {
   Screen: typeof ExpoStack.Screen & ((props: MaterialStackScreenProps) => ReactNode);
 };
 
-/** Expo Router adapter over the shared Material3/navigation mapper. */
+/** Thin Expo Router adapter over the navigator-neutral Material3 mapping layer. */
 export const Stack = Object.assign(MaterialStack, ExpoStack) as MaterialStackComponent;
