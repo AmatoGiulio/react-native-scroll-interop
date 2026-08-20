@@ -15,6 +15,19 @@ function forbidText(filePath, content, needle, label = needle) {
   if (content.includes(needle)) violations.push(`${filePath}: contains forbidden ${label}`);
 }
 
+function forbidComponentUse(filePath, content, identifier) {
+  const importStatements = content.match(/import[\s\S]*?from\s+['"][^'"]+['"];?/g) ?? [];
+  const identifierPattern = new RegExp(`\\b${identifier}\\b`);
+  if (importStatements.some((statement) => identifierPattern.test(statement))) {
+    violations.push(`${filePath}: contains forbidden ${identifier} import`);
+  }
+
+  const jsxPattern = new RegExp(`<\\s*${identifier}(?:\\.|\\s|/?>)`);
+  if (jsxPattern.test(content)) {
+    violations.push(`${filePath}: contains forbidden ${identifier} JSX`);
+  }
+}
+
 function exportedTypeNames(source) {
   const names = new Set();
   for (const match of source.matchAll(/export type\s*\{([\s\S]*?)\}\s*from/g)) {
@@ -171,7 +184,7 @@ for (const [filePath, content] of [
 ]) {
   requireText(filePath, content, '<ScrollView');
   for (const forbidden of ['NativeScrollHost', 'MaterialTopAppBar', 'MaterialToolbar']) {
-    forbidText(filePath, content, forbidden);
+    forbidComponentUse(filePath, content, forbidden);
   }
 }
 
