@@ -34,14 +34,23 @@ const patchedSettings = ensureReactNativeSourceBuildSettings(settingsFixture);
 assert.match(patchedSettings, new RegExp(SOURCE_BUILD_MARKER));
 assert.match(patchedSettings, /includeBuild\(expoAutolinking\.reactNative\)/);
 assert.match(patchedSettings, /com\.facebook\.react:react-android/);
-assert.match(patchedSettings, /com\.facebook\.react:hermes-android/);
+assert.match(patchedSettings, /com\.facebook\.react:react-native/);
+assert.doesNotMatch(patchedSettings, /com\.facebook\.react:hermes-android/);
+assert.doesNotMatch(patchedSettings, /com\.facebook\.react:hermes-engine/);
 assert.equal(ensureReactNativeSourceBuildSettings(patchedSettings), patchedSettings);
 
-const externalSourceBuildFixture = `${settingsFixture}\nincludeBuild(expoAutolinking.reactNative) {\n  dependencySubstitution {\n    substitute(module("com.facebook.react:react-android")).using(project(":packages:react-native:ReactAndroid"))\n    substitute(module("com.facebook.react:hermes-android")).using(project(":packages:react-native:ReactAndroid:hermes-engine"))\n  }\n}\n`;
+const externalSourceBuildFixture = `${settingsFixture}\nincludeBuild(expoAutolinking.reactNative) {\n  dependencySubstitution {\n    substitute(module("com.facebook.react:react-android")).using(project(":packages:react-native:ReactAndroid"))\n    substitute(module("com.facebook.react:react-native")).using(project(":packages:react-native:ReactAndroid"))\n  }\n}\n`;
 assert.equal(
   ensureReactNativeSourceBuildSettings(externalSourceBuildFixture),
   externalSourceBuildFixture,
-  'must compose with an existing complete React Native source-build configuration'
+  'must compose with an existing complete ReactAndroid-only source-build configuration'
+);
+assert.throws(
+  () =>
+    ensureReactNativeSourceBuildSettings(
+      `${externalSourceBuildFixture}\nsubstitute(module("com.facebook.react:hermes-android")).using(project(":packages:react-native:ReactAndroid:hermes-engine"))\n`
+    ),
+  /Hermes must remain on the prebuilt Android artifact/
 );
 assert.throws(
   () => ensureReactNativeSourceBuildSettings(`${settingsFixture}\nincludeBuild(expoAutolinking.reactNative) {}\n`),
@@ -132,7 +141,8 @@ assert.throws(
 );
 
 console.log('React Native 0.86/0.87 AndroidX compatibility plugin invariant: PASS');
-console.log('  source-build configuration is idempotent and fail-closed');
+console.log('  ReactAndroid source-build configuration is idempotent and fail-closed');
+console.log('  Hermes remains on the prebuilt Android artifact path');
 console.log('  Windows Gradle 9 source-build placeholder is created only for the validated RN shape');
 console.log('  nested ScrollView manager selection is deterministic');
 console.log('  RN 0.86 Java fling shape is guarded');
