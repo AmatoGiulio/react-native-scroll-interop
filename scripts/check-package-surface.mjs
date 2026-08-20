@@ -37,6 +37,7 @@ expect(pkg.peerDependencies?.['react-native'] === '>=0.86.0 <0.87.0 || >=0.87.0-
 expect(gradle.includes("namespace 'com.reactnativescroll.interop'"), 'Android namespace must be neutral');
 expect(!gradle.includes('expo-module-gradle-plugin'), 'Expo Modules Gradle plugin must stay removed');
 expect(rnConfig.includes('ReactNativeScrollInteropPackage'), 'standard RN autolinking package missing');
+expect(!pkg.files?.includes('navigation.ts'), 'shared navigation mapper must not add a third public entry point');
 
 for (const obsolete of [
   'expo-module.config.json',
@@ -101,6 +102,7 @@ for (const required of [
 ]) {
   expect(files.has(required), `missing package file: ${required}`);
 }
+expect(!files.has('navigation.ts'), 'unexpected public /navigation entry point leaked into tarball');
 
 for (const file of files) {
   if (file.startsWith('android/src/main/java/expo/')) violations.push(`legacy Expo implementation leaked: ${file}`);
@@ -124,6 +126,6 @@ if (violations.length) {
 console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
 console.log('  architecture: neutral core + generic RN boundary + Material3 reference provider');
-console.log('  navigation: shared mapper/header + optional Expo Router / React Navigation adapters');
+console.log('  navigation: internal shared mapper/header + optional Expo Router / React Navigation adapters');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
