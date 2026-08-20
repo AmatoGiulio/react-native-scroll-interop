@@ -56,8 +56,9 @@ expect(
   'Expo Router must remain optional for root-only consumers',
 );
 expect(
-  packageJson.peerDependencies?.['react-native'] === '>=0.86.0 <0.88.0',
-  'React Native peer range must cover the 0.86.x and 0.87.x lines only',
+  packageJson.peerDependencies?.['react-native'] ===
+    '>=0.86.0 <0.87.0 || >=0.87.0-rc.3 <0.88.0',
+  'React Native peer range must cover 0.86.x plus the certified 0.87 RC/stable line',
 );
 expect(
   packageJson.peerDependencies?.['react-native-screens'] === '>=4.26.0 <4.27.0',
@@ -223,7 +224,7 @@ if (violations.length > 0) {
 console.log('Package surface invariant: PASS');
 console.log(`  package: ${expectedName}@${expectedVersion}`);
 console.log('  native runtime: standard React Native package (no Expo Modules dependency)');
-console.log('  React Native peer: 0.86.x / 0.87.x');
+console.log('  React Native peer: 0.86.x / certified 0.87 RC+stable');
 console.log('  Expo Router adapter: 57.x');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
