@@ -23,23 +23,17 @@ type MaterialTopAppBarNativeProps = MaterialTopAppBarProps & {
 };
 
 export function MaterialTopAppBar(props: MaterialTopAppBarProps) {
-  if ((props.placement ?? 'overlay') === 'header') {
-    return <MaterialTopAppBarHeader {...props} />;
-  }
-
-  return <MaterialTopAppBarNative {...props} layoutStyle={styles.topOverlay} />;
-}
-
-function MaterialTopAppBarHeader(props: MaterialTopAppBarProps) {
   const insets = useSafeAreaInsets();
   const variant = props.variant ?? 'medium';
+  const placement = props.placement ?? 'overlay';
+  const height = insets.top + TOP_APP_BAR_HEIGHT[variant];
 
   return (
     <MaterialTopAppBarNative
       {...props}
       layoutStyle={[
-        styles.header,
-        { height: insets.top + TOP_APP_BAR_HEIGHT[variant] },
+        placement === 'header' ? styles.header : styles.topOverlay,
+        { height },
       ]}
     />
   );
