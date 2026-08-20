@@ -1,6 +1,6 @@
 package expo.modules.materialtoolbar
 
-internal data class ToolbarActionRecord(
+data class ToolbarActionRecord(
   val id: String = "",
   val presentation: String = "icon",
   val label: String = "",
