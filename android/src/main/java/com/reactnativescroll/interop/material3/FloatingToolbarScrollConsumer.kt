@@ -13,8 +13,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.Velocity
 import androidx.core.graphics.Insets
-import expo.modules.materialtoolbar.BuildConfig
-import expo.modules.materialtoolbar.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.reactnative.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.reactnative.NativeScrollTracing
 import java.util.WeakHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -81,7 +81,7 @@ internal open class FloatingToolbarScrollConsumer(
     if (restoreBehaviorStateOnNextBind) {
       lastKnownBehaviorState?.let { retained ->
         restoreRetainedBehaviorState(newBehavior, retained)
-        if (BuildConfig.DEBUG) Log.d(
+        if (NativeScrollTracing.enabled) Log.d(
           NATIVE_SCROLL_LOG_TAG,
           "FLOAT_STATE_RESTORE offset=${retained.offset} limit=${retained.offsetLimit} content=${retained.contentOffset}",
         )
@@ -122,7 +122,7 @@ internal open class FloatingToolbarScrollConsumer(
   fun onHostDetached() {
     rememberBehaviorState(behavior)
     restoreBehaviorStateOnNextBind = lastKnownBehaviorState != null
-    if (BuildConfig.DEBUG) {
+    if (NativeScrollTracing.enabled) {
       val retained = lastKnownBehaviorState
       Log.d(
         NATIVE_SCROLL_LOG_TAG,
@@ -172,7 +172,7 @@ internal open class FloatingToolbarScrollConsumer(
     val current = behavior
     if (current == null || scope == null) {
       preparedSource = source
-      if (BuildConfig.DEBUG) Log.d(
+      if (NativeScrollTracing.enabled) Log.d(
         NATIVE_SCROLL_LOG_TAG,
         "FLOAT_SOURCE_SWITCH previous=${sourceIdentity(previous)} next=${sourceIdentity(source)} bound=false",
       )
@@ -197,7 +197,7 @@ internal open class FloatingToolbarScrollConsumer(
     applyOffset(current.state.offset)
     scheduleGeometryResync()
 
-    if (BuildConfig.DEBUG) Log.d(
+    if (NativeScrollTracing.enabled) Log.d(
       NATIVE_SCROLL_LOG_TAG,
       "FLOAT_SOURCE_SWITCH previous=${sourceIdentity(previous)} next=${sourceIdentity(source)} " +
         "restored=${retained != null} offset=${current.state.offset} limit=${current.state.offsetLimit} " +
@@ -228,7 +228,7 @@ internal open class FloatingToolbarScrollConsumer(
 
   fun beginNestedTransaction(source: ViewGroup): Boolean {
     if (!isBound || preparedSource !== source) {
-      if (BuildConfig.DEBUG) Log.d(
+      if (NativeScrollTracing.enabled) Log.d(
         NATIVE_SCROLL_LOG_TAG,
         "FLOAT_TX_BEGIN rejected=inactive-source source=${sourceIdentity(source)} " +
           "prepared=${sourceIdentity(preparedSource)} bound=$isBound",
@@ -241,7 +241,7 @@ internal open class FloatingToolbarScrollConsumer(
     syncGeometry()
     val current = behavior?.state?.offset ?: 0f
     applyOffset(current)
-    if (BuildConfig.DEBUG) Log.d(
+    if (NativeScrollTracing.enabled) Log.d(
       NATIVE_SCROLL_LOG_TAG,
       "FLOAT_TX_BEGIN view=${source.id} scrollY=${source.scrollY} compose=${composeView.measuredWidth}x${composeView.measuredHeight} offset=$current limit=${behavior?.state?.offsetLimit}",
     )
@@ -263,7 +263,7 @@ internal open class FloatingToolbarScrollConsumer(
     )
     rememberBehaviorState(current)
     applyOffset(current.state.offset)
-    if (BuildConfig.DEBUG && ++debugFrameCounter % 8 == 1) Log.d(
+    if (NativeScrollTracing.enabled && ++debugFrameCounter % 8 == 1) Log.d(
       NATIVE_SCROLL_LOG_TAG,
       "material dy=$childConsumedY type=$inputType offset=${current.state.offset} limit=${current.state.offsetLimit} tx=${composeView.translationX} ty=${composeView.translationY}",
     )
@@ -274,7 +274,7 @@ internal open class FloatingToolbarScrollConsumer(
     val currentScope = scope ?: return
     cancelSettle()
     val generation = settleGeneration
-    if (BuildConfig.DEBUG) Log.d(
+    if (NativeScrollTracing.enabled) Log.d(
       NATIVE_SCROLL_LOG_TAG,
       "FLOAT_SETTLE_START gen=$generation lastDy=$lastInputDeltaY offset=${current.state.offset} limit=${current.state.offsetLimit}",
     )
@@ -286,7 +286,7 @@ internal open class FloatingToolbarScrollConsumer(
         rememberBehaviorState(current)
         applyOffset(current.state.offset)
       } finally {
-        if (BuildConfig.DEBUG) Log.d(
+        if (NativeScrollTracing.enabled) Log.d(
           NATIVE_SCROLL_LOG_TAG,
           "FLOAT_SETTLE_END gen=$generation completed=$completed currentGen=$settleGeneration offset=${current.state.offset} limit=${current.state.offsetLimit}",
         )
@@ -334,7 +334,7 @@ internal open class FloatingToolbarScrollConsumer(
     current.state.offsetLimit = -distance
     current.state.offset = if (wasFullyCollapsed) current.state.offsetLimit else previousOffset
     rememberBehaviorState(current)
-    if (BuildConfig.DEBUG) Log.d(
+    if (NativeScrollTracing.enabled) Log.d(
       NATIVE_SCROLL_LOG_TAG,
       "geometry dir=${current.exitDirection} host=${hostView.width}x${hostView.height} visible=$left,$top-$right,$bottom compose=${composeView.width}x${composeView.height} pos=${composeView.left},${composeView.top}-${composeView.right},${composeView.bottom} limit=${current.state.offsetLimit}",
     )
