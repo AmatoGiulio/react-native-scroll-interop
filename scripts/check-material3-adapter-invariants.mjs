@@ -9,6 +9,7 @@ const files = {
   transaction: 'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollTransaction.kt',
   topBar: 'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt',
   toolbar: 'android/src/main/java/com/reactnativescroll/interop/material3/FloatingToolbarScrollConsumer.kt',
+  provider: 'android/src/main/java/com/reactnativescroll/interop/material3/ui/Material3NestedScrollParticipantProvider.kt',
   registry: 'android/src/main/java/com/reactnativescroll/interop/material3/ui/NativeNestedScrollRegistry.kt',
   bindings: 'android/src/main/java/com/reactnativescroll/interop/material3/ui/Material3ConsumerBindings.kt',
   placement: 'android/src/main/java/com/reactnativescroll/interop/material3/ui/NativeFloatingToolbarPlacement.kt',
@@ -101,13 +102,26 @@ if (prepareStart < 0 || prepareEnd < 0) {
 }
 
 for (const marker of [
-  'frontmostScreenParentFor(departingOwner)?.requestNestedChromeBindingRefresh()',
+  'ReactNativeNestedScrollParticipantProvider',
+  'ReactNativeNestedScrollParticipantSession',
+  'Material3TopAppBarNestedScrollAdapter',
+  'Material3FloatingToolbarNestedScrollAdapter',
+  'NativeNestedScrollRegistry.resolveTopBar(source)',
+  'NativeNestedScrollRegistry.resolveToolbar(source)',
+  'preConsumers = if (topBarAdapter != null)',
+  'postObservers = if (toolbarAdapter != null)',
+]) requireText(files.provider, source.provider, marker);
+forbid(files.provider, source.provider, /expo\.modules\./, 'Expo provider dependency');
+
+for (const marker of [
+  'frontmostScreenParentFor(departingOwner)?.requestNestedParticipantBindingRefresh()',
   'if (!isFrontmostScreenSource(source)) return null',
   'consumer.prepareNestedSource(sourceGroup)',
   'private fun sameScreenStackScope(first: View, second: View): Boolean',
   'MaterialTopAppBarView',
   'MaterialToolbarView',
 ]) requireText(files.registry, source.registry, marker);
+forbid(files.registry, source.registry, /requestNestedChromeBindingRefresh/, 'legacy chrome-specific refresh naming');
 forbid(files.registry, source.registry, /expo\.modules\./, 'Expo registry dependency');
 
 for (const marker of [
@@ -144,8 +158,8 @@ if (violations.length) {
 }
 
 console.log('Material3 adapter invariant: PASS');
-console.log('  behavior consumers live in the Material3 layer above the neutral core');
+console.log('  behavior consumers live above the neutral core');
+console.log('  Material3 participant provider is the RN-boundary composition adapter');
 console.log('  native Material views/managers/registry live in material3.ui');
-console.log('  Material consumers contain no Expo Modules dependency');
 console.log('  FloatingToolbar remains observation-only and source-scoped');
-console.log('  legacy android/src/main/java/expo implementation tree is removed');
+console.log('  legacy Expo implementation tree and chrome-specific RN naming are removed');
