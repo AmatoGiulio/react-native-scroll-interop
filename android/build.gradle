@@ -21,6 +21,8 @@ apply plugin: 'org.jetbrains.kotlin.plugin.compose'
 group = 'com.reactnativescroll.interop'
 version = '0.1.0-alpha.1'
 
+def reactNativeScreensProject = rootProject.findProject(':react-native-screens')
+
 android {
   namespace 'com.reactnativescroll.interop'
   compileSdkVersion rootProject.ext.has('compileSdkVersion')
@@ -53,10 +55,18 @@ android {
   lintOptions {
     abortOnError false
   }
+
+  if (reactNativeScreensProject != null) {
+    sourceSets.main.java.srcDir('src/reactNativeScreensInterop/java')
+  }
 }
 
 dependencies {
   implementation("com.facebook.react:react-android")
+
+  if (reactNativeScreensProject != null) {
+    compileOnly reactNativeScreensProject
+  }
 
   implementation 'androidx.compose.material3:material3:1.5.0-alpha17'
   implementation 'io.coil-kt.coil3:coil-compose:3.3.0'
