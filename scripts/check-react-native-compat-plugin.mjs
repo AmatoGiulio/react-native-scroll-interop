@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import path from 'node:path';
 const require = createRequire(import.meta.url);
 const {
   MANAGER_MARKER,
+  PREBUILT_HERMES_COMPILE_ONLY_MARKER,
   RN086_FLING_MARKER,
   RN087_FLING_MARKER,
   SOURCE_BUILD_MARKER,
@@ -16,8 +17,10 @@ const {
   ensureReactNativeSourceBuildPlaceholder,
   ensureReactNativeSourceBuildSettings,
   patchMainReactPackage,
+  patchReactAndroidHermesCompileOnly,
   patchReactNestedScrollView086,
   patchReactNestedScrollView087,
+  resolveReactNativePrebuiltHermesCoordinate,
 } = require('../plugin/reactNativeScrollCompatPatch.js');
 
 const count = (contents, token) => contents.split(token).length - 1;
@@ -98,6 +101,86 @@ try {
   rmSync(sourceBuildRoot, { recursive: true, force: true });
 }
 
+const hermesMetadataRoot = mkdtempSync(path.join(tmpdir(), 'rnsi-hermes-metadata-'));
+try {
+  const reactNativeRoot = path.join(hermesMetadataRoot, 'react-native');
+  const consumerRoot = path.join(hermesMetadataRoot, 'consumer');
+  mkdirSync(path.join(reactNativeRoot, 'ReactAndroid'), { recursive: true });
+  mkdirSync(path.join(reactNativeRoot, 'sdks', 'hermes-engine'), { recursive: true });
+  mkdirSync(path.join(consumerRoot, 'android'), { recursive: true });
+
+  writeFileSync(
+    path.join(reactNativeRoot, 'ReactAndroid', 'gradle.properties'),
+    [
+      'VERSION_NAME=0.86.0',
+      'react.internal.hermesPublishingGroup=com.facebook.hermes',
+      '',
+    ].join('\n')
+  );
+  writeFileSync(
+    path.join(reactNativeRoot, 'sdks', 'hermes-engine', 'version.properties'),
+    ['HERMES_VERSION_NAME=0.17.0', 'HERMES_V1_VERSION_NAME=250829098.0.14', ''].join('\n')
+  );
+
+  const consumerGradleProperties = path.join(consumerRoot, 'android', 'gradle.properties');
+  writeFileSync(consumerGradleProperties, '');
+  const hermesV1Coordinate = resolveReactNativePrebuiltHermesCoordinate(
+    reactNativeRoot,
+    consumerRoot
+  );
+  assert.equal(
+    hermesV1Coordinate,
+    'com.facebook.hermes:hermes-android:250829098.0.14'
+  );
+
+  writeFileSync(consumerGradleProperties, 'hermesV1Enabled=false\n');
+  const classicHermesCoordinate = resolveReactNativePrebuiltHermesCoordinate(
+    reactNativeRoot,
+    consumerRoot
+  );
+  assert.equal(classicHermesCoordinate, 'com.facebook.hermes:hermes-android:0.17.0');
+
+  writeFileSync(
+    consumerGradleProperties,
+    'hermesV1Enabled=false\nreact.hermesV1Enabled=true\n'
+  );
+  assert.equal(
+    resolveReactNativePrebuiltHermesCoordinate(reactNativeRoot, consumerRoot),
+    hermesV1Coordinate,
+    'scoped Hermes V1 opt-in must match React Native property precedence'
+  );
+
+  const reactAndroidFixture = `dependencies {\n  compileOnly(project(":packages:react-native:ReactAndroid:hermes-engine"))\n}\n`;
+  const patchedHermesCompileOnly = patchReactAndroidHermesCompileOnly(
+    reactAndroidFixture,
+    hermesV1Coordinate
+  );
+  assert.match(patchedHermesCompileOnly, new RegExp(PREBUILT_HERMES_COMPILE_ONLY_MARKER));
+  assert.match(
+    patchedHermesCompileOnly,
+    /compileOnly\("com\.facebook\.hermes:hermes-android:250829098\.0\.14"\)/
+  );
+  assert.doesNotMatch(
+    patchedHermesCompileOnly,
+    /compileOnly\(project\(":packages:react-native:ReactAndroid:hermes-engine"\)\)/
+  );
+  assert.equal(
+    patchReactAndroidHermesCompileOnly(patchedHermesCompileOnly, hermesV1Coordinate),
+    patchedHermesCompileOnly
+  );
+  assert.match(
+    patchReactAndroidHermesCompileOnly(patchedHermesCompileOnly, classicHermesCoordinate),
+    /compileOnly\("com\.facebook\.hermes:hermes-android:0\.17\.0"\)/,
+    'rerunning prebuild after a Hermes V1 toggle must refresh the compileOnly coordinate'
+  );
+  assert.throws(
+    () => patchReactAndroidHermesCompileOnly('dependencies {}\n', hermesV1Coordinate),
+    /Expected exactly one ReactAndroid Hermes project compileOnly dependency/
+  );
+} finally {
+  rmSync(hermesMetadataRoot, { recursive: true, force: true });
+}
+
 const listManagerGate = `if (ReactNativeFeatureFlags.useNestedScrollViewAndroid()) ReactNestedScrollViewManager()\n          else ReactScrollViewManager()`;
 const mapManagerGate = `if (ReactNativeFeatureFlags.useNestedScrollViewAndroid())\n                    ReactNestedScrollViewManager()\n                else ReactScrollViewManager()`;
 const managerFixture = `override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =\n      listOf(\n          ReactProgressBarViewManager(),\n          ${listManagerGate},\n          ReactSwitchManager(),\n      )\n\n  public val viewManagersMap: Map<String, ModuleSpec> =\n      mapOf(\n          ReactScrollViewManager.REACT_CLASS to\n              ModuleSpec.viewManagerSpec {\n                ${mapManagerGate}\n              },\n      )\n`;
@@ -143,6 +226,7 @@ assert.throws(
 console.log('React Native 0.86/0.87 AndroidX compatibility plugin invariant: PASS');
 console.log('  ReactAndroid source-build configuration is idempotent and fail-closed');
 console.log('  Hermes remains on the prebuilt Android artifact path');
+console.log('  Windows ReactAndroid compileOnly resolves the RN-selected prebuilt Hermes artifact');
 console.log('  Windows Gradle 9 source-build placeholder is created only for the validated RN shape');
 console.log('  nested ScrollView manager selection is deterministic');
 console.log('  RN 0.86 Java fling shape is guarded');
