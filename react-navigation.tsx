@@ -1,121 +1,91 @@
-import type {
-  NativeStackHeaderProps,
-  NativeStackNavigationOptions,
-} from '@react-navigation/native-stack';
+import type { ReactNode } from 'react';
 import { Platform } from 'react-native';
 
-import { MaterialTopAppBar } from './src/MaterialTopAppBar';
+import { Material3NavigationHeader } from './src/navigation/Material3NavigationHeader';
 import {
-  resolveMaterial3HeaderDecision,
-  type Material3NavigationOptions,
+  resolveMaterial3Navigation,
+  type Material3NavigationOptionBag,
+  type Material3NavigationScope,
   type Material3StackNavigationOptions,
   type Material3TopAppBarNavigationOptions,
 } from './src/navigation/material3NavigationMapper';
+
+/** Structural native-stack header props consumed by the adapter. */
+export type Material3ReactNavigationHeaderProps = {
+  options: Material3ReactNavigationOptions;
+  route: { name: string };
+  back?: unknown;
+  navigation: { goBack(): void };
+};
+
+export type Material3ReactNavigationOptions = Material3NavigationOptionBag & {
+  material3?: Material3StackNavigationOptions;
+  header?: ((props: Material3ReactNavigationHeaderProps) => ReactNode) | undefined;
+};
+
+function createMaterial3Header(config: Material3TopAppBarNavigationOptions | undefined) {
+  return (headerProps: Material3ReactNavigationHeaderProps) => (
+    <Material3NavigationHeader
+      routeName={headerProps.route.name}
+      options={headerProps.options}
+      canGoBack={headerProps.back != null}
+      goBack={() => headerProps.navigation.goBack()}
+      config={config}
+    />
+  );
+}
+
+function applyMaterial3Navigation(
+  options: Material3ReactNavigationOptions,
+  scope: Material3NavigationScope
+): Material3ReactNavigationOptions {
+  const decision = resolveMaterial3Navigation(options, {
+    platform: Platform.OS,
+    scope,
+  });
+
+  if (decision.kind !== 'material3') {
+    return decision.navigationOptions as Material3ReactNavigationOptions;
+  }
+
+  return {
+    ...decision.navigationOptions,
+    header: createMaterial3Header(decision.topAppBar),
+  } as Material3ReactNavigationOptions;
+}
+
+function transformOptions<T>(options: T, scope: Material3NavigationScope): T {
+  if (typeof options === 'function') {
+    const factory = options as (...args: unknown[]) => Material3ReactNavigationOptions;
+    return ((...args: unknown[]) =>
+      applyMaterial3Navigation(factory(...args) ?? {}, scope)) as T;
+  }
+
+  return applyMaterial3Navigation(
+    (options ?? {}) as Material3ReactNavigationOptions,
+    scope
+  ) as T;
+}
+
+/** Wrap React Navigation native-stack navigator `screenOptions`. */
+export function material3NativeStackNavigatorOptions<T>(screenOptions: T): T {
+  return transformOptions(screenOptions, 'root');
+}
+
+/** Wrap React Navigation native-stack per-screen `options`. */
+export function material3NativeStackScreenOptions<T>(options: T): T {
+  return transformOptions(options, 'screen');
+}
+
+/** Wrap a native-stack options factory without adding navigation or scroll state. */
+export function withMaterial3NativeStackOptions<TArgs extends unknown[]>(
+  factory: (...args: TArgs) => Material3ReactNavigationOptions,
+  scope: Material3NavigationScope = 'screen'
+): (...args: TArgs) => Material3ReactNavigationOptions {
+  return (...args: TArgs) => applyMaterial3Navigation(factory(...args) ?? {}, scope);
+}
 
 export type {
   Material3StackNavigationOptions,
   Material3TopAppBarNavigationOptions,
 } from './src/navigation/material3NavigationMapper';
-
-export type Material3NativeStackNavigationOptions = NativeStackNavigationOptions & {
-  material3?: Material3StackNavigationOptions;
-};
-
-function nativeHeaderFallback(
-  navigationOptions: Material3NavigationOptions
-): NativeStackNavigationOptions {
-  return {
-    ...(navigationOptions as NativeStackNavigationOptions),
-    header: undefined,
-    headerTransparent: navigationOptions.headerTransparent === true,
-  };
-}
-
-function createMaterial3Header(
-  options: Material3NativeStackNavigationOptions,
-  scope: 'root' | 'screen'
-): NonNullable<NativeStackNavigationOptions['header']> {
-  return (headerProps: NativeStackHeaderProps) => {
-    const decision = resolveMaterial3HeaderDecision({
-      options: options as Material3NavigationOptions,
-      routeName: headerProps.route.name,
-      canGoBack: headerProps.back != null,
-      platform: Platform.OS,
-      scope,
-    });
-
-    if (decision.kind !== 'material3') return null;
-
-    const topAppBar = decision.topAppBar;
-    const canGoBack = topAppBar.navigationIcon === 'back';
-
-    return (
-      <MaterialTopAppBar
-        placement="header"
-        title={topAppBar.title}
-        variant={topAppBar.variant}
-        scrollBehavior={topAppBar.scrollBehavior}
-        navigationIcon={topAppBar.navigationIcon}
-        navigationAccessibilityLabel={topAppBar.navigationAccessibilityLabel}
-        onNavigationPress={canGoBack ? () => headerProps.navigation.goBack() : undefined}
-        themeMode={topAppBar.themeMode}
-        dynamicColor={topAppBar.dynamicColor}
-      />
-    );
-  };
-}
-
-function mapOptions(
-  options: Material3NativeStackNavigationOptions,
-  scope: 'root' | 'screen'
-): NativeStackNavigationOptions {
-  const decision = resolveMaterial3HeaderDecision({
-    options: options as Material3NavigationOptions,
-    routeName: '',
-    canGoBack: false,
-    platform: Platform.OS,
-    scope,
-  });
-
-  if (decision.kind === 'native') {
-    return nativeHeaderFallback(decision.navigationOptions);
-  }
-
-  if (decision.kind === 'passthrough') {
-    return decision.navigationOptions as NativeStackNavigationOptions;
-  }
-
-  return {
-    ...(decision.navigationOptions as NativeStackNavigationOptions),
-    headerTransparent: true,
-    header: createMaterial3Header(options, scope),
-  };
-}
-
-/**
- * Maps navigator-level React Navigation native-stack options to the shared Material3 header model.
- * No nested-scroll logic lives in this adapter; it only translates navigation state to Material UI.
- */
-export function material3NativeStackNavigatorOptions(
-  options: Material3NativeStackNavigationOptions = {}
-): NativeStackNavigationOptions {
-  return mapOptions(options, 'root');
-}
-
-/**
- * Maps screen-level React Navigation native-stack options to the shared Material3 header model.
- * Screen options without a `material3` override preserve navigator-level behavior.
- */
-export function material3NativeStackScreenOptions(
-  options: Material3NativeStackNavigationOptions = {}
-): NativeStackNavigationOptions {
-  return mapOptions(options, 'screen');
-}
-
-/** Wrap a React Navigation screenOptions/options factory without duplicating Material3 mapping. */
-export function withMaterial3NativeStackOptions<TArgs extends unknown[]>(
-  factory: (...args: TArgs) => Material3NativeStackNavigationOptions,
-  scope: 'root' | 'screen' = 'screen'
-): (...args: TArgs) => NativeStackNavigationOptions {
-  return (...args: TArgs) => mapOptions(factory(...args) ?? {}, scope);
-}
