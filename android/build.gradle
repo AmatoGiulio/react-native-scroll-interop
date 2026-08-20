@@ -22,7 +22,7 @@ group = 'com.reactnativescroll.interop'
 version = '0.1.0-alpha.1'
 
 android {
-  namespace 'com.reactnativescroll.interop'
+  namespace 'expo.modules.materialtoolbar'
   compileSdkVersion rootProject.ext.has('compileSdkVersion')
     ? rootProject.ext.get('compileSdkVersion')
     : 35
