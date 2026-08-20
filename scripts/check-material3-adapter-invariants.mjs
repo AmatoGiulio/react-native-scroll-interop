@@ -9,7 +9,11 @@ const adapterRelativePath =
 const transactionRelativePath =
   'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollTransaction.kt';
 const registryRelativePath =
-  'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt';
+  'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollRegistry.kt';
+const providerRelativePath =
+  'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollParticipantProvider.kt';
+const controllerRelativePath =
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParentController.kt';
 const topBarRelativePath =
   'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt';
 const floatingToolbarRelativePath =
@@ -67,16 +71,10 @@ if (source != null) {
     ['concrete RN source type', /\b(ReactScrollView|ReactNestedScrollView)\b/],
     ['direct Compose nested-scroll ownership', /androidx\.compose\.ui\.input\.nestedscroll/],
     ['Expo Modules API dependency', /expo\.modules\.kotlin/],
-    ['Expo TopAppBar consumer import', /expo\.modules\.materialtoolbar\.TopAppBarScrollConsumer/],
-    ['Expo FloatingToolbar consumer import', /expo\.modules\.materialtoolbar\.FloatingToolbarScrollConsumer/],
   ];
 
   for (const [name, pattern] of forbidden) {
     if (pattern.test(source)) violations.push(`${adapterRelativePath}: forbidden ${name}`);
-  }
-
-  if (source.includes('expo.modules.materialtoolbar.NativeNestedInputType')) {
-    violations.push(`${adapterRelativePath}: Material3 input type must not come from Expo package`);
   }
 
   const floatingHeader = source.match(
@@ -112,20 +110,57 @@ if (transactionSource != null) {
 
 const registrySource = read(registryRelativePath);
 if (registrySource != null) {
-  for (const typeName of ['NativeNestedInputType', 'NativeNestedPreResult', 'NativeNestedPostResult']) {
-    if (registrySource.includes(typeName)) {
-      violations.push(`${registryRelativePath}: Material3 transaction type remains in Expo registry: ${typeName}`);
-    }
-  }
-
   for (const marker of [
-    'frontmostScreenParentFor(departingOwner)?.requestNestedChromeBindingRefresh()',
+    'package com.reactnativescroll.interop.material3',
+    'frontmostScreenParentFor(departingOwner)?.requestNestedParticipantBindingRefresh()',
     'if (!isFrontmostScreenSource(source)) return null',
     'consumer.prepareNestedSource(sourceGroup)',
     'private fun sameScreenStackScope(first: View, second: View): Boolean',
   ]) {
     if (!registrySource.includes(marker)) {
-      violations.push(`${registryRelativePath}: missing source-scoped FloatingToolbar lifecycle marker: ${marker}`);
+      violations.push(`${registryRelativePath}: missing Material3 registry marker: ${marker}`);
+    }
+  }
+}
+
+const providerSource = read(providerRelativePath);
+if (providerSource != null) {
+  for (const marker of [
+    'ReactNativeNestedScrollParticipantProvider',
+    'ReactNativeNestedScrollParticipantSession',
+    'Material3TopAppBarNestedScrollAdapter',
+    'Material3FloatingToolbarNestedScrollAdapter',
+    'preConsumers =',
+    'postConsumers =',
+    'postObservers =',
+  ]) {
+    if (!providerSource.includes(marker)) {
+      violations.push(`${providerRelativePath}: missing participant-provider marker: ${marker}`);
+    }
+  }
+}
+
+const controllerSource = read(controllerRelativePath);
+if (controllerSource != null) {
+  for (const forbidden of [
+    'com.reactnativescroll.interop.material3',
+    'TopAppBarScrollConsumer',
+    'FloatingToolbarScrollConsumer',
+    'NativeNestedScrollRegistry',
+  ]) {
+    if (controllerSource.includes(forbidden)) {
+      violations.push(`${controllerRelativePath}: RN controller must not know Material3 detail: ${forbidden}`);
+    }
+  }
+  for (const marker of [
+    'ReactNativeNestedScrollParticipants.prepare(source)',
+    'ReactNativeNestedScrollParticipants.bind(source)',
+    'participantSession.preConsumers',
+    'participantSession.postConsumers',
+    'participantSession.postObservers',
+  ]) {
+    if (!controllerSource.includes(marker)) {
+      violations.push(`${controllerRelativePath}: missing neutral participant boundary marker: ${marker}`);
     }
   }
 }
@@ -149,7 +184,7 @@ if (topBarSource != null) {
 
   for (const pattern of [/ExpoMaterialTopAppBarView/, /NativeNestedScrollRegistry/, /expo\.modules\.kotlin/]) {
     if (pattern.test(topBarSource)) {
-      violations.push(`${topBarRelativePath}: TopAppBar consumer depends on Expo runtime/view API: ${pattern}`);
+      violations.push(`${topBarRelativePath}: TopAppBar consumer depends on view/runtime API: ${pattern}`);
     }
   }
 }
@@ -180,7 +215,7 @@ if (floatingToolbarSource != null) {
     /expo\.modules\.kotlin/,
   ]) {
     if (pattern.test(floatingToolbarSource)) {
-      violations.push(`${floatingToolbarRelativePath}: FloatingToolbar consumer depends on Expo runtime/view API: ${pattern}`);
+      violations.push(`${floatingToolbarRelativePath}: FloatingToolbar consumer depends on view/runtime API: ${pattern}`);
     }
   }
 
@@ -221,7 +256,7 @@ for (const legacyPath of [
   legacyConsumerBindingsRelativePath,
 ]) {
   if (fs.existsSync(path.join(process.cwd(), legacyPath))) {
-    violations.push(`${legacyPath}: legacy Expo Material3 source must be removed`);
+    violations.push(`${legacyPath}: legacy Material3 consumer source must be removed`);
   }
 }
 
@@ -237,7 +272,7 @@ if (bindingsSource != null) {
     'placementInsets = { NativeFloatingToolbarPlacement.apply(hostView, composeView) }',
   ]) {
     if (!bindingsSource.includes(marker)) {
-      violations.push(`${consumerBindingsRelativePath}: missing Expo-to-Material3 binding marker: ${marker}`);
+      violations.push(`${consumerBindingsRelativePath}: missing private view-to-Material3 binding marker: ${marker}`);
     }
   }
 }
@@ -245,13 +280,12 @@ if (bindingsSource != null) {
 const placementSource = read(placementRelativePath);
 if (placementSource != null) {
   for (const marker of [
-    'package expo.modules.materialtoolbar',
     'object NativeFloatingToolbarPlacement',
     'WeakHashMap<ExpoMaterialToolbarView, State>()',
     'fun apply(host: ViewGroup, childOverride: ComposeView? = null): Insets?',
   ]) {
     if (!placementSource.includes(marker)) {
-      violations.push(`${placementRelativePath}: missing Expo placement marker: ${marker}`);
+      violations.push(`${placementRelativePath}: missing Material view placement marker: ${marker}`);
     }
   }
 }
@@ -263,13 +297,10 @@ if (violations.length) {
 }
 
 console.log('Material3 adapter invariant: PASS');
-console.log('  neutral PRE/POST ports are used');
-console.log('  Material3 transaction types stay outside the Expo registry layer');
-console.log('  TopAppBar consumer source is owned by the Material3 package');
-console.log('  FloatingToolbar consumer source is owned by the Material3 package');
-console.log('  FloatingToolbar placement remains in the Expo view layer');
+console.log('  neutral PRE/POST/observer ports are the RN/Material3 boundary');
+console.log('  RN controller has no Material3 consumer knowledge');
+console.log('  Material3 provider owns consumer resolution and transaction binding');
 console.log('  FloatingToolbar remains observation-only');
 console.log('  persistent FloatingToolbar scroll state is scoped to the frontmost RN source');
 console.log('  incoming FloatingToolbar state is captured before source authority switches');
-console.log('  pop refresh restores the newly frontmost screen state without source sampling');
 console.log('  no source physics, position sampling, timers or concrete RN source typing in adapters');
