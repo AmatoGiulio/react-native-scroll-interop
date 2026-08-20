@@ -8,94 +8,65 @@ Current version:
 0.1.0-alpha.1
 ```
 
-GitHub source status: ready for public review after the final documentation-frozen package checks.
+npm status: **not published yet**.
 
-npm status: **not published yet**. Publication is intentionally deferred until the final public-package checks are completed from the documentation-frozen commit.
+The previous release candidate passed both Android runtime matrices. This architecture branch changes the RN controller/participant-provider wiring, so those results are retained as a baseline but are **not** treated as certification of the new branch until the final regression gates below pass again.
 
-## Current compatibility matrix
+## Architecture completion status
 
-```text
-Expo SDK 57 + React Native 0.86.x
-  exact package / clean prebuild / ReactAndroid source build / x86_64 Android build / Material navigation runtime   PASS
+The six target architecture points are implemented on this branch:
 
-bare React Native 0.87.0-rc.3
-  exact package / no-Expo install / bare adapter / ReactAndroid source build / x86_64 build+install / Hermes / NativeScrollHost + MaterialTopAppBar runtime   PASS
+1. **Neutral core** — lifecycle, source identity, conservation and PRE/POST/observer dispatcher remain in `com.reactnativescroll.interop.core` with no RN/Material/Expo dependency.
+2. **Standard RN boundary** — `NativeScrollHost`, the RN source boundary and controller are standard React Native code. The controller binds only neutral participant ports and has no Material3 dependency.
+3. **react-native-screens adapter** — the 4.26.x patcher now integrates only `ReactNativeScreenNestedScrollBridge`. The bridge contains source discovery/controller ownership but no Material or screens concrete type. The proposed upstream-neutral contract is documented in `UPSTREAM_REACT_NATIVE_SCREENS.md`.
+4. **Material3 reference consumer** — Material3 owns its registry, participant provider, TopAppBar consumer and FloatingToolbar observer above the RN/core boundary.
+5. **Navigation adapters** — `src/navigation/material3NavigationMapper.ts` owns the common navigation-to-Material mapping. `/react-navigation` and `/router` are thin adapters over it and contain no scroll transport logic.
+6. **General package primitive** — the root package exposes generic RN/Android nested-scroll transport with Material3 as the shipped reference integration; Expo is optional rather than a native-runtime requirement.
 
-Expo + React Native 0.87
-  not claimed until an officially supported Expo/RN pairing exists
-```
+The historical private Kotlin package name `expo.modules.materialtoolbar` remains only for Compose host implementation classes in this alpha. It does not use Expo Modules Kotlin APIs, the Expo Modules Gradle plugin, module registration or a required Expo peer; it is not the transport or public native boundary.
 
-The package manifest declares React Native `>=0.86.0 <0.87.0 || >=0.87.0-rc.3 <0.88.0`, Expo Router `>=57.0.0 <58.0.0`, `react-native-screens >=4.26.0 <4.27.0` and `react-native-safe-area-context >=5.0.0 <6.0.0`. Expo is not a required native-runtime peer.
-
-## Release artifact boundary
-
-Runtime, compatibility code and dependency metadata for `0.1.0-alpha.1` passed the device/build gates before this documentation-only freeze. Because npm includes `README.md` automatically, the final npm tarball generated from the documentation-frozen commit will have different bytes from the previously tested candidate even though runtime/plugin/package source is unchanged. `RELEASE.md` itself is repository-only and is not part of the npm package.
-
-Before npm publication, generate a fresh tarball from the final documentation commit and rerun the complete static/package checks plus publish dry-run. Device runtime gates only need to be repeated if runtime code, plugin code, dependency metadata or another packaged source changes.
+## Previous runtime baseline
 
 ### React Native 0.86.x gate
 
-Status: **PASS** on Expo SDK 57.
+Previous baseline: **PASS** on Expo SDK 57 before the current controller/provider refactor.
 
-Certified scope:
+Previously validated scope:
 
-- installation from the exact package artifact;
+- package artifact installation;
 - clean Expo Android prebuild;
 - ReactAndroid source build;
-- RN 0.86 ordinary non-paging fling patch to AndroidX `super.fling(correctedVelocityY)`;
-- both `MainReactPackage` vertical manager paths using `ReactNestedScrollViewManager`;
-- `react-native-screens 4.26.x` screen-owned nested-scroll integration;
+- RN 0.86 ordinary non-paging AndroidX fling patch;
+- both `MainReactPackage` manager paths;
+- `react-native-screens 4.26.x` screen-owned integration;
 - x86_64 Android assemble/development runtime;
-- navigation-first `MaterialTopAppBar` runtime;
-- persistent `MaterialToolbar` / FloatingToolbar runtime;
-- touch and NON_TOUCH fling behavior;
-- push/pop/back source ownership and per-source toolbar state restoration.
+- navigation-first MaterialTopAppBar and persistent MaterialToolbar runtime;
+- TOUCH/NON_TOUCH fling behavior;
+- push/pop/back source ownership and source-scoped toolbar restoration.
 
-Navigation-first screens remain plain React Native vertical scroll content. `NativeScrollHost` is the standalone/fallback API and is not required when the native screen owns the parent integration.
+**Required before merge/release of this branch:** rerun the package/prebuild/x86_64 build + navigation Material runtime gate because the screen patch now delegates through `ReactNativeScreenNestedScrollBridge` and the RN controller binds Material3 through a neutral provider.
 
 ### React Native 0.87.x gate
 
-Status: **PASS** on bare `react-native@0.87.0-rc.3`.
+Previous baseline: **PASS** on bare `react-native@0.87.0-rc.3` before the current controller/provider refactor.
 
-Certified scope:
+Previously validated scope:
 
-- fresh Community React Native consumer with no Expo or Expo Router installed;
-- installation from the exact package tarball with normal npm peer resolution, without `--force` or `--legacy-peer-deps`;
-- standard React Native autolinking registers `ReactNativeScrollInteropPackage`;
-- shipped `plugin/bareReactNativeScrollCompat.js` applies successfully without Expo tooling;
-- standard Community `settings.gradle` shape is validated before source-build wiring;
-- ReactAndroid-only composite source substitution is installed idempotently;
-- Hermes remains on React Native's prebuilt Android artifact path;
-- RN 0.87 unified `HERMES_VERSION_NAME` metadata is used for the prebuilt Hermes coordinate;
-- Windows Gradle source-build placeholder is created only for the validated RN shape;
-- both `MainReactPackage.kt` vertical manager sites are patched;
-- ordinary non-paging `ReactNestedScrollView.kt` fling delegates to AndroidX `super.fling(correctedVelocityY)`;
-- React Native is compiled from the installed source tree;
-- `:react-native-scroll-interop:compileDebugKotlin` succeeds;
-- x86_64 `:app:assembleDebug` and `:app:installDebug` succeed;
-- the app launches with Hermes;
-- `RNSINestedScrollHost` mounts through the public `NativeScrollHost` API;
-- `RNSIMaterialTopAppBar` mounts through the public `MaterialTopAppBar` API;
-- touch scrolling, inertial fling and reverse fling run without visible regression;
-- large `MaterialTopAppBar` `exitUntilCollapsed` collapse/expand behavior follows the real nested-scroll transaction without visible jump, double consumption or crash.
+- no-Expo package installation with normal peer resolution;
+- standard RN autolinking;
+- bare compatibility adapter;
+- ReactAndroid source build and prebuilt Hermes;
+- `:react-native-scroll-interop:compileDebugKotlin`;
+- x86_64 assemble/install;
+- Hermes launch;
+- public `NativeScrollHost` + `MaterialTopAppBar` runtime;
+- touch, inertial fling, reverse fling and TopAppBar collapse/expand.
 
-This gate certifies the standard React Native native-package boundary, the bare compatibility adapter, source patching, prebuilt-Hermes integration and the actual Material/native scroll runtime on RN `0.87.0-rc.3`.
+**Required before merge/release of this branch:** rerun compile/assemble/install/runtime because `NativeScrollHost` moved fully into the RN boundary and participant binding now goes through `ReactNativeNestedScrollParticipantProvider`.
 
-## Expo boundary
+## Static/package gates
 
-The Android native runtime no longer depends on Expo Modules registration or the Expo Modules Gradle plugin. `NativeScrollHost`, `MaterialTopAppBar` and `MaterialToolbar` are registered as standard React Native view managers through `ReactNativeScrollInteropPackage`, and the JavaScript bindings use `requireNativeComponent`.
-
-Expo remains an optional host integration:
-
-- `app.plugin.js` / `withScrollInterop` can apply the validated React Native source patch and optional `react-native-screens` ownership integration during Expo prebuild;
-- `/router` is an optional Expo Router adapter;
-- neither Expo nor Expo Modules is required by the native runtime itself.
-
-There is currently no claimed Expo + RN 0.87 certification because there is no officially supported Expo/RN pairing used for this release gate. The absence of that claim does not limit the independently certified bare RN 0.87 native runtime above.
-
-## Public-package checks before npm
-
-Run from the final documentation-frozen commit:
+Run from the final branch commit:
 
 ```bash
 npm run check
@@ -103,14 +74,27 @@ npm pack --dry-run
 npm publish --dry-run --access public --tag next
 ```
 
-Verify before the real publish:
+`npm run check` now includes:
 
-- package name, version, license, repository and public entry points;
-- peer dependency ranges, including the explicit RN 0.87 prerelease floor;
-- tarball file list contains only intended runtime/plugin/JS sources plus npm-mandatory metadata;
-- `README.md` matches the certified compatibility claims above;
-- no generated Android output, local consumer files, credentials, keystores or probe artifacts are packaged;
-- both Expo and bare compatibility adapters fail closed outside the certified source shapes;
-- the final package surface remains within the checked file-count and unpacked-size bounds.
+- architecture boundary invariant;
+- scroll ownership/conservation invariant;
+- Material3 participant-provider invariant;
+- shared navigation mapper + thin React Navigation/Expo Router adapter invariant;
+- RN 0.86/0.87 compatibility patch invariant;
+- bare RN compatibility adapter invariant;
+- neutral `react-native-screens 4.26.x` bridge patch invariant;
+- package-surface invariant.
 
-The first npm publication will be performed manually only after these checks are clean.
+## Final merge/release gate
+
+Do not merge this architecture branch or publish npm until all of the following are true:
+
+```text
+static/package/publish dry-run                                      PASS
+Expo SDK 57 + RN 0.86 x86_64 build + navigation Material runtime   PASS
+bare RN 0.87.0-rc.3 compile/build/install/Hermes runtime           PASS
+NativeScrollHost touch/fling/reverse-fling                          PASS
+MaterialTopAppBar collapse/expand                                  PASS
+```
+
+The first npm publication remains a separate manual action after the final merged/documentation-frozen package checks.
