@@ -93,6 +93,7 @@ function resolveReactNativePrebuiltHermesCoordinate(reactNativeRoot, projectRoot
     throw new TypeError('[react-native-scroll-interop] Expected a consumer project root.');
   }
 
+  const reactNativePackagePath = path.join(reactNativeRoot, 'package.json');
   const reactAndroidPropertiesPath = path.join(reactNativeRoot, 'ReactAndroid', 'gradle.properties');
   const hermesPropertiesPath = path.join(
     reactNativeRoot,
@@ -100,7 +101,7 @@ function resolveReactNativePrebuiltHermesCoordinate(reactNativeRoot, projectRoot
     'hermes-engine',
     'version.properties'
   );
-  for (const filePath of [reactAndroidPropertiesPath, hermesPropertiesPath]) {
+  for (const filePath of [reactNativePackagePath, reactAndroidPropertiesPath, hermesPropertiesPath]) {
     if (!fs.existsSync(filePath)) {
       throw new Error(
         `[react-native-scroll-interop] Missing React Native Hermes metadata: ${filePath}. ` +
@@ -109,6 +110,18 @@ function resolveReactNativePrebuiltHermesCoordinate(reactNativeRoot, projectRoot
     }
   }
 
+  let reactNativePackage;
+  try {
+    reactNativePackage = JSON.parse(fs.readFileSync(reactNativePackagePath, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `[react-native-scroll-interop] Invalid React Native package metadata: ${reactNativePackagePath}. ` +
+        'Refusing to guess a prebuilt Hermes coordinate.',
+      { cause: error }
+    );
+  }
+
+  const line = assertSupportedReactNativeVersion(reactNativePackage.version);
   const reactAndroidProperties = parseProperties(fs.readFileSync(reactAndroidPropertiesPath, 'utf8'));
   const hermesProperties = parseProperties(fs.readFileSync(hermesPropertiesPath, 'utf8'));
   const consumerPropertiesPath = path.join(projectRoot, 'android', 'gradle.properties');
@@ -116,24 +129,28 @@ function resolveReactNativePrebuiltHermesCoordinate(reactNativeRoot, projectRoot
     ? parseProperties(fs.readFileSync(consumerPropertiesPath, 'utf8'))
     : {};
 
-  const hasLegacyHermesV1 = Object.prototype.hasOwnProperty.call(
-    consumerProperties,
-    'hermesV1Enabled'
-  );
-  const hasScopedHermesV1 = Object.prototype.hasOwnProperty.call(
-    consumerProperties,
-    'react.hermesV1Enabled'
-  );
-  const hermesV1Enabled =
-    hasLegacyHermesV1 || hasScopedHermesV1
-      ? (hasLegacyHermesV1 && consumerProperties.hermesV1Enabled.toLowerCase() === 'true') ||
-        (hasScopedHermesV1 &&
-          consumerProperties['react.hermesV1Enabled'].toLowerCase() === 'true')
-      : true;
-
   const publishingGroup =
     reactAndroidProperties['react.internal.hermesPublishingGroup'] || 'com.facebook.hermes';
-  const versionKey = hermesV1Enabled ? 'HERMES_V1_VERSION_NAME' : 'HERMES_VERSION_NAME';
+  let versionKey = 'HERMES_VERSION_NAME';
+
+  if (line === '0.86') {
+    const hasLegacyHermesV1 = Object.prototype.hasOwnProperty.call(
+      consumerProperties,
+      'hermesV1Enabled'
+    );
+    const hasScopedHermesV1 = Object.prototype.hasOwnProperty.call(
+      consumerProperties,
+      'react.hermesV1Enabled'
+    );
+    const hermesV1Enabled =
+      hasLegacyHermesV1 || hasScopedHermesV1
+        ? (hasLegacyHermesV1 && consumerProperties.hermesV1Enabled.toLowerCase() === 'true') ||
+          (hasScopedHermesV1 &&
+            consumerProperties['react.hermesV1Enabled'].toLowerCase() === 'true')
+        : true;
+    versionKey = hermesV1Enabled ? 'HERMES_V1_VERSION_NAME' : 'HERMES_VERSION_NAME';
+  }
+
   const version = hermesProperties[versionKey];
 
   if (!/^[A-Za-z0-9_.-]+$/.test(publishingGroup) || !version || !/^[A-Za-z0-9_.+-]+$/.test(version)) {
