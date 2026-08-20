@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const {
@@ -9,6 +10,9 @@ const {
   patchScreen,
 } = require('../plugin/reactNativeScreensInteropPatch');
 
+const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+const pluginSource = read('plugin/reactNativeScreensInteropPatch.js');
+const upstreamPlan = read('UPSTREAM_REACT_NATIVE_SCREENS.md');
 const violations = [];
 
 function expect(condition, message) {
@@ -65,6 +69,29 @@ expect(
   'Screen patch must be idempotent'
 );
 
+for (const forbidden of [
+  'material3',
+  'MaterialTopAppBar',
+  'MaterialToolbar',
+  'expo-router',
+  'expo.modules',
+]) {
+  expect(
+    !pluginSource.includes(forbidden),
+    `react-native-screens adapter must stay navigation/Material/Expo neutral: ${forbidden}`
+  );
+}
+
+for (const required of [
+  'ScreenNestedScrollDelegate',
+  'NestedScrollingParent3',
+  'With no delegate installed',
+  'Keep the current fail-closed 4.26.x patcher',
+  'Remove source patching for supported upstream versions',
+]) {
+  expect(upstreamPlan.includes(required), `upstream react-native-screens plan missing ${required}`);
+}
+
 if (violations.length > 0) {
   console.error('react-native-screens interop plugin invariant: FAIL');
   for (const violation of violations) console.error(`  ${violation}`);
@@ -76,4 +103,6 @@ console.log('  supported line is version-scoped to react-native-screens 4.26.x')
 console.log('  legacy Screen.kt becomes the real NestedScrollingParent3 ancestor');
 console.log('  Screen forwards to ReactNativeNestedScrollParentController');
 console.log('  screen-owned content subtree resolves exactly one RN vertical source');
+console.log('  adapter contains no Material3, navigation-library or Expo concepts');
+console.log('  upstream-neutral AndroidX delegate seam is documented');
 console.log('  Gradle dependency on react-native-scroll-interop is injected idempotently');
