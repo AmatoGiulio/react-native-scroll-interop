@@ -165,12 +165,12 @@ internal class MaterialToolbarManager : SimpleViewManager<ExpoMaterialToolbarVie
   fun setUnselectedContentColor(view: ExpoMaterialToolbarView, value: Int?) =
     view.setUnselectedContentColor(value)
 
-  override fun getExportedCustomDirectEventTypeConstants(): MutableMap<String, Any> =
-    mutableMapOf(
-      "toolbarActionPress" to mutableMapOf(
+  override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any>? =
+    mapOf(
+      "toolbarActionPress" to mapOf(
         "registrationName" to "onActionPress",
       ),
-      "toolbarFabPress" to mutableMapOf(
+      "toolbarFabPress" to mapOf(
         "registrationName" to "onFabPress",
       ),
     )
