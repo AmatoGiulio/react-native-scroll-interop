@@ -14,11 +14,10 @@
     "index.ts",
     "router.tsx",
     "app.plugin.js",
-    "expo-module.config.json"
+    "react-native.config.js"
   ],
   "keywords": [
     "react-native",
-    "expo",
     "android",
     "nested-scroll",
     "scroll-interop",
@@ -48,7 +47,6 @@
     "prepublishOnly": "npm run check"
   },
   "peerDependencies": {
-    "expo": "*",
     "expo-router": ">=57.0.0 <58.0.0",
     "react": ">=19.2.0 <20.0.0",
     "react-native": ">=0.86.0 <0.88.0",
