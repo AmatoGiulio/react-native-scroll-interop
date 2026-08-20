@@ -159,7 +159,7 @@ src/navigation/Material3NavigationHeader.tsx
 
 The mapper decides title, large-title, Back, `material3.topAppBar` and native-header fallback. It imports neither Expo Router nor React Navigation and contains no nested-scroll transport logic.
 
-`Material3NavigationHeader` turns the normalized descriptor into `MaterialTopAppBar` props. Expo Router and React Navigation are thin adapters over those two shared pieces.
+`Material3NavigationHeader` turns the normalized descriptor into `MaterialTopAppBar` props. Expo Router and React Navigation are thin adapters over those two shared pieces. They are intentionally internal implementation files; this alpha exposes only `/router` and `/react-navigation`, not a third `/navigation` entry point.
 
 ## Expo Router
 
