@@ -6,9 +6,13 @@ import process from 'node:process';
 
 const root = process.cwd();
 const hostPath =
-  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostView.kt';
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollHostView.kt';
 const controllerPath =
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParentController.kt';
+const participantsPath =
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParticipants.kt';
+const screenBridgePath =
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScreenNestedScrollBridge.kt';
 const composeHostPath =
   'android/src/main/java/expo/modules/materialtoolbar/ComposeChromeHostView.kt';
 const topBarConsumerPath =
@@ -22,13 +26,15 @@ const ledgerPath =
 const dispatcherPath =
   'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt';
 const registryPath =
-  'android/src/main/java/expo/modules/materialtoolbar/NativeNestedScrollInterop.kt';
+  'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollRegistry.kt';
 const sourceAdapterPath =
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt';
 
 const files = [
   hostPath,
   controllerPath,
+  participantsPath,
+  screenBridgePath,
   lifecyclePath,
   ledgerPath,
   dispatcherPath,
@@ -40,6 +46,8 @@ const files = [
 const obsoletePaths = [
   'android-shared',
   'android/src/main/java/expo/modules/materialtoolbar/FloatingToolbarScrollConsumer.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostView.kt',
+  'android/src/main/java/expo/modules/materialtoolbar/ReactNativeNestedScrollHostManager.kt',
 ];
 
 const forbidden = [
@@ -143,11 +151,6 @@ if (dispatcher) {
   if (!dispatcher.includes('class VerticalNestedScrollTransactionDispatcher')) {
     violations.push(`${dispatcherPath}: missing vertical transaction dispatcher`);
   }
-  for (const phase of ['PreConsumer', 'PostConsumer', 'PostObserver']) {
-    if (!dispatcher.includes(`fun interface ${phase}`)) {
-      violations.push(`${dispatcherPath}: missing ${phase} dispatch port`);
-    }
-  }
   if (!dispatcher.includes('fun bindParticipants(')) {
     violations.push(`${dispatcherPath}: missing neutral participant binding API`);
   }
@@ -198,6 +201,45 @@ if (host) {
   }
 }
 
+const participants = read(participantsPath);
+if (participants) {
+  for (const marker of [
+    'interface ReactNativeNestedScrollParticipantProvider',
+    'class ReactNativeNestedScrollParticipantSession',
+    'VerticalNestedPreScrollConsumer',
+    'VerticalNestedPostScrollConsumer',
+    'VerticalNestedPostScrollObserver',
+  ]) {
+    if (!participants.includes(marker)) {
+      violations.push(`${participantsPath}: missing neutral participant contract: ${marker}`);
+    }
+  }
+  for (const forbiddenDependency of ['material3', 'expo.modules', 'com.swmansion.rnscreens']) {
+    if (participants.includes(forbiddenDependency)) {
+      violations.push(`${participantsPath}: neutral participant contract knows ${forbiddenDependency}`);
+    }
+  }
+}
+
+const screenBridge = read(screenBridgePath);
+if (screenBridge) {
+  for (const marker of [
+    'class ReactNativeScreenNestedScrollBridge(',
+    'ReactNativeNestedScrollParentController(owner)',
+    'ReactNativeVerticalScrollSourceLocator.findUniqueDescendant',
+    'NestedScrollingParent3',
+  ]) {
+    if (!screenBridge.includes(marker)) {
+      violations.push(`${screenBridgePath}: missing reusable screen bridge marker: ${marker}`);
+    }
+  }
+  for (const forbiddenDependency of ['material3', 'expo.modules', 'com.swmansion.rnscreens']) {
+    if (screenBridge.includes(forbiddenDependency)) {
+      violations.push(`${screenBridgePath}: neutral screen bridge knows ${forbiddenDependency}`);
+    }
+  }
+}
+
 const controller = read(controllerPath);
 if (controller) {
   if (!controller.includes('class ReactNativeNestedScrollParentController')) {
@@ -215,23 +257,27 @@ if (controller) {
   ) {
     violations.push(`${controllerPath}: controller PRE/POST must route through dispatcher`);
   }
-  if (!controller.includes('Material3TopAppBarNestedScrollAdapter')) {
-    violations.push(`${controllerPath}: TopAppBar must bind through the Material3 neutral adapter`);
+  for (const forbiddenDependency of [
+    'com.reactnativescroll.interop.material3',
+    'TopAppBarScrollConsumer',
+    'FloatingToolbarScrollConsumer',
+    'NativeNestedScrollRegistry',
+  ]) {
+    if (controller.includes(forbiddenDependency)) {
+      violations.push(`${controllerPath}: consumer-specific dependency leaked into RN controller: ${forbiddenDependency}`);
+    }
   }
-  if (!controller.includes('Material3FloatingToolbarNestedScrollAdapter')) {
-    violations.push(`${controllerPath}: FloatingToolbar must bind through the Material3 neutral adapter`);
-  }
-  if (!controller.includes('transactionDispatcher.bindParticipants(')) {
-    violations.push(`${controllerPath}: controller must use neutral participant binding`);
-  }
-  if (!controller.includes('postObservers = if (toolbarAdapter != null) listOf(toolbarAdapter) else emptyList()')) {
-    violations.push(`${controllerPath}: FloatingToolbar must remain observation-only`);
-  }
-  if (
-    !controller.includes('preConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList()') ||
-    !controller.includes('postConsumers = if (topBarAdapter != null) listOf(topBarAdapter) else emptyList()')
-  ) {
-    violations.push(`${controllerPath}: TopAppBar PRE/POST participation must be fixed at bind time`);
+  for (const marker of [
+    'ReactNativeNestedScrollParticipants.prepare(source)',
+    'ReactNativeNestedScrollParticipants.bind(source)',
+    'preConsumers = participantSession.preConsumers',
+    'postConsumers = participantSession.postConsumers',
+    'postObservers = participantSession.postObservers',
+    'transactionDispatcher.bindParticipants(',
+  ]) {
+    if (!controller.includes(marker)) {
+      violations.push(`${controllerPath}: missing generic participant binding: ${marker}`);
+    }
   }
   if (!controller.includes('TX_ABORT reason=source-replaced')) {
     violations.push(`${controllerPath}: missing source replacement abort path`);
@@ -307,8 +353,7 @@ console.log('  no parent-owned scroller or child scroll mutation');
 console.log('  concrete RN scroll source types confined to compatibility boundary');
 console.log('  lifecycle, conservation ledger and PRE/POST dispatcher preserved');
 console.log('  standalone host is source-discovery + delegation only');
-console.log('  reusable parent controller owns nested lifecycle and transaction dispatch');
-console.log('  Material3 consumers bind through neutral participant adapters');
-console.log('  FloatingToolbar remains observation-only');
+console.log('  reusable RN controller owns nested lifecycle and generic transaction dispatch');
+console.log('  Material3 is not imported by the RN controller/participant/screen bridge');
 console.log('  stale nested callbacks fail closed before parent helper mutation');
 console.log('  unresolved Material TopAppBar geometry fails closed');
