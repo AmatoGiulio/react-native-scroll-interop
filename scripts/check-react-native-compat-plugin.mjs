@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const {
@@ -10,6 +13,7 @@ const {
   RN087_FLING_MARKER,
   SOURCE_BUILD_MARKER,
   assertSupportedReactNativeVersion,
+  ensureReactNativeSourceBuildPlaceholder,
   ensureReactNativeSourceBuildSettings,
   patchMainReactPackage,
   patchReactNestedScrollView086,
@@ -47,6 +51,43 @@ assert.throws(
   () => ensureReactNativeSourceBuildSettings('pluginManagement {}\n'),
   /does not expose expoAutolinking/
 );
+
+const sourceBuildRoot = mkdtempSync(path.join(tmpdir(), 'rnsi-rn-source-build-'));
+try {
+  assert.throws(
+    () => ensureReactNativeSourceBuildPlaceholder(sourceBuildRoot, 'win32'),
+    /Missing React Native source-build settings/
+  );
+
+  const rnSettingsPath = path.join(sourceBuildRoot, 'settings.gradle.kts');
+  writeFileSync(
+    rnSettingsPath,
+    [
+      'rootProject.name = "react-native-build-from-source"',
+      'project(":packages").projectDir = file("/tmp")',
+      'project(":packages:react-native").projectDir = file("/tmp")',
+      '',
+    ].join('\n')
+  );
+
+  const placeholderPath = path.join(sourceBuildRoot, 'tmp');
+  assert.equal(ensureReactNativeSourceBuildPlaceholder(sourceBuildRoot, 'linux'), false);
+  assert.equal(existsSync(placeholderPath), false);
+  assert.equal(ensureReactNativeSourceBuildPlaceholder(sourceBuildRoot, 'win32'), true);
+  assert.equal(existsSync(placeholderPath), true);
+  assert.equal(ensureReactNativeSourceBuildPlaceholder(sourceBuildRoot, 'win32'), true);
+
+  writeFileSync(
+    rnSettingsPath,
+    'project(":packages").projectDir = file("/tmp")\n'
+  );
+  assert.throws(
+    () => ensureReactNativeSourceBuildPlaceholder(sourceBuildRoot, 'win32'),
+    /partial Gradle 9 placeholder shape/
+  );
+} finally {
+  rmSync(sourceBuildRoot, { recursive: true, force: true });
+}
 
 const listManagerGate = `if (ReactNativeFeatureFlags.useNestedScrollViewAndroid()) ReactNestedScrollViewManager()\n          else ReactScrollViewManager()`;
 const mapManagerGate = `if (ReactNativeFeatureFlags.useNestedScrollViewAndroid())\n                    ReactNestedScrollViewManager()\n                else ReactScrollViewManager()`;
@@ -92,6 +133,7 @@ assert.throws(
 
 console.log('React Native 0.86/0.87 AndroidX compatibility plugin invariant: PASS');
 console.log('  source-build configuration is idempotent and fail-closed');
+console.log('  Windows Gradle 9 source-build placeholder is created only for the validated RN shape');
 console.log('  nested ScrollView manager selection is deterministic');
 console.log('  RN 0.86 Java fling shape is guarded');
 console.log('  RN 0.87 Kotlin fling shape is guarded');
