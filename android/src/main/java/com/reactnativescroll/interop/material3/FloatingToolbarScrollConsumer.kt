@@ -13,8 +13,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.Velocity
 import androidx.core.graphics.Insets
-import expo.modules.materialtoolbar.BuildConfig
-import expo.modules.materialtoolbar.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.BuildConfig
+import com.reactnativescroll.interop.NATIVE_SCROLL_LOG_TAG
 import java.util.WeakHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -45,10 +45,6 @@ internal open class FloatingToolbarScrollConsumer(
   private var lastKnownBehaviorState: RetainedBehaviorState? = null
   private var restoreBehaviorStateOnNextBind = false
   private var geometryResyncPosted = false
-
-  // The toolbar View intentionally persists across navigation screens, but scroll-derived Material
-  // state must not. Keep that state scoped to the concrete RN source that produced the transaction.
-  // Weak keys avoid extending the lifetime of screens/sources after navigation removes them.
   private val sourceStates = WeakHashMap<ViewGroup, RetainedBehaviorState>()
   private var preparedSource: ViewGroup? = null
 
@@ -89,9 +85,7 @@ internal open class FloatingToolbarScrollConsumer(
       restoreBehaviorStateOnNextBind = false
     } else {
       preparedSource?.let { source ->
-        sourceStates[source]?.let { retained ->
-          restoreRetainedBehaviorState(newBehavior, retained)
-        }
+        sourceStates[source]?.let { retained -> restoreRetainedBehaviorState(newBehavior, retained) }
       }
     }
 
@@ -144,13 +138,6 @@ internal open class FloatingToolbarScrollConsumer(
     }
   }
 
-  /**
-   * Select the screen/source whose scroll-derived FloatingToolbar state should be visible.
-   *
-   * This is navigation/source lifecycle only. No source position is sampled and no source motion is
-   * reconstructed. A source seen for the first time starts from the Material shown baseline; a
-   * returning source restores the toolbar state that source previously produced.
-   */
   fun prepareNestedSource(source: ViewGroup): Boolean {
     if (preparedSource === source) {
       if (isBound) {
@@ -163,10 +150,6 @@ internal open class FloatingToolbarScrollConsumer(
     val previous = preparedSource
     rememberBehaviorState(behavior)
     cancelSettle()
-
-    // Capture the incoming source state before changing preparedSource. syncGeometryNow() persists
-    // the current Material state through rememberBehaviorState(), so pointing preparedSource at the
-    // incoming source too early would overwrite its retained state with the departing screen state.
     val retained = sourceStates[source]
 
     val current = behavior
@@ -179,19 +162,15 @@ internal open class FloatingToolbarScrollConsumer(
       return false
     }
 
-    // Geometry still belongs to the currently active/departing source until its state is saved.
     syncGeometryNow()
 
     if (retained != null) {
       restoreRetainedBehaviorState(current, retained)
     } else {
-      // New navigation source: the persistent toolbar View is reused, but its scroll-derived state
-      // must not leak from the previous screen.
       current.state.offset = 0f
       current.state.contentOffset = 0f
     }
 
-    // Only now make the incoming source authoritative and persist its restored/new baseline.
     preparedSource = source
     rememberBehaviorState(current)
     applyOffset(current.state.offset)
@@ -213,8 +192,7 @@ internal open class FloatingToolbarScrollConsumer(
     val resolvedLimit = current.state.offsetLimit.takeIf { it.isFinite() && it < 0f }
       ?: retained.offsetLimit
     val wasFullyCollapsed =
-      retained.offsetLimit.isFinite() &&
-        retained.offsetLimit < 0f &&
+      retained.offsetLimit.isFinite() && retained.offsetLimit < 0f &&
         abs(retained.offset - retained.offsetLimit) <= 1f
 
     current.state.offsetLimit = resolvedLimit
@@ -255,11 +233,7 @@ internal open class FloatingToolbarScrollConsumer(
     current.onPostScroll(
       consumed = Offset(0f, -childConsumedY.toFloat()),
       available = Offset.Zero,
-      source = if (inputType == NativeNestedInputType.Touch) {
-        NestedScrollSource.UserInput
-      } else {
-        NestedScrollSource.SideEffect
-      },
+      source = if (inputType == NativeNestedInputType.Touch) NestedScrollSource.UserInput else NestedScrollSource.SideEffect,
     )
     rememberBehaviorState(current)
     applyOffset(current.state.offset)
@@ -364,5 +338,8 @@ internal open class FloatingToolbarScrollConsumer(
     if (source == null) "none"
     else "${source.javaClass.name}#${source.id}@${Integer.toHexString(System.identityHashCode(source))}"
 
-  private fun resetTranslation() { composeView.translationX = 0f; composeView.translationY = 0f }
+  private fun resetTranslation() {
+    composeView.translationX = 0f
+    composeView.translationY = 0f
+  }
 }
