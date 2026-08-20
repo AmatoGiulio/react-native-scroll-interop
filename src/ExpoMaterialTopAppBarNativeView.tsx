@@ -1,6 +1,9 @@
-import { requireNativeViewManager } from 'expo-modules-core';
 import type { ComponentType } from 'react';
-import type { NativeSyntheticEvent, ViewProps } from 'react-native';
+import {
+  requireNativeComponent,
+  type NativeSyntheticEvent,
+  type ViewProps,
+} from 'react-native';
 
 import type {
   MaterialTopAppBarNavigationIcon,
@@ -21,4 +24,6 @@ export type NativeMaterialTopAppBarProps = ViewProps & {
   onNavigationPress?: (event: NativeSyntheticEvent<Record<string, never>>) => void;
 };
 
-export default requireNativeViewManager('ExpoMaterialTopAppBar') as ComponentType<NativeMaterialTopAppBarProps>;
+export default requireNativeComponent<NativeMaterialTopAppBarProps>(
+  'RNSIMaterialTopAppBar'
+) as ComponentType<NativeMaterialTopAppBarProps>;
