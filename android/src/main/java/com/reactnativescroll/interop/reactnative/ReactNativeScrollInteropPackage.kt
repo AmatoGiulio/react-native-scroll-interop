@@ -5,8 +5,8 @@ import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ViewManager
 import com.reactnativescroll.interop.material3.Material3NestedScrollParticipantProvider
-import expo.modules.materialtoolbar.MaterialToolbarManager
-import expo.modules.materialtoolbar.MaterialTopAppBarManager
+import com.reactnativescroll.interop.material3.MaterialToolbarManager
+import com.reactnativescroll.interop.material3.MaterialTopAppBarManager
 
 /**
  * Standard React Native package composition root.
@@ -22,6 +22,7 @@ class ReactNativeScrollInteropPackage : ReactPackage {
   override fun createViewManagers(
     reactContext: ReactApplicationContext,
   ): List<ViewManager<*, *>> {
+    NativeScrollTracing.initialize(reactContext)
     ReactNativeNestedScrollParticipants.install(Material3NestedScrollParticipantProvider)
     return listOf(
       ReactNativeNestedScrollHostManager(),
