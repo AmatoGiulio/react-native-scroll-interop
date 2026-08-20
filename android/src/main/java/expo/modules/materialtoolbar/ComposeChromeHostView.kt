@@ -3,19 +3,17 @@ package expo.modules.materialtoolbar
 import android.content.Context
 import android.util.Log
 import android.view.View
+import android.widget.FrameLayout
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.uimanager.ReactPointerEventsView
-import expo.modules.kotlin.AppContext
-import expo.modules.kotlin.views.ExpoView
 
 abstract class ComposeChromeHostView(
   context: Context,
-  appContext: AppContext,
-) : ExpoView(context, appContext), ReactPointerEventsView {
+) : FrameLayout(context), ReactPointerEventsView {
   final override val pointerEvents get() = PointerEvents.BOX_NONE
 
   protected val composeView = ComposeView(context).apply {
@@ -30,6 +28,8 @@ abstract class ComposeChromeHostView(
   init {
     isClickable = false
     isFocusable = false
+    clipChildren = false
+    clipToPadding = false
     addView(composeView)
     addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
       NativeFloatingToolbarPlacement.afterLayout(this, composeView)
