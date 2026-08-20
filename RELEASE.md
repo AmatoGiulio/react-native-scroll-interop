@@ -11,15 +11,17 @@ npm status: **not published yet**.
 PR #26 finishes the separation planned for this alpha:
 
 - neutral nested-scroll core remains under `com.reactnativescroll.interop.core`;
-- React Native source/parent/native-package ownership remains under `com.reactnativescroll.interop.reactnative`;
+- React Native source recognition, parent facade/engine, `NativeScrollHost` and screen bridge live under `com.reactnativescroll.interop.reactnative`;
+- native consumers enter the RN transaction only through `ReactNativeNestedScrollParticipantProvider` / `ReactNativeNestedScrollParticipantSession`;
 - the historical `android/src/main/java/expo/...` implementation tree is removed;
 - Material3 behavior lives under `com.reactnativescroll.interop.material3`;
-- Material3 native UI/managers/registry live under `com.reactnativescroll.interop.material3.ui`;
-- `NativeScrollHost`, TopAppBar and Toolbar remain standard React Native native components;
-- Expo Router and React Navigation consume one shared Material3/navigation mapper;
-- `react-native-screens 4.26.x` remains the current source adapter while `UPSTREAM_REACT_NATIVE_SCREENS.md` defines the neutral upstream seam.
+- Material3 native UI/managers/registry/provider live under `com.reactnativescroll.interop.material3.ui`;
+- `ReactNativeScrollInteropPackage` composes Material3 as the shipped reference provider without leaking it into the RN controller;
+- Expo Router and React Navigation share the navigator-neutral mapper plus `Material3NavigationHeader` renderer;
+- `react-native-screens 4.26.x` patches only to `ReactNativeScreenNestedScrollBridge` while `UPSTREAM_REACT_NATIVE_SCREENS.md` defines the neutral upstream seam;
+- an explicit architecture-boundary checker is part of `npm run check`.
 
-Because this follow-up moves packaged native Kotlin sources and adds a public React Navigation entry point, the device/build certification from the pre-#26 commit is historical evidence only. It must be repeated on the final PR #26 head before merge/publication.
+Because this follow-up changes packaged native transaction wiring and public navigation surfaces, the device/build certification from the pre-#26 commit is historical evidence only. It must be repeated on the final PR #26 head before merge/publication.
 
 ## Previous certified baseline
 
@@ -70,4 +72,4 @@ npm pack --dry-run
 npm publish --dry-run --access public --tag next
 ```
 
-Then verify the tarball contains the neutral core/RN/Material3 layers plus optional router adapters, and contains no legacy Expo implementation tree or repository-only artifacts.
+Then verify the tarball contains the neutral core/RN/Material3 layers plus optional navigation adapters, and contains no legacy Expo implementation tree or repository-only artifacts.
