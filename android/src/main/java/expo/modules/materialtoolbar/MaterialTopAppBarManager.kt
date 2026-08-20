@@ -39,9 +39,9 @@ internal class MaterialTopAppBarManager : SimpleViewManager<ExpoMaterialTopAppBa
   @ReactProp(name = "dynamicColor", defaultBoolean = false)
   fun setDynamicColor(view: ExpoMaterialTopAppBarView, value: Boolean) = view.setDynamicColor(value)
 
-  override fun getExportedCustomDirectEventTypeConstants(): MutableMap<String, Any> =
-    mutableMapOf(
-      "topNavigationPress" to mutableMapOf(
+  override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any>? =
+    mapOf(
+      "topNavigationPress" to mapOf(
         "registrationName" to "onNavigationPress",
       ),
     )
