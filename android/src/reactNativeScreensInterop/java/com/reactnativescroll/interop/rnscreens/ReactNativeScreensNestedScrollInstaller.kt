@@ -76,7 +76,7 @@ private class BridgeDelegate(
     consumed: Boolean,
   ): Boolean = bridge.onNestedFling(target, velocityX, velocityY, consumed)
 
-  override fun getNestedScrollAxes(): Int = bridge.nestedScrollAxes
+  override fun getNestedScrollAxes(): Int = bridge.getNestedScrollAxes()
 
   override fun onStartNestedScroll(
     child: View,
