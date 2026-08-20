@@ -17,6 +17,7 @@ const expectedFiles = [
   'src',
   'index.ts',
   'router.tsx',
+  'react-navigation.tsx',
   'app.plugin.js',
   'react-native.config.js',
 ];
@@ -54,6 +55,14 @@ expect(
 expect(
   packageJson.peerDependenciesMeta?.['expo-router']?.optional === true,
   'Expo Router must remain optional for root-only consumers',
+);
+expect(
+  packageJson.peerDependencies?.['@react-navigation/native-stack'] === '>=7.0.0 <8.0.0',
+  'React Navigation native-stack peer must match the v7 adapter line',
+);
+expect(
+  packageJson.peerDependenciesMeta?.['@react-navigation/native-stack']?.optional === true,
+  'React Navigation native-stack must remain optional for non-navigation consumers',
 );
 expect(
   packageJson.peerDependencies?.['react-native'] ===
@@ -94,6 +103,8 @@ for (const obsoletePath of [
   'plugin/withRn086AndroidXScroll.js',
   'plugin/rn086AndroidXPatch.js',
   'scripts/check-rn086-androidx-plugin.mjs',
+  'src/ExpoMaterialTopAppBarNativeView.tsx',
+  'src/ExpoMaterialToolbarNativeView.tsx',
 ]) {
   if (existsSync(new URL(`../${obsoletePath}`, import.meta.url))) {
     violations.push(`obsolete repository path must stay removed: ${obsoletePath}`);
@@ -147,14 +158,18 @@ const required = [
   'LICENSE',
   'index.ts',
   'router.tsx',
+  'react-navigation.tsx',
   'app.plugin.js',
   'react-native.config.js',
   'plugin/withScrollInterop.js',
   'plugin/bareReactNativeScrollCompat.js',
   'plugin/reactNativeScrollCompatPatch.js',
   'plugin/reactNativeScreensInteropPatch.js',
+  'src/navigation/material3NavigationMapper.ts',
   'src/NativeScrollHost.tsx',
   'src/NativeScrollHost.android.tsx',
+  'src/MaterialTopAppBarNativeView.tsx',
+  'src/MaterialToolbarNativeView.tsx',
   'src/MaterialTopAppBar.types.ts',
   'src/MaterialTopAppBar.tsx',
   'src/MaterialTopAppBar.android.tsx',
@@ -184,8 +199,10 @@ for (const removed of [
   'expo-module.config.json',
   'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialToolbarModule.kt',
   'android/src/main/java/expo/modules/materialtoolbar/ExpoMaterialTopAppBarModule.kt',
+  'src/ExpoMaterialTopAppBarNativeView.tsx',
+  'src/ExpoMaterialToolbarNativeView.tsx',
 ]) {
-  if (files.has(removed)) violations.push(`Expo Modules artifact leaked into package: ${removed}`);
+  if (files.has(removed)) violations.push(`legacy Expo artifact leaked into package: ${removed}`);
 }
 
 const forbiddenPrefixes = [
@@ -200,7 +217,7 @@ const forbiddenPrefixes = [
   'android/src/debug/',
   'android-shared/',
 ];
-const forbiddenExact = new Set(['ARCHITECTURE.md', 'RELEASE.md']);
+const forbiddenExact = new Set(['ARCHITECTURE.md', 'RELEASE.md', 'UPSTREAM_REACT_NATIVE_SCREENS.md']);
 
 for (const file of files) {
   if (forbiddenExact.has(file)) violations.push(`repository-only documentation leaked into package: ${file}`);
@@ -210,9 +227,9 @@ for (const file of files) {
 }
 
 const unpackedSize = pack?.unpackedSize ?? Number.POSITIVE_INFINITY;
-if (files.size > 90) violations.push(`package file count unexpectedly high: ${files.size} > 90`);
-if (unpackedSize > 1_000_000) {
-  violations.push(`package unpacked size unexpectedly high: ${unpackedSize} > 1000000 bytes`);
+if (files.size > 95) violations.push(`package file count unexpectedly high: ${files.size} > 95`);
+if (unpackedSize > 1_050_000) {
+  violations.push(`package unpacked size unexpectedly high: ${unpackedSize} > 1050000 bytes`);
 }
 
 if (violations.length > 0) {
@@ -226,5 +243,6 @@ console.log(`  package: ${expectedName}@${expectedVersion}`);
 console.log('  native runtime: standard React Native package (no Expo Modules dependency)');
 console.log('  React Native peer: 0.86.x / certified 0.87 RC+stable');
 console.log('  Expo Router adapter: 57.x');
+console.log('  React Navigation native-stack adapter: 7.x');
 console.log(`  files: ${files.size}`);
 console.log(`  unpacked size: ${unpackedSize} bytes`);
