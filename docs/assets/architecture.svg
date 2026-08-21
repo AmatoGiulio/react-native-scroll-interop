@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">react-native-scroll-interop architecture</title>
+  <desc id="desc">React Native owns touch, position and fling physics. A native owner forwards the real Android nested-scroll transaction into react-native-scroll-interop, whose neutral transaction core dispatches PRE, source, POST and observer phases to native consumers such as Material3 TopAppBar and FloatingToolbar.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6b7280"/>
+    </marker>
+    <style>
+      .title { font: 700 19px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+      .label { font: 600 15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+      .small { font: 500 13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+      .tiny { font: 500 12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+      .arrow { stroke:#6b7280; stroke-width:2; fill:none; marker-end:url(#arrow); }
+    </style>
+  </defs>
+
+  <!-- React Native -->
+  <rect x="20" y="95" width="245" height="300" rx="16" fill="#f1f1f1" stroke="#8a8a8a" stroke-width="2"/>
+  <text x="142.5" y="128" text-anchor="middle" class="title" fill="#2f2f2f">React Native</text>
+  <rect x="48" y="160" width="189" height="72" rx="12" fill="#cfcfcf" stroke="#7a7a7a" stroke-width="2"/>
+  <text x="142.5" y="189" text-anchor="middle" class="label" fill="#161616">ScrollView /</text>
+  <text x="142.5" y="210" text-anchor="middle" class="label" fill="#161616">ReactNestedScrollView</text>
+  <rect x="48" y="262" width="189" height="78" rx="12" fill="#cfcfcf" stroke="#7a7a7a" stroke-width="2"/>
+  <text x="142.5" y="292" text-anchor="middle" class="label" fill="#161616">touch · position · fling</text>
+  <text x="142.5" y="315" text-anchor="middle" class="small" fill="#303030">single physics owner</text>
+  <path d="M142.5 232 L142.5 260" class="arrow"/>
+
+  <!-- Interop -->
+  <rect x="330" y="35" width="555" height="450" rx="18" fill="#d9edf9" stroke="#2196e0" stroke-width="2.5"/>
+  <text x="607.5" y="70" text-anchor="middle" class="title" fill="#146fa8">react-native-scroll-interop</text>
+
+  <rect x="455" y="96" width="305" height="70" rx="12" fill="#8fc7eb" stroke="#168ad0" stroke-width="2"/>
+  <text x="607.5" y="122" text-anchor="middle" class="label" fill="#082f49">Native nested-scroll owner</text>
+  <text x="607.5" y="145" text-anchor="middle" class="small" fill="#0b466b">NativeScrollHost · react-native-screens</text>
+
+  <rect x="375" y="205" width="465" height="170" rx="14" fill="#eef7fc" stroke="#63a8d2" stroke-width="2"/>
+  <text x="607.5" y="232" text-anchor="middle" class="title" fill="#287fae">Neutral transaction core</text>
+
+  <rect x="400" y="270" width="74" height="58" rx="10" fill="#b9dcf2" stroke="#3997cc" stroke-width="2"/>
+  <text x="437" y="304" text-anchor="middle" class="label" fill="#082f49">PRE</text>
+
+  <rect x="500" y="270" width="104" height="58" rx="10" fill="#b9dcf2" stroke="#3997cc" stroke-width="2"/>
+  <text x="552" y="304" text-anchor="middle" class="label" fill="#082f49">RN source</text>
+
+  <rect x="630" y="270" width="74" height="58" rx="10" fill="#b9dcf2" stroke="#3997cc" stroke-width="2"/>
+  <text x="667" y="304" text-anchor="middle" class="label" fill="#082f49">POST</text>
+
+  <rect x="730" y="270" width="84" height="58" rx="10" fill="#b9dcf2" stroke="#3997cc" stroke-width="2"/>
+  <text x="772" y="304" text-anchor="middle" class="label" fill="#082f49">observe</text>
+
+  <path d="M474 299 L498 299" class="arrow"/>
+  <path d="M604 299 L628 299" class="arrow"/>
+  <path d="M704 299 L728 299" class="arrow"/>
+
+  <rect x="492" y="407" width="231" height="52" rx="10" fill="#8fc7eb" stroke="#168ad0" stroke-width="2"/>
+  <text x="607.5" y="439" text-anchor="middle" class="label" fill="#082f49">participant provider</text>
+
+  <path d="M607.5 166 L607.5 203" class="arrow"/>
+  <path d="M607.5 375 L607.5 405" class="arrow"/>
+
+  <!-- Consumers -->
+  <rect x="935" y="95" width="245" height="300" rx="16" fill="#d9dcf2" stroke="#5366c7" stroke-width="2.5"/>
+  <text x="1057.5" y="128" text-anchor="middle" class="title" fill="#3548aa">Native consumers</text>
+
+  <rect x="962" y="158" width="191" height="66" rx="12" fill="#aeb6e8" stroke="#5366c7" stroke-width="2"/>
+  <text x="1057.5" y="184" text-anchor="middle" class="label" fill="#171c4f">Material3 TopAppBar</text>
+  <text x="1057.5" y="206" text-anchor="middle" class="small" fill="#283176">PRE + POST consumer</text>
+
+  <rect x="962" y="246" width="191" height="66" rx="12" fill="#aeb6e8" stroke="#5366c7" stroke-width="2"/>
+  <text x="1057.5" y="272" text-anchor="middle" class="label" fill="#171c4f">FloatingToolbar</text>
+  <text x="1057.5" y="294" text-anchor="middle" class="small" fill="#283176">POST observer · consumes 0</text>
+
+  <rect x="962" y="334" width="191" height="42" rx="10" fill="#c1c6ed" stroke="#5366c7" stroke-width="2"/>
+  <text x="1057.5" y="360" text-anchor="middle" class="small" fill="#283176">additional native consumers</text>
+
+  <!-- Cross-group arrows -->
+  <path d="M265 245 L328 245" class="arrow"/>
+  <text x="296" y="230" text-anchor="middle" class="tiny" fill="#555">real Android</text>
+  <text x="296" y="245" text-anchor="middle" class="tiny" fill="#555">nested-scroll</text>
+
+  <path d="M885 245 L933 245" class="arrow"/>
+  <text x="909" y="228" text-anchor="middle" class="tiny" fill="#555">same</text>
+  <text x="909" y="243" text-anchor="middle" class="tiny" fill="#555">transaction</text>
+
+  <text x="607.5" y="510" text-anchor="middle" class="small" fill="#5b6470">requested = preConsumed + childConsumed + postConsumed + remaining</text>
+</svg>
