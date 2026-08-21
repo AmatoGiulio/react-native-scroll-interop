@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Roadmap
-    url: https://github.com/AmatoGiulio/react-native-scroll-interop/blob/main/ROADMAP.md
+    url: https://github.com/AmatoGiulio/react-native-scroll-interop/blob/main/docs/roadmap.md
     about: Check planned compatibility and upstream work before opening a feature request.
