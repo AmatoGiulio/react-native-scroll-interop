@@ -40,30 +40,30 @@ For the Material3 reference implementation, terminal settle is delegated back to
 flowchart LR
   subgraph RN["React Native"]
     direction TB
-    SOURCE["ScrollView /<br/>ReactNestedScrollView"]
-    PHYSICS["touch · position · fling<br/>single physics owner"]
+    SOURCE("ScrollView /<br/>ReactNestedScrollView")
+    PHYSICS("touch · position · fling<br/>single physics owner")
     SOURCE --> PHYSICS
   end
 
   subgraph INTEROP["react-native-scroll-interop"]
     direction TB
-    OWNER["Native nested-scroll owner<br/>NativeScrollHost · react-native-screens"]
+    OWNER("Native nested-scroll owner<br/>NativeScrollHost · react-native-screens")
 
     subgraph CORE["Neutral transaction core"]
       direction LR
-      PRE["PRE"] --> CHILD["RN source"] --> POST["POST"] --> OBS["observe"]
+      PRE("PRE") --> CHILD("RN source") --> POST("POST") --> OBS("observe")
     end
 
-    PROVIDER["participant provider"]
+    PROVIDER("participant provider")
     OWNER --> PRE
     OBS --> PROVIDER
   end
 
   subgraph CONSUMERS["Native consumers"]
     direction TB
-    TOP["Material3 TopAppBar<br/>PRE + POST consumer"]
-    TOOLBAR["FloatingToolbar<br/>POST observer · consumes 0"]
-    FUTURE["additional native consumers"]
+    TOP("Material3 TopAppBar<br/>PRE + POST consumer")
+    TOOLBAR("FloatingToolbar<br/>POST observer · consumes 0")
+    FUTURE("additional native consumers")
     TOP ~~~ TOOLBAR
     TOOLBAR ~~~ FUTURE
   end
@@ -71,21 +71,21 @@ flowchart LR
   PHYSICS -->|"real Android nested-scroll"| OWNER
   PROVIDER -->|"same transaction"| TOP
 
-  style RN fill:#f1f1f1,stroke:#8a8a8a,stroke-width:2px,color:#2f2f2f
+  style RN fill:#f1f1f1,stroke:#8a8a8a,stroke-width:2px,color:#2f2f2f,rx:16px,ry:16px
   style SOURCE fill:#cfcfcf,stroke:#7a7a7a,stroke-width:2px,color:#161616
   style PHYSICS fill:#cfcfcf,stroke:#7a7a7a,stroke-width:2px,color:#161616
 
-  style INTEROP fill:#d9edf9,stroke:#2196e0,stroke-width:2px,color:#146fa8
+  style INTEROP fill:#d9edf9,stroke:#2196e0,stroke-width:2px,color:#146fa8,rx:16px,ry:16px
   style OWNER fill:#8fc7eb,stroke:#168ad0,stroke-width:2px,color:#082f49
   style PROVIDER fill:#8fc7eb,stroke:#168ad0,stroke-width:2px,color:#082f49
 
-  style CORE fill:#eef7fc,stroke:#63a8d2,stroke-width:2px,color:#287fae
+  style CORE fill:#eef7fc,stroke:#63a8d2,stroke-width:2px,color:#287fae,rx:14px,ry:14px
   style PRE fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
   style CHILD fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
   style POST fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
   style OBS fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
 
-  style CONSUMERS fill:#d9dcf2,stroke:#5366c7,stroke-width:2px,color:#3548aa
+  style CONSUMERS fill:#d9dcf2,stroke:#5366c7,stroke-width:2px,color:#3548aa,rx:16px,ry:16px
   style TOP fill:#aeb6e8,stroke:#5366c7,stroke-width:2px,color:#171c4f
   style TOOLBAR fill:#aeb6e8,stroke:#5366c7,stroke-width:2px,color:#171c4f
   style FUTURE fill:#c1c6ed,stroke:#5366c7,stroke-width:2px,color:#283176
