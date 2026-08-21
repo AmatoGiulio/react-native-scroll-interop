@@ -1,0 +1,37 @@
+name: Compatibility report
+description: Report or request validation for a React Native, Expo, screens, or Android version
+labels: []
+body:
+  - type: input
+    id: rn
+    attributes:
+      label: React Native version
+    validations:
+      required: true
+  - type: input
+    id: expo
+    attributes:
+      label: Expo SDK version
+      description: Leave blank for bare React Native.
+    validations:
+      required: false
+  - type: input
+    id: screens
+    attributes:
+      label: react-native-screens version
+    validations:
+      required: false
+  - type: input
+    id: android
+    attributes:
+      label: Android environment
+      description: API level, ABI, and device/emulator.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result
+      description: Include install, prebuild/build, runtime result, and the first material failure if red.
+    validations:
+      required: true
