@@ -35,11 +35,67 @@ For the Material3 reference implementation, terminal settle is delegated back to
 
 ## Architecture
 
-<p align="center">
-  <img src="./docs/assets/architecture.svg" alt="react-native-scroll-interop architecture: React Native keeps source physics while the neutral transaction core exposes the same Android nested-scroll transaction to native consumers." width="100%" />
-</p>
+```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"linear","nodeSpacing":24,"rankSpacing":34},"themeVariables":{"fontSize":"14px","lineColor":"#6b7280"}}}%%
+flowchart LR
+  subgraph RN["React Native"]
+    direction TB
+    SOURCE["ScrollView /<br/>ReactNestedScrollView"]
+    PHYSICS["touch · position · fling<br/>single physics owner"]
+    SOURCE --> PHYSICS
+  end
+
+  subgraph INTEROP["react-native-scroll-interop"]
+    direction TB
+    OWNER["Native nested-scroll owner<br/>NativeScrollHost · react-native-screens"]
+
+    subgraph CORE["Neutral transaction core"]
+      direction LR
+      PRE["PRE"] --> CHILD["RN source"] --> POST["POST"] --> OBS["observe"]
+    end
+
+    PROVIDER["participant provider"]
+    OWNER --> PRE
+    OBS --> PROVIDER
+  end
+
+  subgraph CONSUMERS["Native consumers"]
+    direction TB
+    TOP["Material3 TopAppBar<br/>PRE + POST consumer"]
+    TOOLBAR["FloatingToolbar<br/>POST observer · consumes 0"]
+    FUTURE["additional native consumers"]
+    TOP ~~~ TOOLBAR
+    TOOLBAR ~~~ FUTURE
+  end
+
+  PHYSICS -->|"real Android nested-scroll"| OWNER
+  PROVIDER -->|"same transaction"| TOP
+
+  style RN fill:#f1f1f1,stroke:#8a8a8a,stroke-width:2px,color:#2f2f2f
+  style SOURCE fill:#cfcfcf,stroke:#7a7a7a,stroke-width:2px,color:#161616
+  style PHYSICS fill:#cfcfcf,stroke:#7a7a7a,stroke-width:2px,color:#161616
+
+  style INTEROP fill:#d9edf9,stroke:#2196e0,stroke-width:2px,color:#146fa8
+  style OWNER fill:#8fc7eb,stroke:#168ad0,stroke-width:2px,color:#082f49
+  style PROVIDER fill:#8fc7eb,stroke:#168ad0,stroke-width:2px,color:#082f49
+
+  style CORE fill:#eef7fc,stroke:#63a8d2,stroke-width:2px,color:#287fae
+  style PRE fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
+  style CHILD fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
+  style POST fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
+  style OBS fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
+
+  style CONSUMERS fill:#d9dcf2,stroke:#5366c7,stroke-width:2px,color:#3548aa
+  style TOP fill:#aeb6e8,stroke:#5366c7,stroke-width:2px,color:#171c4f
+  style TOOLBAR fill:#aeb6e8,stroke:#5366c7,stroke-width:2px,color:#171c4f
+  style FUTURE fill:#c1c6ed,stroke:#5366c7,stroke-width:2px,color:#283176
+```
 
 React Native remains the single owner of source motion. The library sits in the middle of the real Android transaction: it tracks source identity and lifecycle, conserves signed PRE/POST distance, and exposes the same transaction to native consumers.
+
+```text
+requested = preConsumed + childConsumed + postConsumed + remaining
+```
 
 Full contract: [`docs/architecture.md`](./docs/architecture.md).
 
