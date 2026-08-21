@@ -35,66 +35,11 @@ For the Material3 reference implementation, terminal settle is delegated back to
 
 ## Architecture
 
-```mermaid
-flowchart TB
-  subgraph SOURCE["<<react-native-source>>"]
-    direction LR
-    RN["ReactNestedScrollView / ScrollView"]
-    PHYSICS["touch · position · fling physics"]
-    RN --- PHYSICS
-  end
-
-  subgraph OWNER["<<native-scroll-owner>>"]
-    direction LR
-    HOST["NativeScrollHost"]
-    SCREENS["react-native-screens"]
-  end
-
-  subgraph INTEROP["<<react-native-scroll-interop>>"]
-    direction TB
-
-    BOUNDARY["React Native boundary<br/>source identity · lifecycle"]
-
-    subgraph CORE["<<neutral-transaction-core>>"]
-      direction LR
-      PRE["PRE"]
-      CHILD["RN source"]
-      POST["POST"]
-      OBS["observers"]
-      PRE --> CHILD --> POST --> OBS
-    end
-
-    PROVIDER["participant provider"]
-
-    BOUNDARY --> PRE
-    OBS --> PROVIDER
-  end
-
-  subgraph CONSUMERS["<<native-consumers>>"]
-    direction LR
-    TOP["Material3 TopAppBar<br/>PRE · POST consumer"]
-    TOOLBAR["FloatingToolbar<br/>POST observer"]
-    FUTURE["additional native<br/>consumers"]
-  end
-
-  SOURCE -->|"real Android nested-scroll"| OWNER
-  OWNER --> BOUNDARY
-  PROVIDER --> TOP
-  PROVIDER --> TOOLBAR
-  PROVIDER -. "extension point" .-> FUTURE
-
-  style SOURCE fill:#eeeeee,stroke:#777,stroke-width:1px,color:#111
-  style OWNER fill:#fff5d6,stroke:#c99400,stroke-width:1px,color:#111
-  style INTEROP fill:#dff1ff,stroke:#2583c6,stroke-width:2px,color:#111
-  style CORE fill:#eef8ff,stroke:#2583c6,stroke-width:1px,color:#111
-  style CONSUMERS fill:#e8e4ff,stroke:#6554c0,stroke-width:1px,color:#111
-```
+<p align="center">
+  <img src="./docs/assets/architecture.svg" alt="react-native-scroll-interop architecture: React Native keeps source physics while the neutral transaction core exposes the same Android nested-scroll transaction to native consumers." width="100%" />
+</p>
 
 React Native remains the single owner of source motion. The library sits in the middle of the real Android transaction: it tracks source identity and lifecycle, conserves signed PRE/POST distance, and exposes the same transaction to native consumers.
-
-```text
-requested = preConsumed + childConsumed + postConsumed + remaining
-```
 
 Full contract: [`docs/architecture.md`](./docs/architecture.md).
 
