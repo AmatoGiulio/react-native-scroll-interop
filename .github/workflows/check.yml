@@ -4,20 +4,36 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
+    name: Repository checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
-          package-manager-cache: false
+
+      - name: Versions
+        run: |
+          node --version
+          npm --version
+
       - name: Run repository checks
         run: npm run check
+
       - name: Verify package surface
         run: npm pack --dry-run
