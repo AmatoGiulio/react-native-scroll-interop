@@ -104,7 +104,9 @@ Runtime observations:
 
 ## Public alpha publication gate
 
-Before publishing `0.1.0-alpha.1`, run from the documentation-frozen `main` commit:
+Before publishing, the GitHub repository itself must be public. `package.json` exposes the GitHub repository, homepage, and issue tracker, so those links must be reachable by npm users before the registry package goes live.
+
+Then run from the documentation-frozen `main` commit:
 
 ```bash
 npm run check
