@@ -1,0 +1,49 @@
+name: Feature or compatibility request
+description: Propose a new native consumer, compatibility line, or integration
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check ROADMAP.md first. New behavior must preserve React Native source physics and the neutral nested-scroll transaction contract.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - React Native compatibility
+        - react-native-screens compatibility
+        - Native consumer
+        - Navigation integration
+        - Material3 behavior
+        - Tooling / validation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the native behavior or compatibility gap, not only the proposed API.
+    validations:
+      required: true
+  - type: textarea
+    id: native
+    attributes:
+      label: Native reference
+      description: Explain the Android/native behavior that should remain authoritative.
+    validations:
+      required: false
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed direction
+    validations:
+      required: false
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Reproduction or evidence
+      description: Include a sample repository, platform reference, trace, or version matrix when available.
+    validations:
+      required: false
