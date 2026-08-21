@@ -1,0 +1,87 @@
+name: Native scroll bug report
+description: Report a reproducible Android scroll interoperability issue
+title: "[Android] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please reproduce on a supported version from the README compatibility matrix when possible. For visual-motion reports, confirm Android animation scales are enabled; instrumentation frameworks can temporarily disable them.
+  - type: input
+    id: package
+    attributes:
+      label: react-native-scroll-interop version
+      placeholder: 0.1.0-alpha.1
+    validations:
+      required: true
+  - type: input
+    id: rn
+    attributes:
+      label: React Native version
+    validations:
+      required: true
+  - type: input
+    id: expo
+    attributes:
+      label: Expo SDK version
+      description: Leave blank for bare React Native.
+    validations:
+      required: false
+  - type: input
+    id: screens
+    attributes:
+      label: react-native-screens version
+      description: Required when using the navigation-first integration.
+    validations:
+      required: false
+  - type: input
+    id: android
+    attributes:
+      label: Android environment
+      description: API level, device/emulator, and ABI.
+      placeholder: API 34, Pixel 7 emulator, arm64-v8a
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Affected phase
+      options:
+        - Touch scroll
+        - Fling
+        - Reverse fling
+        - TOUCH/NON_TOUCH lifecycle
+        - Nested ancestor handoff
+        - Navigation source replacement/restoration
+        - Material terminal settle
+        - Build/integration
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide a deterministic sequence or minimal repository.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Native logs / recordings
+      description: Include relevant logcat output or a short recording when useful.
+      render: shell
+    validations:
+      required: false
