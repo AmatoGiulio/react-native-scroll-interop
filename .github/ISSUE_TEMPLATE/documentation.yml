@@ -1,0 +1,23 @@
+name: Documentation issue
+description: Report unclear, stale, or missing documentation
+labels: []
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Documentation location
+      placeholder: README compatibility table, ROADMAP, API example...
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is unclear or incorrect?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Suggested clarification
+    validations:
+      required: false

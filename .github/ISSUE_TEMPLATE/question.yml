@@ -1,0 +1,17 @@
+name: Integration question
+description: Ask a scoped question about supported integration behavior
+labels: []
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Include the relevant RN / Expo / screens versions and integration path.
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+    validations:
+      required: true
