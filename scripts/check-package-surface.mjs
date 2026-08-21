@@ -37,6 +37,7 @@ expect(pkg.peerDependencies?.['react-native'] === '>=0.86.0 <0.87.0 || >=0.87.0-
 expect(gradle.includes("namespace 'com.reactnativescroll.interop'"), 'Android namespace must be neutral');
 expect(!gradle.includes('expo-module-gradle-plugin'), 'Expo Modules Gradle plugin must stay removed');
 expect(rnConfig.includes('ReactNativeScrollInteropPackage'), 'standard RN autolinking package missing');
+expect(pkg.files?.includes('android/src/reactNativeScreensInterop'), 'optional screens upstream adapter source must ship');
 expect(!pkg.files?.includes('navigation.ts'), 'shared navigation mapper must not add a third public entry point');
 
 for (const obsolete of [
@@ -99,6 +100,7 @@ for (const required of [
   'android/src/main/java/com/reactnativescroll/interop/material3/ui/MaterialToolbarView.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/ui/MaterialToolbarManager.kt',
   'android/src/main/java/com/reactnativescroll/interop/material3/ui/NativeNestedScrollRegistry.kt',
+  'android/src/reactNativeScreensInterop/java/com/reactnativescroll/interop/rnscreens/ReactNativeScreensNestedScrollInstaller.kt',
 ]) {
   expect(files.has(required), `missing package file: ${required}`);
 }

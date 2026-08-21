@@ -23,10 +23,21 @@ class ReactNativeScrollInteropPackage : ReactPackage {
     reactContext: ReactApplicationContext,
   ): List<ViewManager<*, *>> {
     ReactNativeNestedScrollParticipants.install(Material3NestedScrollParticipantProvider)
+    installReactNativeScreensNestedScrollInteropIfAvailable()
     return listOf(
       ReactNativeNestedScrollHostManager(),
       MaterialTopAppBarManager(),
       MaterialToolbarManager(),
     )
+  }
+
+  private fun installReactNativeScreensNestedScrollInteropIfAvailable() {
+    try {
+      Class.forName(
+        "com.reactnativescroll.interop.rnscreens.ReactNativeScreensNestedScrollInstaller",
+      ).getMethod("install").invoke(null)
+    } catch (_: ClassNotFoundException) {
+      // react-native-screens is absent or does not expose the upstream nested-scroll seam.
+    }
   }
 }

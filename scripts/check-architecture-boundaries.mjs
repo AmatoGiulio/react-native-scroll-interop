@@ -73,7 +73,23 @@ for (const forbidden of ['TopAppBar', 'FloatingToolbar', 'Material3NestedScroll'
   forbid(corePath, controllerCore, forbidden, `consumer-specific controller symbol ${forbidden}`);
 }
 
-// react-native-screens knows one RN-neutral bridge only.
+// The shipped Android main source set remains screens-independent. Only the optional source set may
+// import the upstream screens seam.
+for (const file of filesUnder('android/src/main/java', '.kt')) {
+  forbid(file, read(file), 'com.swmansion.rnscreens', 'react-native-screens main-source dependency');
+}
+const upstreamScreensAdapterPath =
+  'android/src/reactNativeScreensInterop/java/com/reactnativescroll/interop/rnscreens/ReactNativeScreensNestedScrollInstaller.kt';
+const upstreamScreensAdapter = read(upstreamScreensAdapterPath);
+for (const marker of [
+  'ReactNativeScreenNestedScrollBridge',
+  'ScreenNestedScrollDelegate',
+  'ScreenNestedScrollDelegateFactory',
+  'ScreenNestedScrollInterop.installFactory(factory)',
+]) requireMarker(upstreamScreensAdapterPath, upstreamScreensAdapter, marker);
+forbid(upstreamScreensAdapterPath, upstreamScreensAdapter, 'com.reactnativescroll.interop.material3', 'Material3 screens-adapter coupling');
+
+// react-native-screens 4.26 compatibility patch knows one RN-neutral bridge only.
 const screensPath = 'plugin/reactNativeScreensInteropPatch.js';
 const screens = read(screensPath);
 requireMarker(screensPath, screens, 'ReactNativeScreenNestedScrollBridge');
@@ -105,7 +121,13 @@ requireMarker(
   packageRoot,
   'ReactNativeNestedScrollParticipants.install(Material3NestedScrollParticipantProvider)'
 );
+requireMarker(
+  packagePath,
+  packageRoot,
+  'installReactNativeScreensNestedScrollInteropIfAvailable()'
+);
 forbid(packagePath, packageRoot, 'expo.modules', 'Expo composition dependency');
+forbid(packagePath, packageRoot, 'import com.swmansion.rnscreens', 'direct screens composition dependency');
 
 // Navigation semantics live in one navigator-neutral mapper/header renderer.
 const mapperPath = 'src/navigation/material3NavigationMapper.ts';
@@ -169,7 +191,8 @@ if (violations.length) {
 console.log('Architecture boundary invariant: PASS');
 console.log('  neutral core has no RN/Material/Expo dependency');
 console.log('  RN transport has no Material3/screens/Expo dependency');
-console.log('  react-native-screens integrates one neutral RN screen bridge');
+console.log('  screens upstream integration is isolated to the optional Android source set');
+console.log('  react-native-screens 4.26 compatibility patch integrates one neutral RN screen bridge');
 console.log('  Material3 is installed through the neutral participant provider');
 console.log('  Expo Router and React Navigation share mapper/header semantics');
 console.log('  Expo Modules runtime/implementation tree remains absent');
