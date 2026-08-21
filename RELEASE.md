@@ -2,69 +2,109 @@
 
 Package: `react-native-scroll-interop`
 
-Version: `0.1.0-alpha.1`
+Current version: `0.1.0-alpha.1`
 
-npm status: **not published yet**.
+Planned npm dist-tag: `next`
 
-## Architecture follow-up
+Current npm status: **not published yet**.
 
-PR #26 finishes the separation planned for this alpha:
+## Release candidate source
 
-- neutral nested-scroll core remains under `com.reactnativescroll.interop.core`;
-- React Native source recognition, parent facade/engine, `NativeScrollHost` and screen bridge live under `com.reactnativescroll.interop.reactnative`;
-- native consumers enter the RN transaction only through `ReactNativeNestedScrollParticipantProvider` / `ReactNativeNestedScrollParticipantSession`;
-- the historical `android/src/main/java/expo/...` implementation tree is removed;
-- Material3 behavior lives under `com.reactnativescroll.interop.material3`;
-- Material3 native UI/managers/registry/provider live under `com.reactnativescroll.interop.material3.ui`;
-- `ReactNativeScrollInteropPackage` composes Material3 as the shipped reference provider without leaking it into the RN controller;
-- Expo Router and React Navigation share an internal navigator-neutral mapper plus `Material3NavigationHeader` renderer; only `/router` and `/react-navigation` are public adapter entry points;
-- `react-native-screens 4.26.x` patches only to `ReactNativeScreenNestedScrollBridge` while `UPSTREAM_REACT_NATIVE_SCREENS.md` defines the neutral upstream seam;
-- an explicit architecture-boundary checker is part of `npm run check`.
-
-Because this follow-up changes packaged native transaction wiring and public navigation surfaces, the device/build certification from the pre-#26 commit is historical evidence only. It must be repeated on the final PR #26 head before merge/publication.
-
-## Previous certified baseline
-
-### React Native 0.86.x gate
-
-Previously **PASS** on Expo SDK 57:
-
-- exact package installation;
-- clean Android prebuild;
-- ReactAndroid source compatibility patch;
-- `react-native-screens 4.26.x` screen ownership;
-- x86_64 Android assemble/runtime;
-- MaterialTopAppBar and MaterialToolbar runtime;
-- TOUCH/NON_TOUCH fling and navigation source restoration.
-
-### React Native 0.87.x gate
-
-Previously **PASS** on bare `react-native@0.87.0-rc.3`:
-
-- no-Expo package installation and standard RN autolinking;
-- bare compatibility adapter;
-- ReactAndroid source build with prebuilt Hermes;
-- `:react-native-scroll-interop:compileDebugKotlin`;
-- x86_64 assemble/install/Hermes launch;
-- public `NativeScrollHost` + `MaterialTopAppBar` runtime;
-- touch, inertial fling, reverse fling and large TopAppBar collapse/expand.
-
-## Required final gates for PR #26
-
-Before PR #26 can leave draft state:
+PR #26 completed the architecture separation for this alpha and was merged as:
 
 ```text
-npm run check                                      PASS required
-npm pack --dry-run                                 PASS required
-Expo SDK 57 / RN 0.86.x fresh package+build      PASS required
-bare RN 0.87.0-rc.3 fresh package+build/runtime  PASS required
+main merge commit: da1c07f04a306d4596da2d1a5d802580eeddf287
+certified PR head: d397d7011f9d4487ac1f65633505141089d7069a
+certified tree:    972e21f2289692d989000ab8ecef1ff337db8074
 ```
 
-The navigation adapters are mapping-only surfaces and must contain no nested-scroll transport logic.
+The PR head and the merge commit point to the same tree, so the runtime/package source that was validated is exactly the source merged to `main`.
 
-## Public-package checks before npm
+The public-release documentation hardening that follows PR #26 is documentation/check-surface only. No native runtime behavior should be changed as part of that release-preparation pass.
 
-After PR #26 is merged and documentation is frozen:
+## Architecture shipped by this alpha
+
+- neutral nested-scroll core under `com.reactnativescroll.interop.core`;
+- React Native source recognition, parent facade/engine, `NativeScrollHost`, and screen bridge under `com.reactnativescroll.interop.reactnative`;
+- native consumers supplied through `ReactNativeNestedScrollParticipantProvider` / `ReactNativeNestedScrollParticipantSession`;
+- Material3 behavior consumers under `com.reactnativescroll.interop.material3`;
+- Material3 native UI/managers/registry/provider under `com.reactnativescroll.interop.material3.ui`;
+- `ReactNativeScrollInteropPackage` as the standard RN composition root;
+- Expo Router and React Navigation as thin adapters over one internal navigator-neutral mapper/header renderer;
+- current `react-native-screens 4.26.x` support through the package adapter, with the future upstream path kept AndroidX-only and package-neutral.
+
+Expo Modules are not required by the native runtime.
+
+## Final-head certification completed for PR #26
+
+### Static/package gates
+
+Validated on exact PR head `d397d7011f9d4487ac1f65633505141089d7069a`:
+
+```text
+npm run check                                      PASS
+npm pack --dry-run                                 PASS
+architecture boundary                             PASS
+scroll/Material3 invariants                       PASS
+Expo Router / React Navigation mapping            PASS
+RN 0.86 / 0.87 compatibility adapters             PASS
+react-native-screens 4.26.x bridge invariant      PASS
+package surface                                   PASS
+```
+
+Recorded package surface for that gate:
+
+```text
+58 files
+258133 bytes unpacked
+```
+
+### Expo SDK 57 / React Native 0.86.0
+
+Fresh consumer validation from the exact package artifact:
+
+```text
+exact tarball install                             PASS
+clean Expo prebuild                               PASS
+clean react-native-screens 4.26.2 integration     PASS
+:react-native-scroll-interop:compileDebugKotlin   PASS
+:app:assembleDebug                                PASS
+install/runtime/navigation                        PASS
+```
+
+Runtime observations:
+
+- app launches without crash;
+- touch scroll works;
+- fling and reverse fling work;
+- large `MaterialTopAppBar` collapses and expands correctly;
+- forward/back navigation restores source ownership correctly;
+- no visible jump, double-consume, stale toolbar/app-bar ownership, or crash observed.
+
+### Bare React Native 0.87.0-rc.3
+
+Fresh consumer validation from the exact package artifact:
+
+```text
+exact tarball install                             PASS
+standard RN autolinking                           PASS
+bare compatibility adapter                        PASS
+:react-native-scroll-interop:compileDebugKotlin   PASS
+:app:assembleDebug                                PASS
+:app:installDebug                                 PASS
+Hermes runtime                                    PASS
+```
+
+Runtime observations:
+
+- `Hermes: YES` confirmed in the runtime probe;
+- `NativeScrollHost` + large `MaterialTopAppBar` render correctly;
+- touch scroll, fling, reverse fling, collapse, and expand work correctly;
+- no visible jump, double-consume, abnormal stutter, or crash observed.
+
+## Public alpha publication gate
+
+Before publishing `0.1.0-alpha.1`, run from the documentation-frozen `main` commit:
 
 ```bash
 npm run check
@@ -72,4 +112,65 @@ npm pack --dry-run
 npm publish --dry-run --access public --tag next
 ```
 
-Then verify the tarball contains the neutral core/RN/Material3 layers plus optional navigation adapters, and contains no legacy Expo implementation tree or repository-only artifacts.
+Inspect the dry-run tarball and verify that it contains the public runtime surface only:
+
+- neutral core;
+- generic React Native boundary;
+- Material3 reference consumers/UI;
+- root API;
+- `/router` adapter;
+- `/react-navigation` adapter;
+- Expo config plugin / bare compatibility helpers;
+- `README.md`, `LICENSE`, and `package.json`.
+
+It must not contain repository/test/generated material such as:
+
+- `example/`;
+- `scripts/`;
+- `.github/`;
+- Android build output;
+- historical Expo implementation sources;
+- repository-only architecture/release/upstream/roadmap documents.
+
+When the dry-run is clean:
+
+```bash
+npm publish --access public --tag next
+```
+
+Do not publish this alpha under `latest`.
+
+## Post-publish verification
+
+Immediately after publication:
+
+```bash
+npm view react-native-scroll-interop@next version
+npm view react-native-scroll-interop dist-tags
+```
+
+Expected version:
+
+```text
+0.1.0-alpha.1
+```
+
+Then install `react-native-scroll-interop@next` from the registry in a fresh consumer and verify that the registry artifact, not a local tarball/workspace link, completes the minimal Android build/install path.
+
+## Relationship to react-native-screens upstream work
+
+The upstream-neutral `react-native-screens` seam is valuable but is **not a blocker for this alpha**.
+
+The current package already has a validated, version-scoped `react-native-screens 4.26.x` adapter. If the upstream AndroidX delegate seam is accepted and released, a later package version should migrate to that seam and remove the source-patch requirement for supported screens versions.
+
+## Stable-release bar
+
+Before using the npm `latest` tag, the project should have at minimum:
+
+- fresh validation on the supported stable React Native lines rather than only release candidates;
+- a broader, explicit Android device/API regression matrix;
+- a settled `react-native-screens` ownership path;
+- documented migration behavior across supported RN/screens ranges;
+- continued proof that no consumer path duplicates source physics or velocity integration.
+
+See [`ROADMAP.md`](./ROADMAP.md) for the forward plan.
