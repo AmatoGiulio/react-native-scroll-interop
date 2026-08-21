@@ -37,30 +37,75 @@ For the Material3 reference implementation, terminal settle is delegated back to
 
 ```mermaid
 flowchart LR
-  RN[React Native vertical scroll source\nTouch + position + fling owner]
-  HOST{Native nested-scroll owner}
-  HOST1[NativeScrollHost]
-  HOST2[react-native-screens adapter]
-  BOUNDARY[React Native boundary\nsource identity + lifecycle]
-  CORE[Neutral transaction core\nPRE / POST / observers\nconservation]
-  PROVIDER[Participant provider]
-  TOP[Material3 TopAppBar\nPRE + POST consumer]
-  TOOLBAR[Material3 FloatingToolbar\nPOST observer]
+  %% Source side
+  subgraph SOURCE["React Native source"]
+    direction TB
+    RN["ReactNestedScrollView / ScrollView"]
+    PHYSICS["Touch · position · fling physics"]
+    RN --> PHYSICS
+  end
 
-  RN -->|Android nested-scroll callbacks| HOST
-  HOST1 --> HOST
-  HOST2 --> HOST
+  %% Ownership side
+  subgraph OWNER["Native nested-scroll owner"]
+    direction TB
+    HOST["NativeScrollHost"]
+    SCREENS["react-native-screens\nadapter / upstream seam"]
+  end
+
+  %% Interop engine
+  subgraph INTEROP["react-native-scroll-interop"]
+    direction TB
+
+    BOUNDARY["React Native boundary\nsource identity + lifecycle"]
+
+    subgraph TX["Neutral transaction core"]
+      direction LR
+      PRE["PRE"]
+      CHILD["RN source"]
+      POST["POST"]
+      OBS["Observers"]
+      PRE --> CHILD --> POST --> OBS
+    end
+
+    PROVIDER["Participant provider"]
+
+    BOUNDARY --> TX
+    TX --> PROVIDER
+  end
+
+  %% Native consumers
+  subgraph CONSUMERS["Native consumers"]
+    direction TB
+    TOP["Material3 TopAppBar\nPRE + POST consumer"]
+    TOOLBAR["Material3 FloatingToolbar\nPOST observer"]
+    FUTURE["Additional native consumers"]
+  end
+
+  SOURCE -->|"real Android nested-scroll callbacks"| OWNER
   HOST --> BOUNDARY
-  BOUNDARY --> CORE
-  CORE --> PROVIDER
+  SCREENS --> BOUNDARY
+
   PROVIDER --> TOP
   PROVIDER --> TOOLBAR
+  PROVIDER -. "extension point" .-> FUTURE
 
-  TOP -. consumes transaction distance .-> CORE
-  TOOLBAR -. observes, consumes 0 .-> CORE
+  TOP -->|"consumed distance"| TX
+  TOOLBAR -. "observe only · consumes 0" .-> TX
+
+  classDef source fill:#eeeeee,stroke:#777,color:#111;
+  classDef owner fill:#fff4cc,stroke:#d6a300,color:#111;
+  classDef core fill:#dff1ff,stroke:#2583c6,color:#111;
+  classDef consumer fill:#e8e4ff,stroke:#6554c0,color:#111;
+
+  class RN,PHYSICS source;
+  class HOST,SCREENS owner;
+  class BOUNDARY,PRE,CHILD,POST,OBS,PROVIDER core;
+  class TOP,TOOLBAR,FUTURE consumer;
 ```
 
-React Native remains the single owner of source motion. The neutral core owns lifecycle, signed conservation, and dispatch. Native consumers sit above that core and cannot create a second source fling.
+The important boundary is the blue center: **the library does not replace React Native scrolling**. React Native stays the single source-motion owner; the interop layer only exposes the same synchronous Android transaction to native consumers.
+
+The transaction is conserved as:
 
 ```text
 requested = preConsumed + childConsumed + postConsumed + remaining
