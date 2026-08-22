@@ -24,7 +24,7 @@ const files = {
   topView: 'android/src/main/java/com/reactnativescroll/interop/material3/ui/MaterialTopAppBarView.kt',
   rnPackage: 'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScrollInteropPackage.kt',
   readme: 'README.md',
-  architecture: 'ARCHITECTURE.md',
+  architecture: 'docs/architecture.md',
 };
 const source = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, read(file)]));
 
@@ -43,7 +43,7 @@ for (const needle of [
   'headerLargeTitleEnabled === true || input.options.headerLargeTitle === true',
   "variant === 'large' ? 'exitUntilCollapsed' : 'none'",
 ]) requireText(files.mapper, source.mapper, needle);
-for (const forbidden of ['expo-router', '@react-navigation', 'NativeScrollHost', 'onScroll', 'scrollBy(', 'scrollTo(']) {
+for (const forbidden of ['expo-router', '@react-navigation', 'NativeScrollHost', 'onNestedScroll', 'scrollBy(', 'scrollTo(']) {
   forbidText(files.mapper, source.mapper, forbidden, `adapter/transport dependency ${forbidden}`);
 }
 
@@ -125,7 +125,7 @@ for (const needle of [
   'Material3 consumers',
   'React Navigation adapter',
   'Expo Router adapter',
-  'UPSTREAM_REACT_NATIVE_SCREENS.md',
+  'react-native-screens.md',
 ]) requireText(files.architecture, source.architecture, needle);
 
 if (violations.length) {

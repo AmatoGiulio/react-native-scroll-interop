@@ -38,6 +38,8 @@ expect(gradle.includes("namespace 'com.reactnativescroll.interop'"), 'Android na
 expect(!gradle.includes('expo-module-gradle-plugin'), 'Expo Modules Gradle plugin must stay removed');
 expect(rnConfig.includes('ReactNativeScrollInteropPackage'), 'standard RN autolinking package missing');
 expect(!pkg.files?.includes('navigation.ts'), 'shared navigation mapper must not add a third public entry point');
+expect(existsSync(new URL('../examples/expo/package.json', import.meta.url)), 'Expo example must live under examples/expo');
+expect(existsSync(new URL('../examples/bare/package.json', import.meta.url)), 'bare RN example must live under examples/bare');
 
 for (const obsolete of [
   'expo-module.config.json',
@@ -45,6 +47,7 @@ for (const obsolete of [
   'src/ExpoMaterialTopAppBarNativeView.tsx',
   'src/ExpoMaterialToolbarNativeView.tsx',
   'android-shared',
+  'example',
   'rn087-bare-probe',
 ]) {
   expect(!existsSync(new URL(`../${obsolete}`, import.meta.url)), `obsolete path remains: ${obsolete}`);
@@ -106,11 +109,8 @@ expect(!files.has('navigation.ts'), 'unexpected public /navigation entry point l
 
 for (const file of files) {
   if (file.startsWith('android/src/main/java/expo/')) violations.push(`legacy Expo implementation leaked: ${file}`);
-  for (const prefix of ['example/', 'scripts/', '.github/', 'android/build/', 'android/.gradle/', 'android/.cxx/']) {
+  for (const prefix of ['examples/', 'scripts/', '.github/', 'docs/', 'android/build/', 'android/.gradle/', 'android/.cxx/']) {
     if (file.startsWith(prefix)) violations.push(`repository/generated path leaked: ${file}`);
-  }
-  if (['ARCHITECTURE.md', 'RELEASE.md', 'UPSTREAM_REACT_NATIVE_SCREENS.md'].includes(file)) {
-    violations.push(`repository-only doc leaked: ${file}`);
   }
 }
 

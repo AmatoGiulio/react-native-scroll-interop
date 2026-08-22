@@ -1,5 +1,5 @@
 {
-  "name": "react-native-scroll-interop-example",
+  "name": "react-native-scroll-interop-expo-example",
   "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
@@ -19,7 +19,7 @@
     "react-native": "0.86.0",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
-    "react-native-scroll-interop": "file:.."
+    "react-native-scroll-interop": "file:../.."
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

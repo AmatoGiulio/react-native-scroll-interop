@@ -129,6 +129,15 @@ expo-router                        >=57.0.0 <58.0.0     optional
 @react-navigation/native-stack     >=7.0.0 <8.0.0       optional
 ```
 
+## Examples
+
+Repository-only consumer apps live under [`examples/`](./examples/):
+
+- [`examples/expo`](./examples/expo/) — Expo SDK 57 / React Native 0.86 app using the config plugin and Expo Router integration.
+- [`examples/bare`](./examples/bare/) — bare React Native 0.87 app using standard autolinking, the bare compatibility adapter, `NativeScrollHost`, and `MaterialTopAppBar`.
+
+The stable RN 0.87 example keeps the integration path reproducible; the formal release certification above remains the recorded `0.87.0-rc.3` gate until the stable line is rerun and documented. Neither example is shipped in the npm tarball.
+
 ## Root API
 
 ```tsx
@@ -203,7 +212,7 @@ MaterialToolbar.Fab
 node ./node_modules/react-native-scroll-interop/plugin/bareReactNativeScrollCompat.js
 ```
 
-The compatibility adapter is version-scoped to the validated RN 0.86/0.87 source shapes and fails closed on unsupported shapes.
+The compatibility adapter is version-scoped to the validated RN 0.86/0.87 source shapes and fails closed on unsupported shapes. The bare example runs this automatically from its `postinstall` script.
 
 ## Expo config plugin
 
@@ -286,7 +295,7 @@ npm run check
 npm pack --dry-run
 ```
 
-The check suite guards architecture boundaries, nested-scroll ownership/conservation, Material3 boundaries, navigation mapping, RN compatibility transformations, the current screens adapter, and npm package surface.
+The check suite guards architecture boundaries, nested-scroll ownership/conservation, Material3 boundaries, navigation mapping, RN compatibility transformations, the current screens adapter, repository example layout, and npm package surface.
 
 Native/runtime changes additionally require fresh consumer builds and device/emulator validation. See [`docs/release.md`](./docs/release.md).
 
@@ -296,6 +305,7 @@ Native/runtime changes additionally require fresh consumer builds and device/emu
 - [Release / certification](./docs/release.md)
 - [Roadmap](./docs/roadmap.md)
 - [react-native-screens upstream path](./docs/react-native-screens.md)
+- [Examples](./examples/)
 - [Changelog](./CHANGELOG.md)
 
 ## Stability

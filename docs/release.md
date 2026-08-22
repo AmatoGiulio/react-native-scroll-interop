@@ -66,6 +66,19 @@ Hermes runtime                                    PASS
 
 `NativeScrollHost` + large `MaterialTopAppBar`, touch, fling, reverse fling, collapse, and expand were verified without visible jump, double-consume, abnormal stutter, or crash.
 
+## Repository examples
+
+The public repository keeps the two supported consumer shapes visible under `examples/`:
+
+```text
+examples/expo   Expo SDK 57 / React Native 0.86
+examples/bare   bare React Native 0.87
+```
+
+`examples/expo` is the maintained Expo consumer. `examples/bare` is a stable RN 0.87 consumer derived from the previously validated bare probe, simplified to use the current public package API and standard autolinking. The recorded release certification remains the exact RN `0.87.0-rc.3` gate above until the stable RN 0.87 example is rerun and recorded separately.
+
+Both examples are repository-only and must remain outside the npm package.
+
 ## Public alpha publication gate
 
 Before publishing, the GitHub repository must be public so the package metadata links are reachable.
@@ -78,7 +91,7 @@ npm pack --dry-run
 npm publish --dry-run --access public --tag next
 ```
 
-The tarball must contain only the public runtime/integration surface and must not contain `example/`, `scripts/`, `.github/`, `docs/`, Android build output, historical Expo implementation sources, or other repository-only material.
+The tarball must contain only the public runtime/integration surface and must not contain `examples/`, `scripts/`, `.github/`, `docs/`, Android build output, historical Expo implementation sources, or other repository-only material.
 
 When the dry-run is clean:
 
