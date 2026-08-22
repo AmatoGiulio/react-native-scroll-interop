@@ -6,9 +6,9 @@ Contributions are welcome, but changes to scroll semantics are held to a high ev
 
 Read:
 
-- `ARCHITECTURE.md`;
-- `README.md` transaction ownership section;
-- `ROADMAP.md` non-goals;
+- [`docs/architecture.md`](../docs/architecture.md);
+- the transaction ownership section in [`README.md`](../README.md);
+- the non-goals in [`docs/roadmap.md`](../docs/roadmap.md);
 - the invariant checks under `scripts/`.
 
 Runtime changes must preserve:
@@ -21,8 +21,6 @@ and must not introduce a second owner for React Native source motion.
 
 ## Required checks
 
-Before opening a pull request:
-
 ```bash
 npm run check
 npm pack --dry-run
@@ -32,14 +30,6 @@ Native/runtime changes also require a fresh Android consumer build and a determi
 
 ## Pull requests
 
-Keep changes scoped. Separate architecture/runtime changes from documentation or release housekeeping when possible.
-
-For behavior fixes, include:
-
-- the failing sequence before the change;
-- why the existing transaction/lifecycle is wrong;
-- the smallest production change that fixes it;
-- a regression test or deterministic runtime gate;
-- confirmation that touch, fling, reverse direction, and stock/no-consumer behavior remain intact when relevant.
+Keep changes scoped. For behavior fixes, include the failing sequence, why the transaction/lifecycle is wrong, the smallest production change, regression evidence, and confirmation that relevant touch/fling/reverse/stock paths remain intact.
 
 Do not classify infrastructure or instrumentation failures as product regressions without evidence that a test body reached the affected behavior.

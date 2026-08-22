@@ -1,0 +1,15 @@
+# node
+node_modules/
+package-lock.json
+
+# generated Android wrapper/build output
+android/.gradle/
+android/gradlew
+android/gradle/wrapper/gradle-wrapper.jar
+android/gradle/wrapper/gradle-wrapper.properties
+android/app/build/
+android/build/
+
+# local environment
+android/local.properties
+*.log

@@ -6,4 +6,4 @@ For security-sensitive reports that should not be public, use GitHub's private v
 
 For ordinary crashes, build failures, scroll lifecycle bugs, or compatibility regressions, use the public issue templates instead.
 
-Supported security fixes track the currently published release line. During the `0.1.x-alpha` phase, users should expect to update to the newest alpha rather than receive long-lived patch branches for older prereleases.
+During the `0.1.x-alpha` phase, users should expect to update to the newest alpha rather than receive long-lived patch branches for older prereleases.

@@ -14,7 +14,7 @@
     "plugins": [
       "expo-router",
       [
-        "../app.plugin.js",
+        "../../app.plugin.js",
         {
           "android": {
             "reactNativeScrollCompat": true,

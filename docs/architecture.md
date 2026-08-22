@@ -99,7 +99,7 @@ react-native-screens Screen
 
 The source patch imports only the neutral screen bridge. It contains no Material3, Expo Router or React Navigation logic.
 
-The future upstream-neutral path is specified in [`UPSTREAM_REACT_NATIVE_SCREENS.md`](./UPSTREAM_REACT_NATIVE_SCREENS.md): `react-native-screens` should expose an optional AndroidX nested-scroll delegate seam rather than depending on this package.
+The future upstream-neutral path is specified in [`react-native-screens.md`](./react-native-screens.md): `react-native-screens` should expose an optional AndroidX nested-scroll delegate seam rather than depending on this package.
 
 ## React Native compatibility adapter
 

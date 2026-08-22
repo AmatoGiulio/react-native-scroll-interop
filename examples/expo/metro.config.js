@@ -1,14 +1,15 @@
-// Metro config for the local-library example.
+// Metro config for the local Expo consumer.
 //
-// The example consumes the library through a `file:..` dependency. Keep runtime peers pinned to
-// the host app so Metro cannot load a second React / Expo module graph from the linked repo root.
+// The example consumes the library through a `file:../..` dependency. Keep runtime peers pinned
+// to the host app so Metro cannot load a second React / Expo module graph from the linked repo root.
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
-const { peerDependencies = {} } = require('../package.json');
+const { peerDependencies = {} } = require('../../package.json');
 
 const config = getDefaultConfig(__dirname);
 const appNodeModules = path.resolve(__dirname, 'node_modules');
-const libraryNodeModules = path.resolve(__dirname, '..', 'node_modules');
+const libraryRoot = path.resolve(__dirname, '..', '..');
+const libraryNodeModules = path.resolve(libraryRoot, 'node_modules');
 
 function libraryPackagePattern(packageName) {
   return new RegExp(
@@ -36,9 +37,9 @@ config.resolver.extraNodeModules = {
       path.resolve(appNodeModules, packageName),
     ])
   ),
-  'react-native-scroll-interop': path.resolve(__dirname, '..'),
+  'react-native-scroll-interop': libraryRoot,
 };
 
-config.watchFolders = [path.resolve(__dirname, '..')];
+config.watchFolders = [libraryRoot];
 
 module.exports = config;

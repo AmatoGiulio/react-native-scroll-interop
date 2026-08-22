@@ -6,7 +6,7 @@ Native Android nested-scroll interoperability for React Native.
 
 `react-native-scroll-interop` exposes the real synchronous Android nested-scroll transaction to native consumers while React Native remains the owner of touch handling, source position, and fling physics.
 
-It is not a JavaScript scroll observer and it does not reconstruct native motion from sampled positions. The goal is to preserve the native scroll pipeline that already produces the correct physics and let native UI participate in that same transaction.
+It is not a JavaScript scroll observer and it does not reconstruct native motion from sampled positions. The goal is to preserve the native pipeline that already produces the correct physics and let native UI participate in that same transaction.
 
 ```text
 one React Native scroll physics
@@ -14,33 +14,90 @@ one synchronous Android nested-scroll transaction
 N native consumers
 ```
 
-Material3 is the shipped reference integration above the generic core. It is not part of the transport contract.
+Material3 is the shipped reference integration above the generic core; it is not part of the transport contract.
 
 ## Status
-
-Current release line:
 
 ```text
 react-native-scroll-interop@0.1.0-alpha.1
 npm dist-tag: next
 ```
 
-This is a public alpha with a deliberately narrow compatibility matrix. The runtime architecture, package surface, supported build paths, and native behavior have been validated on the exact source tree documented in [`RELEASE.md`](./RELEASE.md).
+This alpha has a deliberately narrow compatibility matrix. Exact release evidence is tracked in [`docs/release.md`](./docs/release.md).
 
 ## Why this exists
 
-React Native already owns the user gesture and the scroll source. Native UI such as a Material3 TopAppBar also has its own native nested-scroll behavior. A high-fidelity integration should connect those two systems without creating a second scroll engine.
+React Native already owns the gesture and scroll source. Native UI such as a Material3 TopAppBar also has native nested-scroll behavior. High-fidelity interop should connect those systems without introducing a second scroll engine.
 
-This package therefore avoids:
+This package avoids per-frame JS `onScroll` transport, sampled `scrollY` momentum reconstruction, parent-owned `Scroller` / `OverScroller` physics, parent `scrollBy` / `scrollTo`, duplicate velocity integration, and fake nested-scroll sessions.
 
-- per-frame JavaScript `onScroll` transport;
-- sampled `scrollY` momentum reconstruction;
-- parent-owned `Scroller` / `OverScroller` physics;
-- parent `scrollBy` / `scrollTo` calls that move the React Native source;
-- duplicate velocity integration;
-- fake nested-scroll sessions created outside the real Android transaction.
+For the Material3 reference implementation, terminal settle is delegated back to native Material state rather than approximated in JavaScript.
 
-For the Material3 reference implementation, the terminal settle is delegated back to the native Material state rather than approximated in JavaScript.
+## Architecture
+
+```mermaid
+%%{init: {"theme":"base","flowchart":{"curve":"linear","nodeSpacing":24,"rankSpacing":34},"themeVariables":{"fontSize":"14px","lineColor":"#6b7280"}}}%%
+flowchart LR
+  subgraph RN["React Native"]
+    direction TB
+    SOURCE("ScrollView /<br/>ReactNestedScrollView")
+    PHYSICS("touch · position · fling<br/>single physics owner")
+    SOURCE --> PHYSICS
+  end
+
+  subgraph INTEROP["react-native-scroll-interop"]
+    direction TB
+    OWNER("Native nested-scroll owner<br/>NativeScrollHost · react-native-screens")
+
+    subgraph CORE["Neutral transaction core"]
+      direction LR
+      PRE("PRE") --> CHILD("RN source") --> POST("POST") --> OBS("observe")
+    end
+
+    PROVIDER("participant provider")
+    OWNER --> PRE
+    OBS --> PROVIDER
+  end
+
+  subgraph CONSUMERS["Native consumers"]
+    direction TB
+    TOP("Material3 TopAppBar<br/>PRE + POST consumer")
+    TOOLBAR("FloatingToolbar<br/>POST observer · consumes 0")
+    FUTURE("additional native consumers")
+    TOP ~~~ TOOLBAR
+    TOOLBAR ~~~ FUTURE
+  end
+
+  PHYSICS -->|"real Android nested-scroll"| OWNER
+  PROVIDER -->|"same transaction"| TOP
+
+  style RN fill:#f1f1f1,stroke:#8a8a8a,stroke-width:2px,color:#2f2f2f,rx:16px,ry:16px
+  style SOURCE fill:#cfcfcf,stroke:#7a7a7a,stroke-width:2px,color:#161616
+  style PHYSICS fill:#cfcfcf,stroke:#7a7a7a,stroke-width:2px,color:#161616
+
+  style INTEROP fill:#d9edf9,stroke:#2196e0,stroke-width:2px,color:#146fa8,rx:16px,ry:16px
+  style OWNER fill:#8fc7eb,stroke:#168ad0,stroke-width:2px,color:#082f49
+  style PROVIDER fill:#8fc7eb,stroke:#168ad0,stroke-width:2px,color:#082f49
+
+  style CORE fill:#eef7fc,stroke:#63a8d2,stroke-width:2px,color:#287fae,rx:14px,ry:14px
+  style PRE fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
+  style CHILD fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
+  style POST fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
+  style OBS fill:#b9dcf2,stroke:#3997cc,stroke-width:2px,color:#082f49
+
+  style CONSUMERS fill:#d9dcf2,stroke:#5366c7,stroke-width:2px,color:#3548aa,rx:16px,ry:16px
+  style TOP fill:#aeb6e8,stroke:#5366c7,stroke-width:2px,color:#171c4f
+  style TOOLBAR fill:#aeb6e8,stroke:#5366c7,stroke-width:2px,color:#171c4f
+  style FUTURE fill:#c1c6ed,stroke:#5366c7,stroke-width:2px,color:#283176
+```
+
+React Native remains the single owner of source motion. The library sits in the middle of the real Android transaction: it tracks source identity and lifecycle, conserves signed PRE/POST distance, and exposes the same transaction to native consumers.
+
+```text
+requested = preConsumed + childConsumed + postConsumed + remaining
+```
+
+Full contract: [`docs/architecture.md`](./docs/architecture.md).
 
 ## Installation
 
@@ -54,12 +111,12 @@ The package autolinks as a standard React Native Android package. Expo Modules a
 
 | Target | Current status |
 |---|---|
-| Expo SDK 57 + React Native 0.86.x | **Certified** on the final PR #26 source tree: exact package install, clean prebuild, Android compile/assemble, install/runtime, navigation ownership, touch/fling/reverse-fling behavior |
-| bare React Native 0.87.0-rc.3 | **Certified** on the same final source tree: exact package install, standard autolinking, compatibility adapter, Android compile/assemble/install, Hermes runtime, touch/fling/reverse-fling behavior |
-| React Native 0.87.x | Accepted by the current peer range; the exact stable 0.87 release is tracked as a fresh compatibility gate in the roadmap |
-| react-native-screens 4.26.x | Optional navigation-first adapter is validated; the long-term path is an upstream-neutral AndroidX delegate seam |
-| Android | Neutral nested-scroll core + generic React Native boundary + Material3 reference consumers |
-| iOS / web | Safe component fallbacks and navigation-option pass-through; no Android nested-scroll semantics are emulated |
+| Expo SDK 57 + React Native 0.86.x | **Certified**: exact package install, clean prebuild, Android compile/assemble, install/runtime, navigation ownership, touch/fling/reverse-fling |
+| bare React Native 0.87.0-rc.3 | **Certified**: exact package install, standard autolinking, compatibility adapter, Android compile/assemble/install, Hermes runtime, touch/fling/reverse-fling |
+| React Native 0.87.x | Accepted by the peer range; stable 0.87 is tracked as a fresh certification gate |
+| react-native-screens 4.26.x | Optional navigation-first adapter validated; long-term path is an upstream-neutral AndroidX delegate seam |
+| Android | Neutral nested-scroll core + generic RN boundary + Material3 reference consumers |
+| iOS / web | Safe fallbacks / option pass-through; Android nested-scroll semantics are not emulated |
 
 Peer contracts:
 
@@ -72,6 +129,15 @@ expo-router                        >=57.0.0 <58.0.0     optional
 @react-navigation/native-stack     >=7.0.0 <8.0.0       optional
 ```
 
+## Examples
+
+Repository-only consumer apps live under [`examples/`](./examples/):
+
+- [`examples/expo`](./examples/expo/) — Expo SDK 57 / React Native 0.86 app using the config plugin and Expo Router integration.
+- [`examples/bare`](./examples/bare/) — bare React Native 0.87 app using standard autolinking, the bare compatibility adapter, `NativeScrollHost`, and `MaterialTopAppBar`.
+
+The stable RN 0.87 example keeps the integration path reproducible; the formal release certification above remains the recorded `0.87.0-rc.3` gate until the stable line is rerun and documented. Neither example is shipped in the npm tarball.
+
 ## Root API
 
 ```tsx
@@ -82,9 +148,9 @@ import {
 } from 'react-native-scroll-interop';
 ```
 
-### `NativeScrollHost`
+### NativeScrollHost
 
-Use `NativeScrollHost` when the scroll source is not already owned by a supported native screen/container integration.
+Use `NativeScrollHost` when the source is not already owned by a supported native screen/container integration.
 
 ```tsx
 import { ScrollView } from 'react-native';
@@ -95,9 +161,9 @@ import { NativeScrollHost } from 'react-native-scroll-interop';
 </NativeScrollHost>
 ```
 
-On Android it renders `RNSINestedScrollHost`, a standard RN `ViewGroupManager`. It discovers a supported React Native vertical source and delegates parent callbacks to the generic RN controller. React Native remains the touch/fling owner.
+It discovers a supported RN vertical source and delegates real Android parent callbacks to the generic RN controller. It does not own source motion.
 
-### `MaterialTopAppBar`
+### MaterialTopAppBar
 
 ```tsx
 <MaterialTopAppBar
@@ -122,9 +188,9 @@ themeMode?: 'system' | 'light' | 'dark'
 dynamicColor?: boolean
 ```
 
-The TopAppBar is a native Material3 PRE/POST consumer of the real nested-scroll transaction. It never moves the React Native source directly.
+The TopAppBar is a native Material3 PRE/POST consumer. It never moves the RN source directly.
 
-### `MaterialToolbar`
+### MaterialToolbar
 
 ```text
 MaterialToolbar.Root
@@ -138,65 +204,17 @@ MaterialToolbar.Text
 MaterialToolbar.Fab
 ```
 
-`scrollBehavior="exitAlways"` observes child-consumed POST distance. FloatingToolbar is observation-only with respect to list distance and consumes zero source motion.
-
-## Transaction ownership
-
-```text
-requested dy
-  -> PRE consumers
-  -> React Native source moves the remainder
-  -> POST consumers
-  -> POST observers
-  -> remaining
-```
-
-The conservation invariant is:
-
-```text
-requested = preConsumed + childConsumed + postConsumed + remaining
-```
-
-The neutral core owns transaction lifecycle and conservation. Consumer-specific behavior lives above that core.
-
-## Architecture
-
-```text
-Neutral core
-  android/.../com/reactnativescroll/interop/core
-        |
-Generic React Native boundary
-  android/.../com/reactnativescroll/interop/reactnative
-        |
-Neutral participant-provider contract
-        |
-Material3 reference provider/consumers
-  android/.../com/reactnativescroll/interop/material3[/ui]
-```
-
-The **neutral core** owns source lifecycle, signed conservation, and PRE/POST/observer dispatch.
-
-The **React Native boundary** recognizes supported RN vertical sources and translates real Android parent callbacks. It has no Material3 dependency. Native consumers enter through `ReactNativeNestedScrollParticipantProvider` / `ReactNativeNestedScrollParticipantSession`.
-
-`ReactNativeNestedScrollParentController` is the stable RN-facing facade. `ReactNativeNestedScrollControllerCore` owns the transaction engine behind it. `ReactNativeScrollInteropPackage` is the composition root that installs Material3 as the shipped reference provider.
-
-The historical `android/src/main/java/expo/...` implementation tree is gone. `NativeScrollHost`, `MaterialTopAppBar`, and `MaterialToolbar` are standard React Native native components.
-
-See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the full contract.
+`scrollBehavior="exitAlways"` observes child-consumed POST distance. FloatingToolbar consumes zero source motion.
 
 ## Bare React Native
-
-A standard Community React Native host can enable the validated ReactAndroid compatibility path without Expo:
 
 ```bash
 node ./node_modules/react-native-scroll-interop/plugin/bareReactNativeScrollCompat.js
 ```
 
-The adapter is version-scoped to the validated RN 0.86/0.87 source shapes and fails closed if an unsupported source shape is detected.
+The compatibility adapter is version-scoped to the validated RN 0.86/0.87 source shapes and fails closed on unsupported shapes. The bare example runs this automatically from its `postinstall` script.
 
 ## Expo config plugin
-
-Expo remains an optional host integration:
 
 ```json
 {
@@ -216,25 +234,19 @@ Expo remains an optional host integration:
 }
 ```
 
-`reactNativeScrollCompat` applies the same version-scoped React Native source compatibility machinery used by the bare adapter.
+`reactNativeScrollCompat` applies the same version-scoped RN source compatibility path used by bare RN. `reactNativeScreensInterop` enables the validated screens 4.26.x navigation-first ownership path.
 
-`reactNativeScreensInterop` enables the currently validated `react-native-screens 4.26.x` navigation-first ownership path.
+## react-native-screens
 
-## react-native-screens integration
+The current adapter keeps the native screen/container as the real nested-scroll ancestor and delegates through `ReactNativeScreenNestedScrollBridge`. The screen-side integration contains no Material3, Expo Router, or React Navigation behavior.
 
-For navigation-first ownership, the current package adapter keeps the native `Screen` as the real `NestedScrollingParent3` ancestor and delegates into `ReactNativeScreenNestedScrollBridge`.
-
-The bridge owns source discovery/binding and forwards AndroidX callbacks to the same generic RN controller. The patched screen contains no Material3, Expo Router, or React Navigation behavior.
-
-The long-term upstream-neutral contract is documented in [`UPSTREAM_REACT_NATIVE_SCREENS.md`](./UPSTREAM_REACT_NATIVE_SCREENS.md). The proposed seam is AndroidX-only and does not depend on this package.
+Upstream-neutral design and migration plan: [`docs/react-native-screens.md`](./docs/react-native-screens.md).
 
 ## Expo Router
 
 ```tsx
 import { Stack } from 'react-native-scroll-interop/router';
-```
 
-```tsx
 <Stack>
   <Stack.Screen
     name="index"
@@ -242,16 +254,14 @@ import { Stack } from 'react-native-scroll-interop/router';
       title: 'Home',
       headerLargeTitle: true,
       material3: {
-        topAppBar: {
-          scrollBehavior: 'exitUntilCollapsed',
-        },
+        topAppBar: { scrollBehavior: 'exitUntilCollapsed' },
       },
     }}
   />
 </Stack>
 ```
 
-The adapter wraps Expo Router's existing `Stack`. It does not create navigation state and does not transport scroll frames.
+The adapter wraps Expo Router's existing Stack. It does not create navigation state or transport scroll frames.
 
 ## React Navigation
 
@@ -263,16 +273,12 @@ import {
 } from 'react-native-scroll-interop/react-navigation';
 ```
 
-Navigator-level example:
-
 ```tsx
 <Stack.Navigator
   screenOptions={material3NativeStackNavigatorOptions({
     headerLargeTitle: true,
     material3: {
-      topAppBar: {
-        scrollBehavior: 'exitUntilCollapsed',
-      },
+      topAppBar: { scrollBehavior: 'exitUntilCollapsed' },
     },
   })}
 >
@@ -280,77 +286,31 @@ Navigator-level example:
 </Stack.Navigator>
 ```
 
-Screen-level example:
-
-```tsx
-<Stack.Screen
-  name="Details"
-  component={DetailsScreen}
-  options={material3NativeStackScreenOptions({
-    title: 'Details',
-    material3: {
-      topAppBar: {
-        variant: 'medium',
-        scrollBehavior: 'enterAlways',
-      },
-    },
-  })}
-/>
-```
-
-Option factories are also supported:
-
-```tsx
-screenOptions={withMaterial3NativeStackOptions(({ route }) => ({
-  title: route.name,
-}))}
-```
-
-The Expo Router and React Navigation adapters share one internal navigator-neutral mapper and one Material3 header renderer. They contain no nested-scroll transport logic.
+Expo Router and React Navigation share one internal navigator-neutral mapper and Material3 header renderer. Neither adapter owns nested-scroll transport.
 
 ## Validation
-
-Repository gates:
 
 ```bash
 npm run check
 npm pack --dry-run
 ```
 
-The check suite guards:
+The check suite guards architecture boundaries, nested-scroll ownership/conservation, Material3 boundaries, navigation mapping, RN compatibility transformations, the current screens adapter, repository example layout, and npm package surface.
 
-- architecture boundaries;
-- nested-scroll ownership and conservation invariants;
-- Material3 adapter boundaries;
-- Expo Router / React Navigation mapping invariants;
-- RN 0.86 / 0.87 compatibility transformations;
-- the current `react-native-screens 4.26.x` adapter;
-- npm package surface and tarball size.
+Native/runtime changes additionally require fresh consumer builds and device/emulator validation. See [`docs/release.md`](./docs/release.md).
 
-Runtime changes are additionally gated through fresh consumer builds and device/emulator validation. The exact evidence for the current alpha is recorded in [`RELEASE.md`](./RELEASE.md).
+## Project docs
 
-## Stability policy
+- [Architecture](./docs/architecture.md)
+- [Release / certification](./docs/release.md)
+- [Roadmap](./docs/roadmap.md)
+- [react-native-screens upstream path](./docs/react-native-screens.md)
+- [Examples](./examples/)
+- [Changelog](./CHANGELOG.md)
 
-`0.1.x-alpha` is intentionally pre-1.0. The architecture and tested behavior are treated seriously, but native integration points may still change while upstream seams and React Native compatibility lines settle.
+## Stability
 
-The `next` dist-tag is used for alpha releases. A stable `latest` tag should not be used until the supported compatibility matrix and upstream ownership path are sufficiently stable.
-
-## Roadmap
-
-See [`ROADMAP.md`](./ROADMAP.md).
-
-The roadmap prioritizes upstream-neutral ownership, current React Native compatibility, reproducible regression evidence, and additional native consumers without weakening the transaction invariants above.
-
-## Reporting issues
-
-For native-scroll issues, include at minimum:
-
-- React Native version;
-- Expo SDK version if applicable;
-- `react-native-screens` version if applicable;
-- Android API level and ABI/device;
-- whether the issue occurs on touch, fling, reverse fling, or terminal settle;
-- a minimal reproduction or deterministic sequence when possible.
+`0.1.x-alpha` is pre-1.0 and published under `next`. The stable `latest` tag should wait for stable RN certification, reproducible regression coverage, a settled navigation ownership path, and real external usage.
 
 ## License
 

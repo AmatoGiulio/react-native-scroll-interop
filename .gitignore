@@ -23,14 +23,16 @@ build/
 .cxx/
 local.properties
 android/build/
-example/android/
-example/ios/
+examples/expo/android/
+examples/expo/ios/
+examples/bare/android/app/build/
+examples/bare/android/build/
 *.iml
 .idea/
 
 # expo
 .expo/
-example/.expo/
+examples/expo/.expo/
 
 # macOS
 .DS_Store
