@@ -117,7 +117,7 @@ for (const needle of [
   'material3NativeStackNavigatorOptions',
   'material3NativeStackScreenOptions',
   'withMaterial3NativeStackOptions',
-  'shared Material3/navigation mapper',
+  'Expo Router and React Navigation share one internal navigator-neutral mapper',
 ]) requireText(files.readme, source.readme, needle);
 for (const needle of [
   'Neutral core',
