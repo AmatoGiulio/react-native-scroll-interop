@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "default",
     "scheme": "scrollinteropexample",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "android": {
       "package": "expo.modules.materialtoolbar.example",
       "softwareKeyboardLayoutMode": "resize"
@@ -15,8 +15,7 @@
       [
         "expo-status-bar",
         {
-          "hidden": false,
-          "style": "light"
+          "hidden": false
         }
       ],
       "./plugins/withDemoToolbarIcons",
