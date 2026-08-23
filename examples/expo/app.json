@@ -5,7 +5,13 @@
     "version": "1.0.0",
     "orientation": "default",
     "scheme": "scrollinteropexample",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#00000000",
+      "translucent": true,
+      "hidden": false
+    },
     "android": {
       "package": "expo.modules.materialtoolbar.example",
       "softwareKeyboardLayoutMode": "resize"
