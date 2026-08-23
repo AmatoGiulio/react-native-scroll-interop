@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { material3Dark as colors } from '../../../../theme';
+import { material3Dynamic as colors } from '../../../../theme';
 
 const SECTIONS = [
   ['Architecture', 'Nested scroll ownership and native UI consumers'],
