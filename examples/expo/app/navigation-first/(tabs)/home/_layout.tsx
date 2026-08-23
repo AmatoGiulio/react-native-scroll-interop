@@ -12,6 +12,7 @@ export default function HomeStackLayout() {
             topAppBar: {
               variant: 'large',
               scrollBehavior: 'exitUntilCollapsed',
+              dynamicColor: true,
             },
           },
         }}
