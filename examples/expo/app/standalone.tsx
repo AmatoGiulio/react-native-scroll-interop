@@ -6,6 +6,8 @@ import {
 } from 'react-native-scroll-interop';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { material3Dark as colors } from '../theme';
+
 const ROWS = Array.from({ length: 80 }, (_, index) => `Standalone row ${index + 1}`);
 
 export default function StandaloneScreen() {
@@ -51,7 +53,7 @@ export default function StandaloneScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#101318' },
+  root: { flex: 1, backgroundColor: colors.background },
   host: { flex: 1 },
   content: { paddingBottom: 160 },
   row: {
@@ -61,6 +63,6 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 20,
   },
-  number: { width: 30, color: '#748191' },
-  text: { color: '#e6eaf0', fontSize: 17 },
+  number: { width: 30, color: colors.outline },
+  text: { color: colors.onSurface, fontSize: 17 },
 });
