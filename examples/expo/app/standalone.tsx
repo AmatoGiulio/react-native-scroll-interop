@@ -6,7 +6,7 @@ import {
 } from 'react-native-scroll-interop';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { material3Dark as colors } from '../theme';
+import { material3Dynamic as colors } from '../theme';
 
 const ROWS = Array.from({ length: 80 }, (_, index) => `Standalone row ${index + 1}`);
 
@@ -35,12 +35,14 @@ export default function StandaloneScreen() {
         title="Standalone"
         variant="large"
         scrollBehavior="exitUntilCollapsed"
+        dynamicColor
       />
 
       <MaterialToolbar.Root
         placement="bottom"
         insets="none"
         scrollBehavior="exitAlways"
+        dynamicColor
       >
         <MaterialToolbar.Content>
           <MaterialToolbar.TextButton accessibilityLabel="Action">
