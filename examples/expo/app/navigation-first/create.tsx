@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 
-import { material3Dark as colors } from '../../theme';
+import { material3Dynamic as colors } from '../../theme';
 
 export default function NavigationFirstCreate() {
   const router = useRouter();
