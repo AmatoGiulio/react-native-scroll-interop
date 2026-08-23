@@ -31,6 +31,7 @@ function NavigationFirstTabBar({ state, navigation }: TabBarProps) {
       placement="bottom"
       scrollBehavior="exitAlways"
       insets="none"
+      dynamicColor
     >
       <MaterialToolbar.Content>
         <MaterialToolbar.TextButton
