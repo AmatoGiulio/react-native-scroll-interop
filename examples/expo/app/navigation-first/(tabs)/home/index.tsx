@@ -78,7 +78,7 @@ export default function NavigationFirstHome() {
       showsVerticalScrollIndicator={false}
       stickyHeaderIndices={[0]}
     >
-      <View style={[styles.topBar, { paddingTop: insets.top, minHeight: 56 + insets.top }]}> 
+      <View style={[styles.topBar, { paddingTop: insets.top, minHeight: 56 + insets.top }]}>
         <View style={styles.backupState}>
           <Text style={styles.backupText}>Backed up</Text>
           <Text style={styles.backupCheck}>✓</Text>
