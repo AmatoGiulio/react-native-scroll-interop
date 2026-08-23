@@ -21,26 +21,24 @@ export default function ExpoUiLazyColumnPoc() {
     <View style={styles.root}>
       <NativeScrollHost {...hostProps}>
         <Host style={styles.host}>
-          <Column modifiers={[fillMaxSize(), nestedScrollInterop]}>
-            <LazyColumn
-              contentPadding={{ top: 20, bottom: 140 }}
-              verticalArrangement={{ spacedBy: 4 }}
-              modifiers={[fillMaxSize()]}
-            >
-              {ROWS.map((row) => (
-                <Column
-                  key={row}
-                  verticalArrangement="center"
-                  modifiers={[fillMaxWidth(), height(72), paddingAll(20)]}
-                >
-                  <Text style={{ typography: 'titleMedium' }}>{row}</Text>
-                  <Text style={{ typography: 'bodySmall' }}>
-                    Expo UI LazyColumn · native Compose scroll
-                  </Text>
-                </Column>
-              ))}
-            </LazyColumn>
-          </Column>
+          <LazyColumn
+            contentPadding={{ top: 20, bottom: 140 }}
+            verticalArrangement={{ spacedBy: 4 }}
+            modifiers={[fillMaxSize(), nestedScrollInterop]}
+          >
+            {ROWS.map((row) => (
+              <Column
+                key={row}
+                verticalArrangement="center"
+                modifiers={[fillMaxWidth(), height(72), paddingAll(20)]}
+              >
+                <Text style={{ typography: 'titleMedium' }}>{row}</Text>
+                <Text style={{ typography: 'bodySmall' }}>
+                  Expo UI LazyColumn · native Compose scroll
+                </Text>
+              </Column>
+            ))}
+          </LazyColumn>
         </Host>
       </NativeScrollHost>
 
