@@ -2,7 +2,29 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { withDangerousMod, withSettingsGradle } = require('expo/config-plugins');
+const { createRequire } = require('node:module');
+
+function loadExpoConfigPlugins() {
+  try {
+    return require('expo/config-plugins');
+  } catch (error) {
+    if (error?.code !== 'MODULE_NOT_FOUND') throw error;
+
+    try {
+      return createRequire(path.join(process.cwd(), 'package.json'))(
+        'expo/config-plugins'
+      );
+    } catch (consumerError) {
+      throw new Error(
+        '[react-native-scroll-interop] Could not resolve expo/config-plugins. ' +
+          'Install Expo in the app before running Expo Prebuild.',
+        { cause: consumerError }
+      );
+    }
+  }
+}
+
+const { withDangerousMod, withSettingsGradle } = loadExpoConfigPlugins();
 const {
   assertSupportedReactNativeVersion,
   ensureReactNativeSourceBuildPlaceholder,

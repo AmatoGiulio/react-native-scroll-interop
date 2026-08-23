@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import {
   MaterialToolbar,
   MaterialTopAppBar,
@@ -8,9 +9,13 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 const ROWS = Array.from({ length: 80 }, (_, index) => `Standalone row ${index + 1}`);
 
 export default function StandaloneScreen() {
+  const hostProps = { style: styles.host } as unknown as ComponentProps<
+    typeof NativeScrollHost
+  >;
+
   return (
     <View style={styles.root}>
-      <NativeScrollHost style={styles.host}>
+      <NativeScrollHost {...hostProps}>
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}

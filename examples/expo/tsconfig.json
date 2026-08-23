@@ -5,6 +5,11 @@
     "typeRoots": ["./node_modules/@types", "../../node_modules/@types"],
     "paths": {
       "expo-router": ["./node_modules/expo-router"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react-native": ["./node_modules/react-native/types_generated/index.d.ts"],
+      "react-native-safe-area-context": [
+        "./node_modules/react-native-safe-area-context/lib/typescript/src/index.d.ts"
+      ],
       "react-native-scroll-interop": ["../../index"],
       "react-native-scroll-interop/router": ["../../router"],
       "react-native-scroll-interop/*": ["../../src/*"]
