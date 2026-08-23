@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 
-import { material3Dynamic as colors } from '../../theme';
+import { material3Dynamic as colors, useMaterial3DynamicTheme } from '../../theme';
 
 export default function NavigationFirstCreate() {
   const router = useRouter();
+  useMaterial3DynamicTheme();
 
   return (
     <ScrollView
@@ -45,14 +46,14 @@ export default function NavigationFirstCreate() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: colors.background },
+  host: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 20, paddingBottom: 40, gap: 10 },
   label: { color: colors.onSurface, fontSize: 14, fontWeight: '600', marginTop: 10 },
   input: {
     minHeight: 56,
     paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: colors.surfaceContainerLow,
     color: colors.onSurface,
     fontSize: 16,
   },
