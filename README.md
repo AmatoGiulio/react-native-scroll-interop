@@ -39,6 +39,18 @@ Material3 TopAppBar and FloatingToolbar are shipped reference participants used 
 primitive observable. They are not the purpose of the package and are not part of the neutral
 transport contract.
 
+## Reference demo
+
+<p align="center">
+  <a href="https://github.com/AmatoGiulio/react-native-scroll-interop/releases/download/v0.1.0-alpha.1/react-native-scroll-interop-alpha-demo.mp4">
+    <img src="./docs/assets/react-native-scroll-interop-alpha-demo.gif" width="360" alt="React Native scroll source driving native Android TopAppBar and FloatingToolbar reference participants" />
+  </a>
+</p>
+
+The clip makes native participation observable through the shipped TopAppBar and FloatingToolbar
+reference consumers. React Native still owns the gesture, source position, and fling physics.
+Select the preview for the higher-quality MP4.
+
 ## Status
 
 ```text
