@@ -1,18 +1,67 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const exampleRoot = path.resolve(here, '..');
+const requireFromExample = createRequire(path.join(exampleRoot, 'package.json'));
+const packageRoots = new Set();
 
-const packageRoots = [
-  path.join(exampleRoot, 'node_modules', '@expo', 'ui'),
+function addPackageRoot(candidate, reason) {
+  if (!candidate || !fs.existsSync(candidate)) return;
+  const resolved = fs.realpathSync(candidate);
+  packageRoots.add(resolved);
+  console.log(`[expo-ui-poc] ${reason}: ${resolved}`);
+}
+
+// First use Node's own resolution from the example app. This should match Metro's package choice.
+try {
+  const packageJsonPath = requireFromExample.resolve('@expo/ui/package.json');
+  addPackageRoot(path.dirname(packageJsonPath), 'node-resolved @expo/ui');
+} catch (error) {
+  console.warn(`[expo-ui-poc] Node could not resolve @expo/ui: ${error.message}`);
+}
+
+// Then ask Expo Autolinking which native package path it discovered. This is the important one for Gradle.
+const autolinkingBin = path.join(
+  exampleRoot,
+  'node_modules',
+  '.bin',
+  process.platform === 'win32' ? 'expo-modules-autolinking.cmd' : 'expo-modules-autolinking'
+);
+
+if (fs.existsSync(autolinkingBin)) {
+  try {
+    const output = execFileSync(autolinkingBin, ['search'], {
+      cwd: exampleRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const searchResult = JSON.parse(output);
+    const expoUi = searchResult['@expo/ui'];
+    addPackageRoot(expoUi?.path, 'autolink-resolved @expo/ui');
+    for (const duplicate of expoUi?.duplicates ?? []) {
+      addPackageRoot(duplicate?.path, 'autolink duplicate @expo/ui');
+    }
+  } catch (error) {
+    console.warn(`[expo-ui-poc] Expo Autolinking search failed: ${error.message}`);
+  }
+} else {
+  console.warn(`[expo-ui-poc] Expo Autolinking binary not found at ${autolinkingBin}`);
+}
+
+// Keep explicit fallbacks for SDK 57 layouts where @expo/ui is hoisted or nested under expo-router.
+addPackageRoot(path.join(exampleRoot, 'node_modules', '@expo', 'ui'), 'top-level fallback');
+addPackageRoot(
   path.join(exampleRoot, 'node_modules', 'expo-router', 'node_modules', '@expo', 'ui'),
-].filter((candidate) => fs.existsSync(candidate));
+  'expo-router fallback'
+);
 
-if (packageRoots.length === 0) {
+if (packageRoots.size === 0) {
   throw new Error(
-    'Expo UI was not found. Install examples/expo dependencies before running this POC.'
+    'Expo UI was not found. Run npm install in examples/expo before running this POC.'
   );
 }
 
@@ -40,7 +89,7 @@ function patchLazyColumn(packageRoot) {
 
   let source = fs.readFileSync(target, 'utf8');
   if (source.includes('EXPO_UI_LAZY_INTEROP attached')) {
-    console.log(`[expo-ui-poc] LazyColumn interop already patched at ${path.relative(exampleRoot, target)}`);
+    console.log(`[expo-ui-poc] LazyColumn interop already patched: ${target}`);
     return true;
   }
 
@@ -108,13 +157,29 @@ function patchLazyColumn(packageRoot) {
 
   source = source.replace(marker, replacement);
   fs.writeFileSync(target, source);
-  console.log(`[expo-ui-poc] patched LazyColumn interop at ${path.relative(exampleRoot, target)}`);
+  console.log(`[expo-ui-poc] patched LazyColumn interop: ${target}`);
   return true;
 }
 
-const patched = packageRoots.map(patchLazyColumn).filter(Boolean);
-if (patched.length === 0) {
-  throw new Error('Expo UI LazyColumnView.kt was not found in any installed @expo/ui copy.');
+const patchedRoots = [...packageRoots].filter(patchLazyColumn);
+if (patchedRoots.length === 0) {
+  throw new Error('Expo UI LazyColumnView.kt was not found in any resolved @expo/ui package.');
 }
 
-console.log(`[expo-ui-poc] patched ${patched.length} installed Expo UI copy/copies`);
+for (const packageRoot of patchedRoots) {
+  const target = path.join(
+    packageRoot,
+    'android',
+    'src',
+    'main',
+    'java',
+    'expo',
+    'modules',
+    'ui',
+    'LazyColumnView.kt'
+  );
+  const verified = fs.readFileSync(target, 'utf8').includes('EXPO_UI_LAZY_INTEROP attached');
+  if (!verified) throw new Error(`[expo-ui-poc] patch verification failed: ${target}`);
+}
+
+console.log(`[expo-ui-poc] verified ${patchedRoots.length} Expo UI native package path(s)`);
