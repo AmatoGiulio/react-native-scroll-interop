@@ -5,6 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 const files = {
+  topTypes: 'src/MaterialTopAppBar.types.ts',
   adapters: 'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollAdapters.kt',
   transaction: 'android/src/main/java/com/reactnativescroll/interop/material3/Material3NestedScrollTransaction.kt',
   topBar: 'android/src/main/java/com/reactnativescroll/interop/material3/TopAppBarScrollConsumer.kt',
@@ -35,6 +36,9 @@ function forbid(file, source, pattern, label) {
 
 const source = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, read(file)]));
 
+for (const marker of ["'none'", "'pinned'", "'enterAlways'", "'exitUntilCollapsed'"]) {
+  requireText(files.topTypes, source.topTypes, marker);
+}
 for (const marker of [
   'VerticalNestedPreScrollConsumer',
   'VerticalNestedPostScrollConsumer',
@@ -64,9 +68,16 @@ forbid(files.transaction, source.transaction, /expo\.modules\./, 'Expo transacti
 
 for (const marker of [
   'class TopAppBarScrollConsumer',
+  'onChromeGeometryInvalidated: () -> Unit',
+  'onChromeGeometryInvalidated()',
   'ReactVerticalScrollSourceInterop',
   'NativeNestedInputType',
   'Velocity.Zero',
+  'RetainedBehaviorState',
+  'restoreBehaviorStateOnNextBind',
+  'rememberBehaviorState(behavior)',
+  'restoreBehaviorStateOnNextBind = lastKnownBehaviorState != null',
+  'restoreRetainedBehaviorState(newBehavior, retained)',
 ]) requireText(files.topBar, source.topBar, marker);
 for (const marker of [
   'open class FloatingToolbarScrollConsumer',
@@ -80,6 +91,19 @@ for (const marker of [
 for (const [name, content] of [['topBar', source.topBar], ['toolbar', source.toolbar]]) {
   forbid(files[name], content, /expo\.modules\.kotlin/, 'Expo Modules runtime API');
   forbid(files[name], content, /MaterialTopAppBarView|MaterialToolbarView|NativeNestedScrollRegistry/, 'Material UI ownership in behavior consumer');
+}
+
+const chromeTranslationStart = source.topBar.indexOf('private fun applyChromeTranslation()');
+const chromeTranslationEnd = source.topBar.indexOf('private fun ensureScrollAwaySource', chromeTranslationStart);
+if (chromeTranslationStart < 0 || chromeTranslationEnd < 0) {
+  violations.push(`${files.topBar}: cannot isolate applyChromeTranslation`);
+} else {
+  const body = source.topBar.slice(chromeTranslationStart, chromeTranslationEnd);
+  const sourceTranslation = body.indexOf('content.translationY = target');
+  const hostInvalidation = body.indexOf('onChromeGeometryInvalidated()', sourceTranslation + 1);
+  if (sourceTranslation < 0 || hostInvalidation <= sourceTranslation) {
+    violations.push(`${files.topBar}: chrome geometry must invalidate after source translation`);
+  }
 }
 
 const prepareStart = source.toolbar.indexOf('fun prepareNestedSource(source: ViewGroup): Boolean');
@@ -145,6 +169,20 @@ for (const [file, content, className] of [
   requireText(file, content, className);
   forbid(file, content, /expo\.modules\./, 'Expo package dependency');
 }
+
+for (const marker of [
+  'TopAppBarScrollConsumer(',
+  'onChromeGeometryInvalidated = ::scheduleHostMeasureAndLayout',
+  'TopAppBarDefaults.pinnedScrollBehavior(',
+  'TopAppBarInteropMode.Fixed',
+  '"pinned" -> TopAppBarInteropMode.Pinned',
+  'else -> TopAppBarInteropMode.Fixed',
+]) requireText(files.topView, source.topView, marker);
+
+for (const marker of [
+  'Fixed,',
+  'Pinned,',
+]) requireText(files.topBar, source.topBar, marker);
 
 const oldExpoTree = path.join(process.cwd(), 'android/src/main/java/expo');
 if (fs.existsSync(oldExpoTree)) {

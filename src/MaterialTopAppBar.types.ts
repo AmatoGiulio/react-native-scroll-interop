@@ -3,7 +3,11 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import type { MaterialToolbarThemeMode } from './MaterialToolbar.types';
 
 export type MaterialTopAppBarVariant = 'small' | 'medium' | 'large';
-export type MaterialTopAppBarScrollBehavior = 'none' | 'enterAlways' | 'exitUntilCollapsed';
+export type MaterialTopAppBarScrollBehavior =
+  | 'none'
+  | 'pinned'
+  | 'enterAlways'
+  | 'exitUntilCollapsed';
 export type MaterialTopAppBarNavigationIcon = 'none' | 'back';
 export type MaterialTopAppBarPlacement = 'overlay' | 'header';
 

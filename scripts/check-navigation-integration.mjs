@@ -41,7 +41,7 @@ for (const needle of [
   'resolveMaterial3Navigation',
   'resolveMaterial3TopAppBarDescriptor',
   'headerLargeTitleEnabled === true || input.options.headerLargeTitle === true',
-  "variant === 'large' ? 'exitUntilCollapsed' : 'none'",
+  "variant === 'small' ? 'pinned' : 'exitUntilCollapsed'",
 ]) requireText(files.mapper, source.mapper, needle);
 for (const forbidden of ['expo-router', '@react-navigation', 'NativeScrollHost', 'onNestedScroll', 'scrollBy(', 'scrollTo(']) {
   forbidText(files.mapper, source.mapper, forbidden, `adapter/transport dependency ${forbidden}`);
@@ -93,10 +93,21 @@ for (const [file, content, nativeName] of [
   forbidText(file, content, 'expo-modules-core');
 }
 
-for (const needle of ['small: 64', 'medium: 112', 'large: 152', "props.placement ?? 'overlay'", 'useSafeAreaInsets()']) {
+for (const needle of [
+  'small: 64',
+  'medium: 112',
+  'large: 152',
+  "props.placement ?? 'overlay'",
+  'useSafeAreaInsets()',
+]) {
   requireText(files.topAndroid, source.topAndroid, needle);
 }
-for (const needle of ['"small" -> 64f', 'else -> 112f', '"large" -> 152f', 'emitDirectEvent("topNavigationPress")']) {
+for (const needle of [
+  '"small" -> 64f',
+  'else -> 112f',
+  '"large" -> 152f',
+  'emitDirectEvent("topNavigationPress")',
+]) {
   requireText(files.topView, source.topView, needle);
 }
 forbidText(files.topView, source.topView, 'expo.modules.', 'Expo package dependency');

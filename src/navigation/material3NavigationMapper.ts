@@ -163,7 +163,8 @@ export function resolveMaterial3TopAppBarDescriptor(input: {
   const variant: MaterialTopAppBarVariant =
     input.config?.variant ?? (largeTitleEnabled ? 'large' : 'small');
   const scrollBehavior: MaterialTopAppBarScrollBehavior =
-    input.config?.scrollBehavior ?? (variant === 'large' ? 'exitUntilCollapsed' : 'none');
+    input.config?.scrollBehavior ??
+    (variant === 'small' ? 'pinned' : 'exitUntilCollapsed');
   const canGoBack = input.canGoBack && input.options.headerBackVisible !== false;
 
   return {

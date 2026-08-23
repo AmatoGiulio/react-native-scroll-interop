@@ -60,6 +60,21 @@ for (const file of rnBoundaryFiles) {
   ]) forbid(file, source, needle, `RN boundary dependency ${needle}`);
 }
 
+const viewEventsPath =
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeViewEvents.kt';
+const viewEvents = read(viewEventsPath);
+for (const marker of [
+  'UIManagerHelper.getEventDispatcher(reactContext)',
+  'UIManagerHelper.getSurfaceId(reactContext)',
+  'Event<DirectViewEvent>',
+]) requireMarker(viewEventsPath, viewEvents, marker);
+forbid(
+  viewEventsPath,
+  viewEvents,
+  'RCTEventEmitter',
+  'legacy RCTEventEmitter direct-event transport'
+);
+
 const corePath = 'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollControllerCore.kt';
 const controllerCore = read(corePath);
 for (const marker of [
@@ -169,6 +184,7 @@ if (violations.length) {
 console.log('Architecture boundary invariant: PASS');
 console.log('  neutral core has no RN/Material/Expo dependency');
 console.log('  RN transport has no Material3/screens/Expo dependency');
+console.log('  native view events use the New Architecture EventDispatcher path');
 console.log('  react-native-screens integrates one neutral RN screen bridge');
 console.log('  Material3 is installed through the neutral participant provider');
 console.log('  Expo Router and React Navigation share mapper/header semantics');

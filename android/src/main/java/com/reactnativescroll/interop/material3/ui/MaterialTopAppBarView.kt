@@ -58,7 +58,9 @@ class MaterialTopAppBarView(
   private var lastTopInsetPx = -1
   private var expandedChromeHeightPx = 0
 
-  private val topAppBarScrollConsumer = TopAppBarScrollConsumer()
+  private val topAppBarScrollConsumer = TopAppBarScrollConsumer(
+    onChromeGeometryInvalidated = ::scheduleHostMeasureAndLayout,
+  )
 
   init {
     composeView.layoutParams = ViewGroup.LayoutParams(
@@ -133,7 +135,8 @@ class MaterialTopAppBarView(
   private fun seedExpandedChromeGeometry() {
     if (lastTopInsetPx < 0) return
 
-    val appBarHeightDp = when (state.value.variant) {
+    val uiState = state.value
+    val appBarHeightDp = when (uiState.variant) {
       "small" -> 64f
       "large" -> 152f
       else -> 112f
@@ -152,7 +155,7 @@ class MaterialTopAppBarView(
     if (BuildConfig.DEBUG) {
       android.util.Log.d(
         NATIVE_SCROLL_LOG_TAG,
-        "topappbar seedExpanded variant=${state.value.variant} topInset=$lastTopInsetPx " +
+        "topappbar seedExpanded variant=${uiState.variant} topInset=$lastTopInsetPx " +
           "height=$targetHeightPx density=$density",
       )
     }
@@ -223,7 +226,7 @@ class MaterialTopAppBarView(
   fun setScrollBehavior(behavior: String) = updateState {
     it.copy(
       scrollBehavior = when (behavior) {
-        "enterAlways", "exitUntilCollapsed" -> behavior
+        "pinned", "enterAlways", "exitUntilCollapsed" -> behavior
         else -> "none"
       },
     )
@@ -264,78 +267,89 @@ class MaterialTopAppBarView(
     }
 
     MaterialTheme(colorScheme = colorScheme) {
-      val topAppBarState = rememberTopAppBarState()
-      val canScroll = remember { { true } }
+      MaterialStandardTopAppBarContent(uiState)
+    }
+  }
 
-      val materialScrollBehavior = if (uiState.visible) {
-        when (uiState.scrollBehavior) {
-          "enterAlways" -> TopAppBarDefaults.enterAlwaysScrollBehavior(
-            state = topAppBarState,
-            canScroll = canScroll,
-          )
-          "exitUntilCollapsed" -> TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
-            state = topAppBarState,
-            canScroll = canScroll,
-          )
-          else -> null
-        }
-      } else {
-        null
+  @Composable
+  private fun MaterialStandardTopAppBarContent(uiState: TopAppBarHostState) {
+    val topAppBarState = rememberTopAppBarState()
+    val canScroll = remember { { true } }
+
+    val materialScrollBehavior = if (uiState.visible) {
+      when (uiState.scrollBehavior) {
+        "pinned" -> TopAppBarDefaults.pinnedScrollBehavior(
+          state = topAppBarState,
+          canScroll = canScroll,
+        )
+        "enterAlways" -> TopAppBarDefaults.enterAlwaysScrollBehavior(
+          state = topAppBarState,
+          canScroll = canScroll,
+        )
+        "exitUntilCollapsed" -> TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
+          state = topAppBarState,
+          canScroll = canScroll,
+        )
+        else -> null
       }
+    } else {
+      null
+    }
 
-      val interopMode = if (!uiState.visible) {
-        null
-      } else {
-        when (uiState.scrollBehavior) {
-          "enterAlways" -> TopAppBarInteropMode.EnterAlways
-          "exitUntilCollapsed" -> TopAppBarInteropMode.ExitUntilCollapsed
-          else -> TopAppBarInteropMode.Pinned
-        }
+    val interopMode = if (!uiState.visible) {
+      null
+    } else {
+      when (uiState.scrollBehavior) {
+        "pinned" -> TopAppBarInteropMode.Pinned
+        "enterAlways" -> TopAppBarInteropMode.EnterAlways
+        "exitUntilCollapsed" -> TopAppBarInteropMode.ExitUntilCollapsed
+        else -> TopAppBarInteropMode.Fixed
       }
-      val materialScrollScope = rememberCoroutineScope()
+    }
+    val materialScrollScope = rememberCoroutineScope()
 
-      DisposableEffect(materialScrollBehavior, materialScrollScope, interopMode) {
-        bindComposeScrollBehavior(materialScrollBehavior, materialScrollScope, interopMode)
-        onDispose { unbindComposeScrollBehavior(materialScrollBehavior, interopMode) }
-      }
+    DisposableEffect(materialScrollBehavior, materialScrollScope, interopMode) {
+      bindComposeScrollBehavior(materialScrollBehavior, materialScrollScope, interopMode)
+      onDispose { unbindComposeScrollBehavior(materialScrollBehavior, interopMode) }
+    }
 
-      if (uiState.visible) {
-        val navigationIcon: @Composable () -> Unit = {
-          if (uiState.navigationIcon == "back") {
-            IconButton(
-              onClick = {
-                if (BuildConfig.DEBUG) {
-                  android.util.Log.d(NATIVE_SCROLL_LOG_TAG, "TOPAPPBAR_NAV_PRESS")
-                }
-                emitDirectEvent("topNavigationPress")
-              },
-            ) {
-              Icon(
-                painter = painterResource(R.drawable.react_native_scroll_interop_arrow_back),
-                contentDescription = uiState.navigationAccessibilityLabel,
-              )
-            }
+    if (uiState.visible) {
+      val navigationIcon: @Composable () -> Unit = {
+        if (uiState.navigationIcon == "back") {
+          IconButton(
+            onClick = {
+              if (BuildConfig.DEBUG) {
+                android.util.Log.d(NATIVE_SCROLL_LOG_TAG, "TOPAPPBAR_NAV_PRESS")
+              }
+              emitDirectEvent("topNavigationPress")
+            },
+          ) {
+            Icon(
+              painter = painterResource(R.drawable.react_native_scroll_interop_arrow_back),
+              contentDescription = uiState.navigationAccessibilityLabel,
+            )
           }
         }
+      }
 
-        when (uiState.variant) {
-          "small" -> TopAppBar(
-            title = { Text(uiState.title) },
-            navigationIcon = navigationIcon,
-            scrollBehavior = materialScrollBehavior,
-          )
-          "large" -> LargeTopAppBar(
-            title = { Text(uiState.title) },
-            navigationIcon = navigationIcon,
-            scrollBehavior = materialScrollBehavior,
-          )
-          else -> MediumTopAppBar(
-            title = { Text(uiState.title) },
-            navigationIcon = navigationIcon,
-            scrollBehavior = materialScrollBehavior,
-          )
-        }
+      when (uiState.variant) {
+        "small" -> TopAppBar(
+          title = { Text(uiState.title) },
+          navigationIcon = navigationIcon,
+          scrollBehavior = materialScrollBehavior,
+        )
+        "large" -> LargeTopAppBar(
+          title = { Text(uiState.title) },
+          navigationIcon = navigationIcon,
+          scrollBehavior = materialScrollBehavior,
+        )
+        else -> MediumTopAppBar(
+          title = { Text(uiState.title) },
+          navigationIcon = navigationIcon,
+          scrollBehavior = materialScrollBehavior,
+        )
       }
     }
   }
+
 }

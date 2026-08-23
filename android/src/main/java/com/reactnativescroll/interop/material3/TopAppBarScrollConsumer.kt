@@ -17,14 +17,17 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 internal enum class TopAppBarInteropMode {
   /**
-   * A visible app bar with no scroll behavior. Material never moves it, but the overlay still
-   * occupies the top of the screen, so the RN content below it needs the same scroll-away inset the
-   * scrolling modes install.
+   * A visible app bar with no Material scroll state. It still owns scroll-away geometry because the
+   * overlay occupies the top of the screen, but it does not observe content overlap.
    */
+  Fixed,
+
+  /** A stationary Material app bar whose state tracks content overlap. */
   Pinned,
   EnterAlways,
   ExitUntilCollapsed,
@@ -38,13 +41,23 @@ internal enum class TopAppBarInteropMode {
  * is confined to the unstable RN scroll-away geometry primitive and is never used for scroll
  * physics or per-frame dispatch.
  */
-internal class TopAppBarScrollConsumer {
+internal class TopAppBarScrollConsumer(
+  private val onChromeGeometryInvalidated: () -> Unit = {},
+) {
+  private data class RetainedBehaviorState(
+    val heightOffsetLimit: Float,
+    val heightOffset: Float,
+    val contentOffset: Float,
+  )
+
   private var behavior: TopAppBarScrollBehavior? = null
   private var scope: CoroutineScope? = null
   private var mode: TopAppBarInteropMode? = null
   private var settleJob: Job? = null
   private var settleGeneration = 0L
   private var transactionActive = false
+  private var lastKnownBehaviorState: RetainedBehaviorState? = null
+  private var restoreBehaviorStateOnNextBind = false
 
   private var expandedChromeHeightPx = 0
   private var scrollAwaySource: ViewGroup? = null
@@ -124,6 +137,7 @@ internal class TopAppBarScrollConsumer {
       clampSignedConsumption(deltaY, -returned.y).let { reported ->
         if (kotlin.math.abs(chromeMovementY) < kotlin.math.abs(reported)) chromeMovementY else reported
       }
+    rememberBehaviorState(currentBehavior)
     applyChromeTranslation()
     return NativeNestedPreResult(reportedConsumedY, chromeMovementY)
   }
@@ -147,6 +161,7 @@ internal class TopAppBarScrollConsumer {
 
     val chromeMovementY = (oldHeightOffset - newHeightOffset).roundToInt()
     val availableConsumedY = clampSignedConsumption(availableY, -returned.y)
+    rememberBehaviorState(currentBehavior)
     applyChromeTranslation()
     return NativeNestedPostResult(availableConsumedY, chromeMovementY)
   }
@@ -189,6 +204,7 @@ internal class TopAppBarScrollConsumer {
         completedNormally = true
       } finally {
         syncJob.cancel()
+        rememberBehaviorState(currentBehavior)
         if (generation == settleGeneration) applyChromeTranslation()
         if (BuildConfig.DEBUG) {
           val state = currentBehavior.state
@@ -210,19 +226,43 @@ internal class TopAppBarScrollConsumer {
     newScope: CoroutineScope?,
     newMode: TopAppBarInteropMode?,
   ) {
-    if (behavior === newBehavior && scope === newScope && mode == newMode) return
+    if (behavior === newBehavior && scope === newScope && mode == newMode) {
+      if (newMode == null && scrollAwaySource != null) clearScrollAwaySource()
+      return
+    }
     transactionActive = false
     cancelSettle()
     behavior = newBehavior
     scope = newScope
     mode = newMode
 
-    if (newMode == null) clearScrollAwaySource() else applyScrollAwayPadding()
+    if (newBehavior != null && restoreBehaviorStateOnNextBind) {
+      lastKnownBehaviorState?.let { retained ->
+        restoreRetainedBehaviorState(newBehavior, retained)
+        if (BuildConfig.DEBUG) {
+          Log.d(
+            NATIVE_SCROLL_LOG_TAG,
+            "TOP_STATE_RESTORE offset=${retained.heightOffset} " +
+              "limit=${retained.heightOffsetLimit} content=${retained.contentOffset}",
+          )
+        }
+      }
+      restoreBehaviorStateOnNextBind = false
+    }
+
+    if (newMode == null) clearScrollAwaySource() else {
+      applyScrollAwayPadding()
+      applyChromeTranslation()
+    }
   }
 
   fun unbind(expectedBehavior: TopAppBarScrollBehavior?, expectedMode: TopAppBarInteropMode?) {
     if (behavior !== expectedBehavior || mode != expectedMode) return
-    bind(null, null, null)
+    transactionActive = false
+    cancelSettle()
+    behavior = null
+    scope = null
+    mode = null
   }
 
   fun updateExpandedChromeHeight(heightPx: Int): Boolean {
@@ -239,8 +279,52 @@ internal class TopAppBarScrollConsumer {
 
   fun onHostDetached() {
     transactionActive = false
+    rememberBehaviorState(behavior)
+    restoreBehaviorStateOnNextBind = lastKnownBehaviorState != null
+    if (BuildConfig.DEBUG) {
+      val retained = lastKnownBehaviorState
+      Log.d(
+        NATIVE_SCROLL_LOG_TAG,
+        "TOP_STATE_RETAIN armed=$restoreBehaviorStateOnNextBind " +
+          "offset=${retained?.heightOffset} limit=${retained?.heightOffsetLimit} " +
+          "content=${retained?.contentOffset}",
+      )
+    }
     cancelSettle()
-    clearScrollAwaySource()
+    // react-native-screens detaches the outgoing chrome while its screen layer is still visible.
+    // Keep the source's scroll-away geometry intact so the transition cannot expose an unshifted
+    // content frame. The screen and its consumer retain this state together when kept for back.
+  }
+
+  private fun rememberBehaviorState(current: TopAppBarScrollBehavior?) {
+    current?.state?.let { state ->
+      lastKnownBehaviorState = RetainedBehaviorState(
+        heightOffsetLimit = state.heightOffsetLimit,
+        heightOffset = state.heightOffset,
+        contentOffset = state.contentOffset,
+      )
+    }
+  }
+
+  private fun restoreRetainedBehaviorState(
+    current: TopAppBarScrollBehavior,
+    retained: RetainedBehaviorState,
+  ) {
+    val resolvedLimit = current.state.heightOffsetLimit
+      .takeIf { it.isFinite() && it > -Float.MAX_VALUE }
+      ?: retained.heightOffsetLimit
+    val wasFullyCollapsed =
+      retained.heightOffsetLimit.isFinite() && retained.heightOffsetLimit < 0f &&
+        abs(retained.heightOffset - retained.heightOffsetLimit) <= 1f
+
+    current.state.heightOffsetLimit = resolvedLimit
+    current.state.heightOffset = if (resolvedLimit.isFinite() && resolvedLimit < 0f) {
+      if (wasFullyCollapsed) resolvedLimit else retained.heightOffset.coerceIn(resolvedLimit, 0f)
+    } else {
+      retained.heightOffset
+    }
+    current.state.contentOffset = retained.contentOffset
+    rememberBehaviorState(current)
   }
 
   private fun applyChromeTranslation() {
@@ -248,7 +332,14 @@ internal class TopAppBarScrollConsumer {
     val content = source.getChildAt(0) ?: return
     val resting = appliedScrollAwayPaddingPx.toFloat()
     val target = resting - currentCollapseAmountPx()
-    if (content.translationY != target) content.translationY = target
+    if (content.translationY == target) return
+
+    content.translationY = target
+    // Compose owns the Material state, but the ComposeView is hosted inside a fixed-size RN view.
+    // That host is outside a normal Android measure traversal, so a state-driven height change must
+    // explicitly enqueue its host geometry from the native scroll transaction. The UI layer
+    // supplies a frame-coalesced scheduler; this consumer remains independent of any concrete View.
+    onChromeGeometryInvalidated()
   }
 
   private fun ensureScrollAwaySource(source: ViewGroup) {
@@ -343,6 +434,10 @@ internal class TopAppBarScrollConsumer {
         )
       }
     }
+    resetScrollAwaySourceState()
+  }
+
+  private fun resetScrollAwaySourceState() {
     scrollAwaySource = null
     appliedScrollAwayPaddingPx = 0
     originalClipToPadding = null
