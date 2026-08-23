@@ -38,6 +38,28 @@ const VECTOR_ICONS = {
       android:pathData="M19,13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
 </vector>
 `,
+  demo_ic_collections: `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:fillColor="#FF000000"
+      android:pathData="M20,2H4c-1.1,0 -2,0.9 -2,2v12h2V4h16V2zM22,6H8c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2V8c0,-1.1 -0.9,-2 -2,-2zM8,20V8h14v12H8zM17,11l-2.5,3.01L12,11l-3,4v3h12v-4l-4,-3z" />
+</vector>
+`,
+  demo_ic_search: `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <path
+      android:fillColor="#FF000000"
+      android:pathData="M9.5,3a6.5,6.5 0,1 0,3.98 11.64L18.85,20 20,18.85l-5.36,-5.37A6.5,6.5 0,0 0,9.5,3zM9.5,5a4.5,4.5 0,1 1,0,9a4.5,4.5 0,0 1,0,-9z" />
+</vector>
+`,
 };
 
 module.exports = function withDemoToolbarIcons(config) {
