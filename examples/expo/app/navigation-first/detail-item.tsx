@@ -1,12 +1,13 @@
 import { useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { material3Dynamic as colors } from '../../theme';
+import { material3Dynamic as colors, useMaterial3DynamicTheme } from '../../theme';
 
 const ROWS = Array.from({ length: 36 }, (_, index) => `Item information ${index + 1}`);
 
 export default function NavigationFirstDetailItem() {
   const { row, source } = useLocalSearchParams<{ row?: string; source?: string }>();
+  useMaterial3DynamicTheme();
 
   return (
     <ScrollView
@@ -34,13 +35,13 @@ export default function NavigationFirstDetailItem() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: colors.background },
+  host: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 20, paddingBottom: 40 },
   card: {
     marginBottom: 12,
     padding: 20,
     borderRadius: 20,
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: colors.surfaceContainerLow,
   },
   eyebrow: {
     color: colors.primary,
