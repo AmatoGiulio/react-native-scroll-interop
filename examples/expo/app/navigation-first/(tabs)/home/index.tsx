@@ -1,12 +1,13 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
-import { material3Dynamic as colors } from '../../../../theme';
+import { material3Dynamic as colors, useMaterial3DynamicTheme } from '../../../../theme';
 
 const ROWS = Array.from({ length: 80 }, (_, index) => `Home row ${index + 1}`);
 
 export default function NavigationFirstHome() {
   const router = useRouter();
+  useMaterial3DynamicTheme();
 
   const openItem = (row: string) => {
     router.push({
@@ -49,13 +50,13 @@ export default function NavigationFirstHome() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: colors.background },
+  host: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 20, paddingBottom: 160 },
   card: {
     marginBottom: 12,
     padding: 20,
     borderRadius: 20,
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: colors.surfaceContainerLow,
   },
   cardTitle: { color: colors.onSurface, fontSize: 20, fontWeight: '600' },
   cardBody: { color: colors.onSurfaceVariant, fontSize: 15, lineHeight: 21, marginTop: 8 },
