@@ -12,6 +12,7 @@ export default function DetailsStackLayout() {
             topAppBar: {
               variant: 'small',
               scrollBehavior: 'pinned',
+              dynamicColor: true,
             },
           },
         }}
