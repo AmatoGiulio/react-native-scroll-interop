@@ -1,6 +1,8 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { material3Dynamic as colors, useMaterial3DynamicTheme } from '../../../../theme';
+
 const SECTIONS = [
   ['Architecture', 'Nested scroll ownership and native UI consumers'],
   ['Navigation', 'Independent tab histories inside a parent stack'],
@@ -18,6 +20,7 @@ const SECTIONS = [
 
 export default function NavigationFirstDetails() {
   const router = useRouter();
+  useMaterial3DynamicTheme();
 
   return (
     <ScrollView
@@ -61,16 +64,16 @@ export default function NavigationFirstDetails() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: '#101318' },
+  host: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 20, paddingBottom: 160, gap: 8 },
   card: {
     marginBottom: 4,
     padding: 20,
     borderRadius: 20,
-    backgroundColor: '#20252d',
+    backgroundColor: colors.surfaceContainerLow,
   },
-  cardTitle: { color: '#f4f6f8', fontSize: 20, fontWeight: '600' },
-  cardBody: { color: '#aeb8c4', fontSize: 15, lineHeight: 21, marginTop: 8 },
+  cardTitle: { color: colors.onSurface, fontSize: 20, fontWeight: '600' },
+  cardBody: { color: colors.onSurfaceVariant, fontSize: 15, lineHeight: 21, marginTop: 8 },
   row: {
     minHeight: 84,
     flexDirection: 'row',
@@ -79,10 +82,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 16,
   },
-  rowPressed: { backgroundColor: '#20252d' },
-  number: { width: 30, color: '#748191' },
+  rowPressed: { backgroundColor: colors.surfaceContainerHigh },
+  number: { width: 30, color: colors.outline },
   rowText: { flex: 1, gap: 4 },
-  title: { color: '#e6eaf0', fontSize: 17, fontWeight: '600' },
-  description: { color: '#aeb8c4', fontSize: 14, lineHeight: 19 },
-  chevron: { color: '#aeb8c4', fontSize: 28, lineHeight: 30 },
+  title: { color: colors.onSurface, fontSize: 17, fontWeight: '600' },
+  description: { color: colors.onSurfaceVariant, fontSize: 14, lineHeight: 19 },
+  chevron: { color: colors.onSurfaceVariant, fontSize: 28, lineHeight: 30 },
 });

@@ -1,10 +1,13 @@
 import { useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { material3Dynamic as colors, useMaterial3DynamicTheme } from '../../theme';
+
 const ROWS = Array.from({ length: 36 }, (_, index) => `Item information ${index + 1}`);
 
 export default function NavigationFirstDetailItem() {
   const { row, source } = useLocalSearchParams<{ row?: string; source?: string }>();
+  useMaterial3DynamicTheme();
 
   return (
     <ScrollView
@@ -32,29 +35,29 @@ export default function NavigationFirstDetailItem() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: '#101318' },
+  host: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 20, paddingBottom: 40 },
   card: {
     marginBottom: 12,
     padding: 20,
     borderRadius: 20,
-    backgroundColor: '#20252d',
+    backgroundColor: colors.surfaceContainerLow,
   },
   eyebrow: {
-    color: '#c6b8ff',
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  cardTitle: { color: '#f4f6f8', fontSize: 24, fontWeight: '600', marginTop: 8 },
-  cardBody: { color: '#aeb8c4', fontSize: 15, lineHeight: 21, marginTop: 8 },
+  cardTitle: { color: colors.onSurface, fontSize: 24, fontWeight: '600', marginTop: 8 },
+  cardBody: { color: colors.onSurfaceVariant, fontSize: 15, lineHeight: 21, marginTop: 8 },
   row: {
     minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
   },
-  number: { width: 30, color: '#748191' },
-  text: { color: '#e6eaf0', fontSize: 17 },
+  number: { width: 30, color: colors.outline },
+  text: { color: colors.onSurface, fontSize: 17 },
 });

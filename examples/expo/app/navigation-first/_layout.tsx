@@ -17,6 +17,7 @@ export default function NavigationFirstLayout() {
             topAppBar: {
               variant: 'small',
               scrollBehavior: 'enterAlways',
+              dynamicColor: true,
               navigationAccessibilityLabel: 'Back',
             },
           },
@@ -30,6 +31,7 @@ export default function NavigationFirstLayout() {
             topAppBar: {
               variant: 'small',
               scrollBehavior: 'enterAlways',
+              dynamicColor: true,
               navigationAccessibilityLabel: 'Back',
             },
           },

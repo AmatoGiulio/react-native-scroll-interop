@@ -12,6 +12,12 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-status-bar",
+        {
+          "hidden": false
+        }
+      ],
       "./plugins/withDemoToolbarIcons",
       [
         "../../app.plugin.js",

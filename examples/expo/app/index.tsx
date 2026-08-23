@@ -1,8 +1,11 @@
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { material3Dynamic as colors, useMaterial3DynamicTheme } from '../theme';
+
 export default function ExampleIndex() {
   const router = useRouter();
+  useMaterial3DynamicTheme();
 
   return (
     <View style={styles.root}>
@@ -18,13 +21,19 @@ export default function ExampleIndex() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: 'center', gap: 12, padding: 24 },
-  heading: { fontSize: 20, fontWeight: '600', marginBottom: 8 },
+  root: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+    backgroundColor: colors.surface,
+  },
+  heading: { color: colors.onSurface, fontSize: 20, fontWeight: '600', marginBottom: 8 },
   link: {
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.surfaceContainerLow,
   },
-  linkText: { color: '#111827', fontSize: 16 },
+  linkText: { color: colors.onSurface, fontSize: 16 },
 });
