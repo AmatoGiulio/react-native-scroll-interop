@@ -6,18 +6,19 @@
     "orientation": "default",
     "scheme": "scrollinteropexample",
     "userInterfaceStyle": "dark",
-    "androidStatusBar": {
-      "barStyle": "light-content",
-      "backgroundColor": "#00000000",
-      "translucent": true,
-      "hidden": false
-    },
     "android": {
       "package": "expo.modules.materialtoolbar.example",
       "softwareKeyboardLayoutMode": "resize"
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-status-bar",
+        {
+          "hidden": false,
+          "style": "light"
+        }
+      ],
       "./plugins/withDemoToolbarIcons",
       [
         "../../app.plugin.js",
