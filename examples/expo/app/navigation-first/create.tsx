@@ -1,6 +1,8 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 
+import { material3Dark as colors } from '../../theme';
+
 export default function NavigationFirstCreate() {
   const router = useRouter();
 
@@ -15,8 +17,8 @@ export default function NavigationFirstCreate() {
       <TextInput
         accessibilityLabel="Item title"
         placeholder="New item"
-        placeholderTextColor="#748191"
-        selectionColor="#c6b8ff"
+        placeholderTextColor={colors.outline}
+        selectionColor={colors.primary}
         style={styles.input}
       />
 
@@ -25,8 +27,8 @@ export default function NavigationFirstCreate() {
         accessibilityLabel="Item description"
         multiline
         placeholder="Add a short description"
-        placeholderTextColor="#748191"
-        selectionColor="#c6b8ff"
+        placeholderTextColor={colors.outline}
+        selectionColor={colors.primary}
         style={[styles.input, styles.multiline]}
       />
 
@@ -43,15 +45,15 @@ export default function NavigationFirstCreate() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: '#101318' },
+  host: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 20, paddingBottom: 40, gap: 10 },
-  label: { color: '#e6eaf0', fontSize: 14, fontWeight: '600', marginTop: 10 },
+  label: { color: colors.onSurface, fontSize: 14, fontWeight: '600', marginTop: 10 },
   input: {
     minHeight: 56,
     paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: '#20252d',
-    color: '#f4f6f8',
+    backgroundColor: colors.surfaceContainer,
+    color: colors.onSurface,
     fontSize: 16,
   },
   multiline: { minHeight: 144, paddingTop: 16, textAlignVertical: 'top' },
@@ -61,8 +63,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 12,
     borderRadius: 26,
-    backgroundColor: '#c6b8ff',
+    backgroundColor: colors.primary,
   },
   buttonPressed: { opacity: 0.82 },
-  buttonText: { color: '#2c2056', fontSize: 16, fontWeight: '700' },
+  buttonText: { color: colors.onPrimary, fontSize: 16, fontWeight: '700' },
 });
