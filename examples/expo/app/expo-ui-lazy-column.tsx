@@ -1,5 +1,4 @@
 import { Column, Host, LazyColumn, Text } from '@expo/ui/jetpack-compose';
-import type { ExpoModifier } from '@expo/ui/jetpack-compose/modifiers';
 import {
   fillMaxSize,
   fillMaxWidth,
@@ -12,7 +11,6 @@ import { StyleSheet, View } from 'react-native';
 import { MaterialToolbar, NativeScrollHost } from 'react-native-scroll-interop';
 
 const ROWS = Array.from({ length: 80 }, (_, index) => `Compose row ${index + 1}`);
-const nestedScrollInterop: ExpoModifier = { $type: 'nestedScrollInterop' };
 
 export default function ExpoUiLazyColumnPoc() {
   const hostProps = { style: styles.host } as unknown as ComponentProps<typeof NativeScrollHost>;
@@ -24,7 +22,7 @@ export default function ExpoUiLazyColumnPoc() {
           <LazyColumn
             contentPadding={{ top: 20, bottom: 140 }}
             verticalArrangement={{ spacedBy: 4 }}
-            modifiers={[fillMaxSize(), nestedScrollInterop]}
+            modifiers={[fillMaxSize()]}
           >
             {ROWS.map((row) => (
               <Column
