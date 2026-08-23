@@ -24,9 +24,9 @@ export default function NavigationFirstHome() {
       showsVerticalScrollIndicator={false}
     >
       <Pressable style={styles.card} onPress={() => openItem('Featured item')}>
-        <Text style={styles.cardTitle}>Navigation first</Text>
+        <Text style={styles.cardTitle}>Native scroll, end to end</Text>
         <Text style={styles.cardBody}>
-          Home and Details keep independent tab state. Item details and creation live in the parent stack.
+          React Native content and Material 3 components move together through Android&apos;s real nested-scroll lifecycle.
         </Text>
       </Pressable>
 
