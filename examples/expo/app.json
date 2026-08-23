@@ -6,13 +6,13 @@
     "orientation": "default",
     "scheme": "scrollinteropexample",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "android": {
       "package": "expo.modules.materialtoolbar.example",
       "softwareKeyboardLayoutMode": "resize"
     },
     "plugins": [
       "expo-router",
+      "./plugins/withDemoToolbarIcons",
       [
         "../../app.plugin.js",
         {
