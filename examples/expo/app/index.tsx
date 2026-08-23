@@ -13,6 +13,9 @@ export default function ExampleIndex() {
       <Pressable style={styles.link} onPress={() => router.push('/standalone')}>
         <Text style={styles.linkText}>Standalone fallback</Text>
       </Pressable>
+      <Pressable style={styles.link} onPress={() => router.push('/expo-ui-lazy-column')}>
+        <Text style={styles.linkText}>Expo UI LazyColumn POC</Text>
+      </Pressable>
     </View>
   );
 }
