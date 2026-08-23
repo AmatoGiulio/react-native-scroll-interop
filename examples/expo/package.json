@@ -9,6 +9,15 @@
     "android": "node ./scripts/patch-expo-ui-nested-scroll-interop.mjs && expo run:android",
     "prebuild": "node ./scripts/patch-expo-ui-nested-scroll-interop.mjs && expo prebuild -p android --clean"
   },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "@expo/ui"
+        ]
+      }
+    }
+  },
   "dependencies": {
     "@expo/ui": "57.0.12",
     "expo": "~57.0.15",
