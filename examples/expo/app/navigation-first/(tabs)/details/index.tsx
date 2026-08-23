@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { material3Dynamic as colors } from '../../../../theme';
+import { material3Dynamic as colors, useMaterial3DynamicTheme } from '../../../../theme';
 
 const SECTIONS = [
   ['Architecture', 'Nested scroll ownership and native UI consumers'],
@@ -20,6 +20,7 @@ const SECTIONS = [
 
 export default function NavigationFirstDetails() {
   const router = useRouter();
+  useMaterial3DynamicTheme();
 
   return (
     <ScrollView
@@ -63,13 +64,13 @@ export default function NavigationFirstDetails() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: colors.background },
+  host: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 20, paddingBottom: 160, gap: 8 },
   card: {
     marginBottom: 4,
     padding: 20,
     borderRadius: 20,
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: colors.surfaceContainerLow,
   },
   cardTitle: { color: colors.onSurface, fontSize: 20, fontWeight: '600' },
   cardBody: { color: colors.onSurfaceVariant, fontSize: 15, lineHeight: 21, marginTop: 8 },
