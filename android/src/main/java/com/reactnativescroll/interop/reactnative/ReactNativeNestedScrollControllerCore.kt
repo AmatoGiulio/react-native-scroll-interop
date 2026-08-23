@@ -224,8 +224,10 @@ internal class ReactNativeNestedScrollControllerCore(
   }
 
   private fun beginSession(target: View, type: Int) {
-    val capabilities = ReactVerticalScrollSourceInterop.resolve(target) ?: return
-    val source = capabilities.view
+    val reactCapabilities = ReactVerticalScrollSourceInterop.resolve(target)
+    val source = reactCapabilities?.view
+      ?: ComposeVerticalScrollSourceInterop.asSupported(target)
+      ?: return
     val replacement = lifecycle.begin(source, type)
     if (replacement != null) {
       flushPendingLedger("source-replaced")
@@ -238,7 +240,7 @@ internal class ReactNativeNestedScrollControllerCore(
     flushPendingLedger("session-rebind")
     preCount = 0
     postCount = 0
-    activeCapabilities = capabilities
+    activeCapabilities = reactCapabilities
     activeSession = ReactNativeNestedScrollParticipants.bind(source)
     val session = activeSession ?: return
     dispatcher.bindParticipants(
