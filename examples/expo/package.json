@@ -5,10 +5,12 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --dev-client",
-    "android": "expo run:android",
-    "prebuild": "expo prebuild -p android --clean"
+    "postinstall": "node ./scripts/patch-expo-ui-nested-scroll-interop.mjs",
+    "android": "node ./scripts/patch-expo-ui-nested-scroll-interop.mjs && expo run:android",
+    "prebuild": "node ./scripts/patch-expo-ui-nested-scroll-interop.mjs && expo prebuild -p android --clean"
   },
   "dependencies": {
+    "@expo/ui": "57.0.12",
     "expo": "~57.0.15",
     "expo-constants": "~57.0.13",
     "expo-dev-client": "~57.0.14",
