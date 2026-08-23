@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { material3Dark as colors } from '../../theme';
+import { material3Dynamic as colors } from '../../theme';
 
 const ROWS = Array.from({ length: 36 }, (_, index) => `Item information ${index + 1}`);
 
