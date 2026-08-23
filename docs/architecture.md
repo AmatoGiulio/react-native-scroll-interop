@@ -1,14 +1,17 @@
 # Architecture
 
-`react-native-scroll-interop` is a general React Native / Android nested-scroll primitive. Material3 is the shipped reference native consumer, not the transport core.
+`react-native-scroll-interop` is a React Native / Android nested-scroll participation primitive.
+Material3 is the shipped reference integration, not the transport core or the project identity.
 
 ```text
 one React Native scroll physics
 one synchronous Android nested-scroll transaction
-N native consumers
+N native participants
 ```
 
-React Native owns touch handling, source position and fling physics. The package never moves the source with a parent scroller, `scrollBy`, `scrollTo`, sampled `scrollY`, timers or per-frame JavaScript transport.
+React Native owns touch handling, source position, fling physics, and velocity integration. The
+package never moves the source with a parent scroller, `scrollBy`, `scrollTo`, sampled `scrollY`,
+timers, or per-frame JavaScript transport.
 
 ## Transaction
 
@@ -45,9 +48,14 @@ Owns React Native vertical-source recognition, `NativeScrollHost`, the stable `R
 
 Native consumers enter only through `ReactNativeNestedScrollParticipantProvider` / `ReactNativeNestedScrollParticipantSession`. The RN controller sees neutral core PRE/POST/observer ports; it does not import Material3.
 
+The current source boundary recognizes React Native's `ReactScrollView` and generated
+`ReactNestedScrollView`. That is the implemented boundary, not evidence that every component which
+can render or wrap a vertical list has been validated. This alpha makes no support claim for
+FlatList, FlashList, LegendList, or arbitrary virtualized-list implementations.
+
 `ReactNativeScreenNestedScrollBridge` is the generic screen/container owner. It discovers the unique RN vertical source, owns attach/layout/detach binding and forwards the AndroidX `NestedScrollingParent3` callbacks to the same RN controller. It has no Material3 or navigation-library dependency.
 
-### Material3 consumers
+### Material3 consumers (reference participants)
 
 Behavior layer:
 
@@ -59,6 +67,10 @@ android/src/main/java/com/reactnativescroll/interop/material3/
 - `FloatingToolbarScrollConsumer`: POST observer; consumes zero list distance.
 - Material3 nested-scroll adapters translate the neutral core ports to Material state.
 
+`TopAppBarScrollConsumer` exposes a geometry-invalidation callback, not a UI dependency. The
+Material UI host supplies a frame-coalesced measure/layout scheduler so state changes and the
+fixed-size React Native `ComposeView` host cannot diverge while the app bar expands or collapses.
+
 UI/reference-integration layer:
 
 ```text
@@ -67,7 +79,10 @@ android/src/main/java/com/reactnativescroll/interop/material3/ui/
 
 Owns `MaterialTopAppBarView`, `MaterialToolbarView`, their React Native managers, Compose hosting, placement/insets, the Material registry and `Material3NestedScrollParticipantProvider`.
 
-`ReactNativeScrollInteropPackage` is the composition root: it registers the standard RN view managers and installs Material3 as the reference participant provider. Replacing or adding native consumers does not require changing the neutral core or RN transaction engine.
+`ReactNativeScrollInteropPackage` is the composition root: it registers the standard RN view
+managers and installs Material3 as the reference participant provider. Internally, another native
+participant can be composed without changing the neutral core or RN transaction engine. This alpha
+does not expose a supported third-party participant extension API.
 
 The Android namespace is `com.reactnativescroll.interop`; the historical `android/src/main/java/expo/...` implementation tree is removed. Expo Modules are not required by the runtime.
 
@@ -87,7 +102,7 @@ NativeScrollHost
 
 ### Navigation / react-native-screens
 
-For the currently certified `react-native-screens 4.26.x` line:
+For the `react-native-screens 4.26.x` line validated on the recorded release baseline:
 
 ```text
 react-native-screens Screen
@@ -99,13 +114,22 @@ react-native-screens Screen
 
 The source patch imports only the neutral screen bridge. It contains no Material3, Expo Router or React Navigation logic.
 
-The future upstream-neutral path is specified in [`react-native-screens.md`](./react-native-screens.md): `react-native-screens` should expose an optional AndroidX nested-scroll delegate seam rather than depending on this package.
+The open upstream-neutral path is specified in [`react-native-screens.md`](./react-native-screens.md):
+`react-native-screens` should expose an optional AndroidX nested-scroll delegate seam rather than
+depending on this package. Screens remains an ownership boundary and is not part of the transaction
+transport core.
 
 ## React Native compatibility adapter
 
 `plugin/reactNativeScrollCompatPatch.js` owns the version-scoped RN 0.86/0.87 source compatibility transformation. `plugin/bareReactNativeScrollCompat.js` applies it to a standard Community RN host; `plugin/withScrollInterop.js` applies the same machinery during Expo prebuild.
 
 This source/build compatibility layer is separate from transaction semantics.
+
+The corresponding upstream React Native improvement is
+[#57972](https://github.com/react/react-native/pull/57972): ordinary generated
+`ReactNestedScrollView` flings should delegate to AndroidX so the source preserves the
+`TYPE_NON_TOUCH` nested-scroll lifecycle while React Native remains the fling owner. The upstream PR
+and this package's version-scoped compatibility adapter are independent delivery paths.
 
 ## Navigation architecture
 
@@ -144,9 +168,11 @@ It uses a structural native-stack option shape and contains no runtime import fr
 
 Neither navigation adapter owns source identity, scroll state or nested-scroll callbacks.
 
-## Material3 reference behavior
+## Material3 reference participants
 
-`MaterialTopAppBar` and `MaterialToolbar` prove that the generic primitive can drive native UI synchronously from the real Android nested-scroll transaction while React Native retains source physics.
+`MaterialTopAppBar` and `MaterialToolbar` demonstrate that the generic primitive can drive native
+UI synchronously from the real Android nested-scroll transaction while React Native retains source
+physics. They are reference participants, not the purpose of the project.
 
 Material terminal settling uses Material state only; it never starts a second source fling.
 
@@ -157,6 +183,7 @@ Material terminal settling uses Material state only; it never starts a second so
 - sampled position as transport
 - timer/reconstructed momentum
 - duplicate velocity integration
+- per-frame JavaScript transport
 - parent-started fake nested sessions
 - concrete RN ScrollView typing outside the RN compatibility boundary
 - Material3 knowledge in the neutral core or RN transaction engine

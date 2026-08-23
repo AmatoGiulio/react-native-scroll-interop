@@ -4,11 +4,9 @@ Package: `react-native-scroll-interop`
 
 Current version: `0.1.0-alpha.1`
 
-Planned npm dist-tag: `next`
+Publication dist-tag: `next`
 
-Current npm status: **not published yet**.
-
-## Release candidate source
+## Recorded certification baseline
 
 PR #26 completed the architecture separation for this alpha and was merged as:
 
@@ -18,9 +16,10 @@ certified PR head: d397d7011f9d4487ac1f65633505141089d7069a
 certified tree:    972e21f2289692d989000ab8ecef1ff337db8074
 ```
 
-The PR head and the merge commit point to the same tree, so the runtime/package source that was validated is exactly the source merged to `main`.
+The PR head and merge commit point to the same tree. The evidence below applies exactly to that
+tree; it must not be presented as certification of later runtime changes.
 
-## Final-head certification completed for PR #26
+## PR #26 certification record
 
 ### Static/package gates
 
@@ -35,7 +34,8 @@ react-native-screens 4.26.x bridge invariant      PASS
 package surface                                   PASS
 ```
 
-Recorded package surface: 58 files, 258133 bytes unpacked.
+Recorded baseline package surface: 58 files, 258133 bytes unpacked. This is a historical
+measurement, not the expected byte size of a later documentation-frozen tarball.
 
 ### Expo SDK 57 / React Native 0.86.0
 
@@ -68,7 +68,7 @@ Hermes runtime                                    PASS
 
 ## Repository examples
 
-The public repository keeps the two supported consumer shapes visible under `examples/`:
+The public repository keeps two maintained consumer shapes visible under `examples/`:
 
 ```text
 examples/expo   Expo SDK 57 / React Native 0.86
@@ -78,6 +78,17 @@ examples/bare   bare React Native 0.87
 `examples/expo` is the maintained Expo consumer. `examples/bare` is a stable RN 0.87 consumer derived from the previously validated bare probe, simplified to use the current public package API and standard autolinking. The recorded release certification remains the exact RN `0.87.0-rc.3` gate above until the stable RN 0.87 example is rerun and recorded separately.
 
 Both examples are repository-only and must remain outside the npm package.
+
+## Current candidate evidence boundary
+
+Static checks and successful repository builds can establish release readiness, but they do not
+retroactively transfer the PR #26 runtime certification to a different source tree. If the final
+publication candidate differs from the certified tree in native or runtime code, repeat the exact
+tarball install and relevant device/runtime gates before calling that candidate certified.
+
+Documentation-only changes still require the publication commands below because `README.md` is part
+of the npm tarball. They do not require a new runtime claim when the packed runtime files are
+unchanged.
 
 ## Public alpha publication gate
 
@@ -110,9 +121,20 @@ npm view react-native-scroll-interop dist-tags
 
 Then install `react-native-scroll-interop@next` from the registry in a fresh consumer and verify the minimal Android build/install path.
 
-## Relationship to react-native-screens upstream work
+## Independent upstream work
 
-The upstream-neutral `react-native-screens` seam is valuable but is **not a blocker for this alpha**. The current package already has a validated, version-scoped `react-native-screens 4.26.x` adapter.
+Two open upstream changes move responsibilities toward their existing owners:
+
+1. [React Native #57972](https://github.com/react/react-native/pull/57972) preserves AndroidX
+   `TYPE_NON_TOUCH` nested-scroll lifecycle for ordinary `ReactNestedScrollView` flings. React
+   Native still initiates and owns the fling.
+2. [react-native-screens #4537](https://github.com/software-mansion/react-native-screens/pull/4537)
+   exposes a neutral Android nested-scroll delegate seam. Screens keeps ownership, existing behavior,
+   and first priority.
+
+The PRs address different layers and neither is a blocker for `0.1.0-alpha.1`. The package already
+has narrow, fail-closed compatibility paths for the versions in the current peer range, including a
+validated version-scoped `react-native-screens 4.26.x` adapter.
 
 ## Stable-release bar
 

@@ -11,6 +11,8 @@ npm install
 npm run android
 ```
 
-The example intentionally keeps React Native as the only touch/position/fling owner. The Material3 app bar participates in the same Android nested-scroll transaction exposed by the library.
+The example intentionally keeps React Native as the only touch/position/fling owner. The Material3
+app bar is a reference participant in the same Android nested-scroll transaction exposed by the
+library; it is not the purpose of the package.
 
 This directory is repository-only validation material and is excluded from the npm tarball.

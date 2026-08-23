@@ -24,9 +24,12 @@ Initial public alpha candidate.
 - standalone `NativeScrollHost` ownership path;
 - version-scoped React Native 0.86/0.87 compatibility adapters.
 
-### Material3
+### Reference native participants (Material3)
 
 - native Material3 TopAppBar PRE/POST consumer;
+- complete TopAppBar scroll-behavior mapping for `pinned`, `enterAlways`, and
+  `exitUntilCollapsed`, with a separate fixed `none` mode;
+- New Architecture-safe native direct events through React Native's `EventDispatcher`;
 - native Material3 FloatingToolbar POST observer;
 - terminal Material settle driven by Material state rather than a second source fling;
 - standard native React Native view managers with no Expo Modules runtime dependency.
