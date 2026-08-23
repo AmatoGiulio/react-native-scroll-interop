@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { material3Dynamic as colors } from '../theme';
+import { material3Dynamic as colors, useMaterial3DynamicTheme } from '../theme';
 
 export default function ExampleIndex() {
   const router = useRouter();
+  useMaterial3DynamicTheme();
 
   return (
     <View style={styles.root}>
@@ -25,14 +26,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 12,
     padding: 24,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
   },
   heading: { color: colors.onSurface, fontSize: 20, fontWeight: '600', marginBottom: 8 },
   link: {
     paddingVertical: 14,
     paddingHorizontal: 16,
     borderRadius: 12,
-    backgroundColor: colors.surfaceContainer,
+    backgroundColor: colors.surfaceContainerLow,
   },
   linkText: { color: colors.onSurface, fontSize: 16 },
 });
