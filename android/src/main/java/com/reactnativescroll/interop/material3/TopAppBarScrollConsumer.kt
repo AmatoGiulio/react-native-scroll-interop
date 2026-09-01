@@ -11,6 +11,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
 import com.reactnativescroll.interop.BuildConfig
 import com.reactnativescroll.interop.NATIVE_SCROLL_LOG_TAG
+import com.reactnativescroll.interop.reactnative.AndroidNestedScrollSourceInterop
+import com.reactnativescroll.interop.reactnative.AndroidScrollAwayGeometry
 import com.reactnativescroll.interop.reactnative.ReactVerticalScrollSourceInterop
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -36,10 +38,10 @@ internal enum class TopAppBarInteropMode {
 /**
  * Material3 TopAppBar consumer driven by the source's real nested-scroll transaction.
  *
- * Source typing is deliberately RN-version-neutral. RN 0.83 uses ReactScrollView while RN 0.87 can
- * use the Kotlin-internal ReactNestedScrollView; both are handled as ViewGroup sources. Reflection
- * is confined to the unstable RN scroll-away geometry primitive and is never used for scroll
- * physics or per-frame dispatch.
+ * Transaction-source typing stays behind the React Native host boundary. React Native ScrollViews
+ * expose their optional scroll-away geometry capability; a hosted Compose source may instead expose
+ * a source-owned geometry sink. Reflection is confined to the unstable RN geometry primitive and is
+ * never used for scroll physics or per-frame dispatch.
  */
 internal class TopAppBarScrollConsumer(
   private val onChromeGeometryInvalidated: () -> Unit = {},
@@ -67,6 +69,8 @@ internal class TopAppBarScrollConsumer(
   private var originalPaddingTop = 0
   private var originalPaddingRight = 0
   private var originalPaddingBottom = 0
+  private var hostedScrollAwayGeometry: AndroidScrollAwayGeometry? = null
+  private var lastAppliedCollapseAmountPx = Float.NaN
 
   val hasChrome: Boolean
     get() = mode != null
@@ -85,9 +89,20 @@ internal class TopAppBarScrollConsumer(
 
   fun prepareNestedSource(source: ViewGroup): Boolean {
     if (!hasChrome) return false
-    val supported = ReactVerticalScrollSourceInterop.asSupported(source) ?: return false
-    ensureScrollAwaySource(supported)
-    return appliedScrollAwayPaddingPx > 0
+    val capabilities = AndroidNestedScrollSourceInterop.resolve(source) ?: return false
+    val reactNativeSource = capabilities.reactNative?.view
+    if (reactNativeSource != null) {
+      clearHostedScrollAwayGeometry()
+      ensureScrollAwaySource(reactNativeSource)
+      return appliedScrollAwayPaddingPx > 0
+    }
+    val hostedGeometry = capabilities.hostedScrollAwayGeometry
+    if (hostedGeometry != null) {
+      ensureHostedScrollAwayGeometry(hostedGeometry)
+    } else {
+      clearHostedScrollAwayGeometry()
+    }
+    return isNestedDirectCapable
   }
 
   fun beginNestedTransaction(source: ViewGroup): Boolean {
@@ -104,9 +119,22 @@ internal class TopAppBarScrollConsumer(
       }
       return false
     }
-    val supported = ReactVerticalScrollSourceInterop.asSupported(source) ?: return false
+    val capabilities = AndroidNestedScrollSourceInterop.resolve(source) ?: return false
+    val supported = capabilities.view
     cancelSettle()
-    ensureScrollAwaySource(supported)
+    val reactNativeSource = capabilities.reactNative?.view
+    if (reactNativeSource != null) {
+      clearHostedScrollAwayGeometry()
+      ensureScrollAwaySource(reactNativeSource)
+    } else {
+      if (scrollAwaySource != null) clearScrollAwaySource()
+      val hostedGeometry = capabilities.hostedScrollAwayGeometry
+      if (hostedGeometry != null) {
+        ensureHostedScrollAwayGeometry(hostedGeometry)
+      } else {
+        clearHostedScrollAwayGeometry()
+      }
+    }
     transactionActive = true
     if (BuildConfig.DEBUG) {
       val state = behavior?.state
@@ -114,7 +142,8 @@ internal class TopAppBarScrollConsumer(
         NATIVE_SCROLL_LOG_TAG,
         "TX_TOP_BEGIN view=${supported.id} class=${supported.javaClass.name} y=${supported.scrollY} " +
           "heightOffset=${state?.heightOffset} limit=${state?.heightOffsetLimit} " +
-          "collapse=${currentCollapseAmountPx()} scrollAway=$appliedScrollAwayPaddingPx",
+          "collapse=${currentCollapseAmountPx()} scrollAway=$appliedScrollAwayPaddingPx " +
+          "rnGeometry=${capabilities.supportsReactNativeScrollAwayGeometry}",
       )
     }
     return true
@@ -269,6 +298,7 @@ internal class TopAppBarScrollConsumer(
     if (heightPx <= 0 || heightPx <= expandedChromeHeightPx) return false
     expandedChromeHeightPx = heightPx
     applyScrollAwayPadding()
+    applyChromeTranslation()
     return true
   }
 
@@ -328,13 +358,27 @@ internal class TopAppBarScrollConsumer(
   }
 
   private fun applyChromeTranslation() {
-    val source = scrollAwaySource ?: return
-    val content = source.getChildAt(0) ?: return
-    val resting = appliedScrollAwayPaddingPx.toFloat()
-    val target = resting - currentCollapseAmountPx()
-    if (content.translationY == target) return
+    val collapseAmountPx = currentCollapseAmountPx()
+    var geometryChanged = collapseAmountPx != lastAppliedCollapseAmountPx
+    lastAppliedCollapseAmountPx = collapseAmountPx
 
-    content.translationY = target
+    val source = scrollAwaySource
+    val content = source?.getChildAt(0)
+    if (content != null) {
+      val resting = appliedScrollAwayPaddingPx.toFloat()
+      val target = resting - collapseAmountPx
+      if (content.translationY != target) {
+        content.translationY = target
+        geometryChanged = true
+      }
+    }
+
+    hostedScrollAwayGeometry?.update(
+      expandedHeightPx = expandedChromeHeightPx,
+      collapseAmountPx = collapseAmountPx,
+    )
+
+    if (!geometryChanged) return
     // Compose owns the Material state, but the ComposeView is hosted inside a fixed-size RN view.
     // That host is outside a normal Android measure traversal, so a state-driven height change must
     // explicitly enqueue its host geometry from the native scroll transaction. The UI layer
@@ -349,6 +393,14 @@ internal class TopAppBarScrollConsumer(
       captureScrollViewVisualState(source)
     }
     applyScrollAwayPadding()
+  }
+
+  private fun ensureHostedScrollAwayGeometry(geometry: AndroidScrollAwayGeometry) {
+    if (hostedScrollAwayGeometry?.owner !== geometry.owner) {
+      clearHostedScrollAwayGeometry()
+      hostedScrollAwayGeometry = geometry
+    }
+    applyChromeTranslation()
   }
 
   private fun NativeNestedInputType.toComposeNestedSource(): NestedScrollSource = when (this) {
@@ -435,6 +487,11 @@ internal class TopAppBarScrollConsumer(
       }
     }
     resetScrollAwaySourceState()
+  }
+
+  private fun clearHostedScrollAwayGeometry() {
+    hostedScrollAwayGeometry?.update(expandedHeightPx = 0, collapseAmountPx = 0f)
+    hostedScrollAwayGeometry = null
   }
 
   private fun resetScrollAwaySourceState() {

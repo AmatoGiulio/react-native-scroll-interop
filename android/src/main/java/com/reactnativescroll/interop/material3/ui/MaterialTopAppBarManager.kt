@@ -36,7 +36,7 @@ internal class MaterialTopAppBarManager : SimpleViewManager<MaterialTopAppBarVie
   fun setThemeMode(view: MaterialTopAppBarView, value: String?) =
     view.setThemeMode(value ?: "system")
 
-  @ReactProp(name = "dynamicColor", defaultBoolean = false)
+  @ReactProp(name = "dynamicColor", defaultBoolean = true)
   fun setDynamicColor(view: MaterialTopAppBarView, value: Boolean) = view.setDynamicColor(value)
 
   override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any>? =

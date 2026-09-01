@@ -38,11 +38,11 @@ internal class ReactNativeNestedScrollControllerCore(
     }
   }
 
-  fun traceNoReactVerticalSource(childCount: Int) =
-    log("SOURCE_TREE no-react-vertical-source childCount=$childCount")
+  fun traceNoSupportedVerticalSource(childCount: Int) =
+    log("SOURCE_TREE no-supported-vertical-source childCount=$childCount")
 
-  fun traceAmbiguousReactSources(count: Int) =
-    log("SOURCE_TREE ambiguousReactSources count=$count failClosed=true")
+  fun traceAmbiguousVerticalSources(count: Int) =
+    log("SOURCE_TREE ambiguousVerticalSources count=$count failClosed=true")
 
   fun ensureNestedScrollingEnabled(source: ViewGroup) {
     if (!ViewCompat.isNestedScrollingEnabled(source)) {
@@ -224,10 +224,8 @@ internal class ReactNativeNestedScrollControllerCore(
   }
 
   private fun beginSession(target: View, type: Int) {
-    val reactCapabilities = ReactVerticalScrollSourceInterop.resolve(target)
-    val source = reactCapabilities?.view
-      ?: ComposeVerticalScrollSourceInterop.asSupported(target)
-      ?: return
+    val sourceCapabilities = AndroidNestedScrollSourceInterop.resolve(target) ?: return
+    val source = sourceCapabilities.view
     val replacement = lifecycle.begin(source, type)
     if (replacement != null) {
       flushPendingLedger("source-replaced")
@@ -240,7 +238,7 @@ internal class ReactNativeNestedScrollControllerCore(
     flushPendingLedger("session-rebind")
     preCount = 0
     postCount = 0
-    activeCapabilities = reactCapabilities
+    activeCapabilities = sourceCapabilities.reactNative
     activeSession = ReactNativeNestedScrollParticipants.bind(source)
     val session = activeSession ?: return
     dispatcher.bindParticipants(

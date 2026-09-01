@@ -99,7 +99,7 @@ private data class ToolbarState(
   val fabAccessibilityLabel: String? = null,
   val fabShape: String = "default",
   val themeMode: String = "system",
-  val dynamicColor: Boolean = false,
+  val dynamicColor: Boolean = true,
   val imeBehavior: String = "none",
   val alignment: String = "bottomCenter",
   val insets: String = "safe",

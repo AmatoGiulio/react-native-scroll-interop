@@ -11,6 +11,8 @@ const files = {
   controller: 'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollControllerCore.kt',
   participants: 'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollParticipants.kt',
   source: 'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt',
+  sourceBoundary: 'android/src/main/java/com/reactnativescroll/interop/reactnative/AndroidNestedScrollSourceInterop.kt',
+  composeSource: 'android/src/main/java/com/reactnativescroll/interop/reactnative/ComposeVerticalScrollSourceInterop.kt',
   lifecycle: 'android/src/main/java/com/reactnativescroll/interop/core/SourceScopedNestedScrollLifecycle.kt',
   ledger: 'android/src/main/java/com/reactnativescroll/interop/core/NestedScrollConservationLedger.kt',
   dispatcher: 'android/src/main/java/com/reactnativescroll/interop/core/VerticalNestedScrollTransactionDispatcher.kt',
@@ -59,6 +61,20 @@ for (const key of ['host', 'facade', 'controller', 'participants', 'lifecycle', 
 requireText('source', 'ReactVerticalScrollSourceCapabilities');
 requireText('source', 'ReactScrollView');
 requireText('source', 'ReactNestedScrollView');
+for (const marker of [
+  'data class AndroidNestedScrollSourceCapabilities',
+  'val reactNative: ReactVerticalScrollSourceCapabilities?',
+  'val hostedScrollAwayGeometry: AndroidScrollAwayGeometry?',
+  'val supportsReactNativeScrollAwayGeometry: Boolean',
+  'ReactVerticalScrollSourceInterop.resolve(source)',
+  'ComposeVerticalScrollSourceInterop.resolve(source)',
+]) requireText('sourceBoundary', marker);
+for (const marker of [
+  'androidx.compose.ui.platform.AndroidComposeView',
+  'react_native_scroll_interop_compose_geometry_sink',
+  'BiConsumer<Int, Float>',
+  'current.parent as? View',
+]) requireText('composeSource', marker);
 
 for (const marker of [
   'class SourceScopedNestedScrollLifecycle',
@@ -89,9 +105,10 @@ if (postConsumer < 0 || postObserver < 0 || postConsumer > postObserver) {
 for (const marker of [
   'ReactNativeNestedScrollParticipants.registerStandaloneHost(this)',
   'ReactNativeNestedScrollParticipants.unregisterStandaloneHost(this)',
-  'nestedScrollController.prepareNestedSource(reactSources.single())',
+  'nestedScrollController.prepareNestedSource(sources.single())',
   'nestedScrollController.onNestedPreScroll(',
   'nestedScrollController.onNestedScroll(',
+  'AndroidNestedScrollSourceInterop.resolve(view)',
 ]) requireText('host', marker);
 forbid('host', /com\.reactnativescroll\.interop\.material3/, 'Material3 dependency in NativeScrollHost');
 
@@ -115,6 +132,7 @@ for (const marker of [
   'TX_STALE_PRE',
   'TX_STALE_POST',
   'activeSession?.end(source, reason)',
+  'AndroidNestedScrollSourceInterop.resolve(target)',
 ]) requireText('controller', marker);
 forbid('controller', /com\.reactnativescroll\.interop\.material3|TopAppBar|FloatingToolbar|NativeNestedScrollRegistry/, 'consumer dependency in RN controller');
 
@@ -129,6 +147,13 @@ forbid('participants', /com\.reactnativescroll\.interop\.material3|expo\.modules
 
 requireText('top', 'hasResolvedHeightOffsetLimit');
 requireText('top', 'TX_TOP_BEGIN rejected=geometry-unresolved');
+for (const marker of [
+  'AndroidNestedScrollSourceInterop.resolve(source)',
+  'capabilities.reactNative?.view',
+  'capabilities.hostedScrollAwayGeometry',
+  'capabilities.supportsReactNativeScrollAwayGeometry',
+  'hostedScrollAwayGeometry?.update(',
+]) requireText('top', marker);
 forbid('top', /expo\.modules\./, 'Expo dependency in Material3 consumer');
 forbid('toolbar', /expo\.modules\./, 'Expo dependency in Material3 consumer');
 

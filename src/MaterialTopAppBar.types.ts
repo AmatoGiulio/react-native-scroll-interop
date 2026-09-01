@@ -29,6 +29,7 @@ export type MaterialTopAppBarProps = {
   onNavigationPress?: () => void;
   placement?: MaterialTopAppBarPlacement;
   themeMode?: MaterialToolbarThemeMode;
+  /** Uses the Android 12+ system dynamic color scheme. Default: true. */
   dynamicColor?: boolean;
   style?: StyleProp<ViewStyle>;
 };

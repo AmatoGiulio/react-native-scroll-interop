@@ -1,10 +1,13 @@
 import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
-const ROWS = Array.from({ length: 80 }, (_, index) => `Home row ${index + 1}`);
+import { useDemoColors } from '../../../../theme/colors';
+
+const ROWS = Array.from({ length: 32 }, (_, index) => `Item ${String(index + 1).padStart(2, '0')}`);
 
 export default function NavigationFirstHome() {
   const router = useRouter();
+  const colors = useDemoColors();
 
   const openItem = (row: string) => {
     router.push({
@@ -15,16 +18,23 @@ export default function NavigationFirstHome() {
 
   return (
     <ScrollView
-      style={styles.host}
+      style={[styles.host, { backgroundColor: colors.background }]}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <Pressable style={styles.card} onPress={() => openItem('Featured item')}>
-        <Text style={styles.cardTitle}>Navigation first</Text>
-        <Text style={styles.cardBody}>
-          Home and Details keep independent tab state. Item details and creation live in the parent stack.
-        </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Open native chrome details"
+        style={({ pressed }) => [
+          styles.card,
+          { backgroundColor: pressed ? colors.pressed : colors.surface },
+        ]}
+        onPress={() => openItem('Native chrome')}
+      >
+        <Text style={[styles.cardEyebrow, { color: colors.accent }]}>REACT NATIVE</Text>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>ScrollView, native chrome</Text>
+        <Text style={[styles.cardBody, { color: colors.muted }]}>One continuous scroll.</Text>
       </Pressable>
 
       {ROWS.map((row, index) => (
@@ -32,12 +42,15 @@ export default function NavigationFirstHome() {
           key={row}
           accessibilityRole="button"
           accessibilityLabel={`Open details for ${row}`}
-          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          style={({ pressed }) => [
+            styles.row,
+            //pressed && { backgroundColor: colors.pressed },
+          ]}
           onPress={() => openItem(row)}
         >
-          <Text style={styles.number}>{String(index + 1).padStart(2, '0')}</Text>
-          <Text style={styles.text}>{row}</Text>
-          <Text style={styles.chevron} accessibilityElementsHidden>
+          <Text style={[styles.number, { color: colors.muted }]}>{String(index + 1).padStart(2, '0')}</Text>
+          <Text style={[styles.text, { color: colors.text }]}>{row}</Text>
+          <Text style={[styles.chevron, { color: colors.muted }]} accessibilityElementsHidden>
             ›
           </Text>
         </Pressable>
@@ -47,16 +60,18 @@ export default function NavigationFirstHome() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: '#101318' },
+  host: { flex: 1 },
   content: { paddingHorizontal: 20, paddingBottom: 160 },
   card: {
-    marginBottom: 12,
+    marginVertical: 12,
     padding: 20,
-    borderRadius: 20,
-    backgroundColor: '#20252d',
+    borderRadius: 24,
+    borderCurve: 'continuous',
+    gap: 6,
   },
-  cardTitle: { color: '#f4f6f8', fontSize: 20, fontWeight: '600' },
-  cardBody: { color: '#aeb8c4', fontSize: 15, lineHeight: 21, marginTop: 8 },
+  cardEyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  cardTitle: { fontSize: 21, fontWeight: '600' },
+  cardBody: { maxWidth: 300, fontSize: 15, lineHeight: 21 },
   row: {
     minHeight: 68,
     flexDirection: 'row',
@@ -64,9 +79,9 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingHorizontal: 12,
     borderRadius: 16,
+    borderCurve: 'continuous',
   },
-  rowPressed: { backgroundColor: '#20252d' },
-  number: { width: 30, color: '#748191' },
-  text: { flex: 1, color: '#e6eaf0', fontSize: 17 },
-  chevron: { color: '#aeb8c4', fontSize: 28, lineHeight: 30 },
+  number: { width: 30, fontSize: 13, fontVariant: ['tabular-nums'] },
+  text: { flex: 1, fontSize: 17 },
+  chevron: { fontSize: 28, lineHeight: 30 },
 });

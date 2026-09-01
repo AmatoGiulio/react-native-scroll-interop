@@ -31,6 +31,8 @@ function NavigationFirstTabBar({ state, navigation }: TabBarProps) {
       placement="bottom"
       scrollBehavior="exitAlways"
       insets="none"
+      themeMode="system"
+      dynamicColor
     >
       <MaterialToolbar.Content>
         <MaterialToolbar.TextButton
@@ -78,7 +80,7 @@ export default function NavigationFirstTabsLayout() {
       tabBar={renderTabBar}
     >
       <Tabs.Screen name="home" options={{ title: 'Home' }} />
-      <Tabs.Screen name="details" options={{ title: 'Details' }} />
+      <Tabs.Screen name="details" options={{ title: 'Architecture' }} />
     </Tabs>
   );
 }

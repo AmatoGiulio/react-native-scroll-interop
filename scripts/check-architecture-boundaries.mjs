@@ -48,6 +48,8 @@ const rnBoundaryFiles = [
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeNestedScrollHostView.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScreenNestedScrollBridge.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeVerticalScrollSourceLocator.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/AndroidNestedScrollSourceInterop.kt',
+  'android/src/main/java/com/reactnativescroll/interop/reactnative/ComposeVerticalScrollSourceInterop.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactVerticalScrollSourceInterop.kt',
   'android/src/main/java/com/reactnativescroll/interop/reactnative/ReactNativeScrollTracing.kt',
 ];
@@ -83,7 +85,12 @@ for (const marker of [
   'VerticalNestedScrollTransactionDispatcher()',
   'SourceScopedNestedScrollLifecycle()',
   'dispatcher.bindParticipants(',
+  'AndroidNestedScrollSourceInterop.resolve(target)',
 ]) requireMarker(corePath, controllerCore, marker);
+for (const forbidden of [
+  'ReactVerticalScrollSourceInterop.resolve(target)',
+  'ComposeVerticalScrollSourceInterop.asSupported(target)',
+]) forbid(corePath, controllerCore, forbidden, `controller-owned source branch ${forbidden}`);
 for (const forbidden of ['TopAppBar', 'FloatingToolbar', 'Material3NestedScroll', 'NativeNestedScrollRegistry']) {
   forbid(corePath, controllerCore, forbidden, `consumer-specific controller symbol ${forbidden}`);
 }

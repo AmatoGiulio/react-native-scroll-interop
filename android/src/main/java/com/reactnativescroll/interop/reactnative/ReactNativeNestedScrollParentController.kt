@@ -21,9 +21,10 @@ class ReactNativeNestedScrollParentController(
 
   fun traceTouchEvent(event: MotionEvent) = core.traceTouchEvent(event)
 
-  fun traceNoReactVerticalSource(childCount: Int) = core.traceNoReactVerticalSource(childCount)
+  fun traceNoSupportedVerticalSource(childCount: Int) =
+    core.traceNoSupportedVerticalSource(childCount)
 
-  fun traceAmbiguousReactSources(count: Int) = core.traceAmbiguousReactSources(count)
+  fun traceAmbiguousVerticalSources(count: Int) = core.traceAmbiguousVerticalSources(count)
 
   fun ensureNestedScrollingEnabled(source: ViewGroup) = core.ensureNestedScrollingEnabled(source)
 

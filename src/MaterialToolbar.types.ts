@@ -67,7 +67,7 @@ export type MaterialToolbarRootProps = {
 
   /** Native fallback Material color scheme. Default: system. */
   themeMode?: MaterialToolbarThemeMode;
-  /** Android 12+ Material You dynamic color. */
+  /** Uses the Android 12+ system dynamic color scheme. Default: true. */
   dynamicColor?: boolean;
   /** Hide the complete toolbar while the soft keyboard is visible. */
   imeBehavior?: MaterialToolbarImeBehavior;

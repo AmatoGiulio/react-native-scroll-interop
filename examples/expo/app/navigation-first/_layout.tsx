@@ -12,12 +12,14 @@ export default function NavigationFirstLayout() {
       <Stack.Screen
         name="detail-item"
         options={{
-          title: 'Item details',
+          title: 'Details',
           material3: {
             topAppBar: {
               variant: 'small',
               scrollBehavior: 'enterAlways',
               navigationAccessibilityLabel: 'Back',
+              themeMode: 'system',
+              dynamicColor: true,
             },
           },
         }}
@@ -25,12 +27,14 @@ export default function NavigationFirstLayout() {
       <Stack.Screen
         name="create"
         options={{
-          title: 'Create item',
+          title: 'New item',
           material3: {
             topAppBar: {
               variant: 'small',
               scrollBehavior: 'enterAlways',
               navigationAccessibilityLabel: 'Back',
+              themeMode: 'system',
+              dynamicColor: true,
             },
           },
         }}

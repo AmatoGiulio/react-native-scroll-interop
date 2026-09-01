@@ -210,7 +210,7 @@ const MaterialToolbarRoot = forwardRef<MaterialToolbarRef, MaterialToolbarRootPr
       scrollExitDirection,
       variant = 'standard',
       themeMode = 'system',
-      dynamicColor = false,
+      dynamicColor = true,
       imeBehavior = 'none',
       placement = 'bottom',
       alignment,

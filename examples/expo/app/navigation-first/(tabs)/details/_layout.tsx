@@ -6,12 +6,14 @@ export default function DetailsStackLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Details',
+          title: 'Architecture',
           headerBackVisible: false,
           material3: {
             topAppBar: {
               variant: 'small',
               scrollBehavior: 'pinned',
+              themeMode: 'system',
+              dynamicColor: true,
             },
           },
         }}

@@ -47,7 +47,7 @@ private data class TopAppBarHostState(
   val navigationIcon: String = "none",
   val navigationAccessibilityLabel: String = "Back",
   val themeMode: String = "system",
-  val dynamicColor: Boolean = false,
+  val dynamicColor: Boolean = true,
 )
 
 class MaterialTopAppBarView(

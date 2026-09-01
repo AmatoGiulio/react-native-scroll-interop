@@ -6,12 +6,14 @@ export default function HomeStackLayout() {
       <Stack.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'Scroll interop',
           headerBackVisible: false,
           material3: {
             topAppBar: {
               variant: 'large',
               scrollBehavior: 'exitUntilCollapsed',
+              themeMode: 'system',
+              dynamicColor: true,
             },
           },
         }}

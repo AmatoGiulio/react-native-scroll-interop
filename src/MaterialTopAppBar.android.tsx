@@ -49,7 +49,7 @@ function MaterialTopAppBarNative({
   onNavigationPress,
   placement: _placement,
   themeMode = 'system',
-  dynamicColor = false,
+  dynamicColor = true,
   style,
   layoutStyle,
 }: MaterialTopAppBarNativeProps) {

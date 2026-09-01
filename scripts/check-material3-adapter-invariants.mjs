@@ -70,6 +70,7 @@ for (const marker of [
   'class TopAppBarScrollConsumer',
   'onChromeGeometryInvalidated: () -> Unit',
   'onChromeGeometryInvalidated()',
+  'AndroidNestedScrollSourceInterop',
   'ReactVerticalScrollSourceInterop',
   'NativeNestedInputType',
   'Velocity.Zero',
@@ -78,6 +79,8 @@ for (const marker of [
   'rememberBehaviorState(behavior)',
   'restoreBehaviorStateOnNextBind = lastKnownBehaviorState != null',
   'restoreRetainedBehaviorState(newBehavior, retained)',
+  'capabilities.reactNative?.view',
+  'capabilities.supportsReactNativeScrollAwayGeometry',
 ]) requireText(files.topBar, source.topBar, marker);
 for (const marker of [
   'open class FloatingToolbarScrollConsumer',

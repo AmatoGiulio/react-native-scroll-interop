@@ -42,14 +42,13 @@ transport contract.
 ## Reference demo
 
 <p align="center">
-  <a href="https://github.com/AmatoGiulio/react-native-scroll-interop/releases/download/v0.1.0-alpha.1/react-native-scroll-interop-alpha-demo.mp4">
-    <img src="./docs/assets/react-native-scroll-interop-alpha-demo.gif" width="360" alt="React Native scroll source driving native Android TopAppBar and FloatingToolbar reference participants" />
+  <a href="./docs/assets/react-native-scroll-interop-alpha-demo.mp4">
+    <img src="./docs/assets/react-native-scroll-interop-alpha-demo.gif" width="720" alt="React Native scroll source driving native Android TopAppBar and FloatingToolbar reference participants" />
   </a>
 </p>
 
-The clip makes native participation observable through the shipped TopAppBar and FloatingToolbar
-reference consumers. React Native still owns the gesture, source position, and fling physics.
-Select the preview for the higher-quality MP4.
+The demo shows the React Native source driving the native Material3 app bar and toolbar through the
+same scroll transaction. Select it for the full-quality 60 fps MP4.
 
 ## Status
 
@@ -197,7 +196,9 @@ The TopAppBar is a native Material3 PRE/POST consumer. It never moves the RN sou
 `pinned`, `enterAlways`, and `exitUntilCollapsed` map one-to-one to the Material3 scroll behaviors.
 `none` keeps the bar fixed without attaching Material scroll state; unlike `pinned`, it does not
 track content overlap. Navigation defaults to `pinned` for small bars and
-`exitUntilCollapsed` for every expandable variant.
+`exitUntilCollapsed` for every expandable variant. TopAppBar and FloatingToolbar use the Android
+12+ system dynamic color scheme by default and follow the system light/dark mode; pass
+`dynamicColor={false}` or explicit toolbar colors when deterministic colors are required.
 
 ### MaterialToolbar
 

@@ -82,7 +82,7 @@ internal class MaterialToolbarManager : SimpleViewManager<MaterialToolbarView>()
   fun setThemeMode(view: MaterialToolbarView, value: String?) =
     view.setThemeMode(value ?: "system")
 
-  @ReactProp(name = "dynamicColor", defaultBoolean = false)
+  @ReactProp(name = "dynamicColor", defaultBoolean = true)
   fun setDynamicColor(view: MaterialToolbarView, value: Boolean) = view.setDynamicColor(value)
 
   @ReactProp(name = "imeBehavior")

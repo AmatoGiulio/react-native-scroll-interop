@@ -13,7 +13,7 @@
     "autolinking": {
       "android": {
         "buildFromSource": [
-          "@expo/ui"
+          "expo-ui"
         ]
       }
     }

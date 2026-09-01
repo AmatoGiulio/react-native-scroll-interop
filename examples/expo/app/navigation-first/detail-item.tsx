@@ -1,30 +1,31 @@
 import { useLocalSearchParams } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-const ROWS = Array.from({ length: 36 }, (_, index) => `Item information ${index + 1}`);
+import { useDemoColors } from '../../theme/colors';
+
+const ROWS = Array.from({ length: 24 }, (_, index) => `Detail ${String(index + 1).padStart(2, '0')}`);
 
 export default function NavigationFirstDetailItem() {
   const { row, source } = useLocalSearchParams<{ row?: string; source?: string }>();
+  const colors = useDemoColors();
 
   return (
     <ScrollView
-      style={styles.host}
+      style={[styles.host, { backgroundColor: colors.background }]}
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.card}>
-        <Text style={styles.eyebrow}>{source ?? 'Item'}</Text>
-        <Text style={styles.cardTitle}>{row ?? 'Selected item'}</Text>
-        <Text style={styles.cardBody}>
-          This route belongs to the parent stack, so the floating tab bar and its action button are not rendered here.
-        </Text>
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
+        <Text style={[styles.eyebrow, { color: colors.accent }]}>{source ?? 'ITEM'}</Text>
+        <Text style={[styles.cardTitle, { color: colors.text }]}>{row ?? 'Selected item'}</Text>
+        <Text style={[styles.cardBody, { color: colors.muted }]}>Parent stack · native back · toolbar hidden</Text>
       </View>
 
       {ROWS.map((item, index) => (
         <View key={item} style={styles.row}>
-          <Text style={styles.number}>{String(index + 1).padStart(2, '0')}</Text>
-          <Text style={styles.text}>{item}</Text>
+          <Text style={[styles.number, { color: colors.muted }]}>{String(index + 1).padStart(2, '0')}</Text>
+          <Text style={[styles.text, { color: colors.text }]}>{item}</Text>
         </View>
       ))}
     </ScrollView>
@@ -32,29 +33,29 @@ export default function NavigationFirstDetailItem() {
 }
 
 const styles = StyleSheet.create({
-  host: { flex: 1, backgroundColor: '#101318' },
+  host: { flex: 1 },
   content: { paddingHorizontal: 20, paddingBottom: 40 },
   card: {
     marginBottom: 12,
     padding: 20,
-    borderRadius: 20,
-    backgroundColor: '#20252d',
+    borderRadius: 24,
+    borderCurve: 'continuous',
+    gap: 6,
   },
   eyebrow: {
-    color: '#c6b8ff',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
     textTransform: 'uppercase',
   },
-  cardTitle: { color: '#f4f6f8', fontSize: 24, fontWeight: '600', marginTop: 8 },
-  cardBody: { color: '#aeb8c4', fontSize: 15, lineHeight: 21, marginTop: 8 },
+  cardTitle: { fontSize: 24, fontWeight: '600' },
+  cardBody: { fontSize: 15, lineHeight: 21 },
   row: {
     minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
   },
-  number: { width: 30, color: '#748191' },
-  text: { color: '#e6eaf0', fontSize: 17 },
+  number: { width: 30, fontSize: 13, fontVariant: ['tabular-nums'] },
+  text: { fontSize: 17 },
 });

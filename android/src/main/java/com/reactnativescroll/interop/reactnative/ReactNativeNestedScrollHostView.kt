@@ -9,8 +9,8 @@ import androidx.core.view.NestedScrollingParent3
 import com.facebook.react.views.view.ReactViewGroup
 
 /**
- * Standalone React Native adapter that makes a React Native vertical scroll source a descendant of
- * a real Android nested-scrolling parent.
+ * Standalone React Native adapter that makes one supported Android vertical scroll source a
+ * descendant of a real Android nested-scrolling parent.
  *
  * Source discovery remains here because this wrapper can contain an arbitrary React tree. The
  * actual transaction lifecycle and PRE/POST dispatch live in [ReactNativeNestedScrollParentController]
@@ -80,21 +80,21 @@ class ReactNativeNestedScrollHostView(
   private fun refreshNestedParticipantBinding(): Boolean {
     if (!isAttachedToWindow) return false
 
-    val reactSources = mutableListOf<ViewGroup>()
-    collectReactVerticalScrollSources(this, reactSources)
-    if (reactSources.isEmpty()) {
-      nestedScrollController.traceNoReactVerticalSource(childCount)
+    val sources = mutableListOf<ViewGroup>()
+    collectAndroidNestedScrollSources(this, sources)
+    if (sources.isEmpty()) {
+      nestedScrollController.traceNoSupportedVerticalSource(childCount)
       return false
     }
 
-    reactSources.forEach(nestedScrollController::ensureNestedScrollingEnabled)
+    sources.forEach(nestedScrollController::ensureNestedScrollingEnabled)
 
-    if (reactSources.size != 1) {
-      nestedScrollController.traceAmbiguousReactSources(reactSources.size)
+    if (sources.size != 1) {
+      nestedScrollController.traceAmbiguousVerticalSources(sources.size)
       return true
     }
 
-    return nestedScrollController.prepareNestedSource(reactSources.single())
+    return nestedScrollController.prepareNestedSource(sources.single())
   }
 
   private fun startWaitingForSourceLayout() {
@@ -200,11 +200,11 @@ class ReactNativeNestedScrollHostView(
     consumed,
   )
 
-  private fun collectReactVerticalScrollSources(view: View, output: MutableList<ViewGroup>) {
-    if (view !== this) ReactVerticalScrollSourceInterop.asSupported(view)?.let(output::add)
+  private fun collectAndroidNestedScrollSources(view: View, output: MutableList<ViewGroup>) {
+    if (view !== this) AndroidNestedScrollSourceInterop.resolve(view)?.view?.let(output::add)
     if (view !is ViewGroup) return
     for (index in 0 until view.childCount) {
-      collectReactVerticalScrollSources(view.getChildAt(index), output)
+      collectAndroidNestedScrollSources(view.getChildAt(index), output)
     }
   }
 }
